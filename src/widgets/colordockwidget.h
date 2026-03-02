@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QWidget>
 
+class QLineEdit;
 class QTreeWidget;
 class QTreeWidgetItem;
 class ColorSelectorWidget;
@@ -35,6 +36,8 @@ private Q_SLOTS:
     void onDelete();
     void onRoleSelected();
     void onColorPickerChanged(const QColor &color);
+    void onHexEdited();
+    void onColorPreview(const QColor &color);
 
 private:
     void buildUI();
@@ -49,6 +52,7 @@ private:
     ItemSelectorBar *m_selectorBar = nullptr;
     QTreeWidget *m_roleTree = nullptr;
     ColorSelectorWidget *m_colorSelector = nullptr;
+    QLineEdit *m_hexEdit = nullptr;
 
     QHash<QString, QTreeWidgetItem *> m_roleItems;
     QHash<QString, QColor> m_workingColors;

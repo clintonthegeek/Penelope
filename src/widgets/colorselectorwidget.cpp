@@ -50,7 +50,7 @@ ColorSelectorWidget::ColorSelectorWidget(QWidget *parent)
     : QWidget(parent)
 {
     setMinimumSize(80, 80);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
 
 QColor ColorSelectorWidget::color() const
@@ -61,6 +61,16 @@ QColor ColorSelectorWidget::color() const
 QSize ColorSelectorWidget::minimumSizeHint() const
 {
     return {120, 120};
+}
+
+bool ColorSelectorWidget::hasHeightForWidth() const
+{
+    return true;
+}
+
+int ColorSelectorWidget::heightForWidth(int w) const
+{
+    return w;
 }
 
 void ColorSelectorWidget::setColor(const QColor &color)
@@ -115,9 +125,11 @@ void ColorSelectorWidget::mousePressEvent(QMouseEvent *event)
     if (ringContains(x, y)) {
         m_grabbing = Ring;
         selectRingColor(x, y);
+        Q_EMIT colorPreview(color());
     } else if (triangleContains(x, y)) {
         m_grabbing = Triangle;
         selectTriangleColor(x, y);
+        Q_EMIT colorPreview(color());
     }
 
     event->accept();
@@ -136,6 +148,7 @@ void ColorSelectorWidget::mouseMoveEvent(QMouseEvent *event)
     else if (m_grabbing == Triangle)
         selectTriangleColor(x, y);
 
+    Q_EMIT colorPreview(color());
     event->accept();
 }
 

@@ -23,14 +23,18 @@ public:
 
     QColor color() const;
     QSize minimumSizeHint() const override;
+    bool hasHeightForWidth() const override;
+    int heightForWidth(int w) const override;
 
 public Q_SLOTS:
     /// Set the displayed color without emitting colorChanged.
     void setColor(const QColor &color);
 
 Q_SIGNALS:
-    /// Emitted on every mouse interaction (press, move) in the selector.
+    /// Emitted on mouse release — triggers persistence.
     void colorChanged(const QColor &color);
+    /// Emitted during drag (press/move) — display-only, no persistence.
+    void colorPreview(const QColor &color);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

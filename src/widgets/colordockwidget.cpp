@@ -7,11 +7,17 @@
 #include "palettemanager.h"
 #include "themecomposer.h"
 
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QHBoxLayout>
 #include <QHeaderView>
+#include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPainter>
+#include <QRegularExpressionValidator>
 #include <QSignalBlocker>
-#include <QSplitter>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -101,10 +107,7 @@ void ColorDockWidget::buildUI()
     connect(m_selectorBar, &ItemSelectorBar::deleteRequested,
             this, &ColorDockWidget::onDelete);
 
-    // --- Splitter: role tree + color selector ---
-    auto *splitter = new QSplitter(Qt::Vertical, this);
-
-    // Color role tree
+    // --- Color role tree (fills remaining space) ---
     m_roleTree = new QTreeWidget;
     m_roleTree->setHeaderHidden(true);
     m_roleTree->setRootIsDecorated(true);
@@ -129,22 +132,48 @@ void ColorDockWidget::buildUI()
         m_roleItems.insert(QLatin1String(role.key), item);
     }
 
-    splitter->addWidget(m_roleTree);
+    outerLayout->addWidget(m_roleTree, 1);
 
-    // Color selector (ring + triangle)
+    // --- Color selector (square, full dock width) ---
     m_colorSelector = new ColorSelectorWidget;
     m_colorSelector->setEnabled(false);
-    splitter->addWidget(m_colorSelector);
+    outerLayout->addWidget(m_colorSelector, 0);
 
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
+    // --- Hex color row ---
+    auto *hexRow = new QHBoxLayout;
+    hexRow->setSpacing(4);
 
-    outerLayout->addWidget(splitter, 1);
+    auto *hashLabel = new QLabel(QStringLiteral("#"), this);
+    hexRow->addWidget(hashLabel);
 
+    m_hexEdit = new QLineEdit(this);
+    m_hexEdit->setMaxLength(6);
+    m_hexEdit->setPlaceholderText(QStringLiteral("RRGGBB"));
+    m_hexEdit->setValidator(
+        new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9A-Fa-f]{0,6}")), m_hexEdit));
+    m_hexEdit->setEnabled(false);
+    hexRow->addWidget(m_hexEdit);
+
+    auto *copyBtn = new QToolButton(this);
+    copyBtn->setIcon(QIcon::fromTheme(QStringLiteral("edit-copy")));
+    copyBtn->setToolTip(tr("Copy hex color"));
+    hexRow->addWidget(copyBtn);
+
+    outerLayout->addLayout(hexRow);
+
+    // --- Connections ---
     connect(m_roleTree, &QTreeWidget::currentItemChanged,
             this, &ColorDockWidget::onRoleSelected);
     connect(m_colorSelector, &ColorSelectorWidget::colorChanged,
             this, &ColorDockWidget::onColorPickerChanged);
+    connect(m_colorSelector, &ColorSelectorWidget::colorPreview,
+            this, &ColorDockWidget::onColorPreview);
+    connect(m_hexEdit, &QLineEdit::editingFinished,
+            this, &ColorDockWidget::onHexEdited);
+    connect(copyBtn, &QToolButton::clicked, this, [this]() {
+        QGuiApplication::clipboard()->setText(
+            QStringLiteral("#") + m_hexEdit->text().toUpper());
+    });
 }
 
 // ===========================================================================
@@ -208,7 +237,9 @@ void ColorDockWidget::loadPaletteIntoTree(const QString &id)
         it.value()->setIcon(0, swatchIcon(c));
     }
 
-    m_colorSelector->setEnabled(!selectedRole().isEmpty());
+    const bool hasRole = !selectedRole().isEmpty();
+    m_colorSelector->setEnabled(hasRole);
+    m_hexEdit->setEnabled(hasRole);
 
     // Refresh color selector to show the currently-selected role
     onRoleSelected();
@@ -223,14 +254,21 @@ void ColorDockWidget::onRoleSelected()
     const QString role = selectedRole();
     if (role.isEmpty()) {
         m_colorSelector->setEnabled(false);
+        m_hexEdit->setEnabled(false);
+        const QSignalBlocker hb(m_hexEdit);
+        m_hexEdit->clear();
         return;
     }
 
     m_colorSelector->setEnabled(true);
+    m_hexEdit->setEnabled(true);
 
     const QColor c = m_workingColors.value(role, Qt::gray);
     const QSignalBlocker blocker(m_colorSelector);
     m_colorSelector->setColor(c);
+
+    const QSignalBlocker hb(m_hexEdit);
+    m_hexEdit->setText(c.name().mid(1).toUpper());
 }
 
 QString ColorDockWidget::selectedRole() const
@@ -269,6 +307,10 @@ void ColorDockWidget::onColorPickerChanged(const QColor &color)
     m_workingColors.insert(role, color);
     updateRoleSwatch(role, color);
 
+    // Update hex field
+    const QSignalBlocker hb(m_hexEdit);
+    m_hexEdit->setText(color.name().mid(1).toUpper());
+
     // Push to composer for instant preview
     ColorPalette pal = m_paletteManager->palette(paletteId);
     pal.colors = m_workingColors;
@@ -281,6 +323,32 @@ void ColorDockWidget::updateRoleSwatch(const QString &role, const QColor &color)
     auto *item = m_roleItems.value(role);
     if (item)
         item->setIcon(0, swatchIcon(color));
+}
+
+// ===========================================================================
+// Hex input
+// ===========================================================================
+
+void ColorDockWidget::onColorPreview(const QColor &color)
+{
+    const QSignalBlocker hb(m_hexEdit);
+    m_hexEdit->setText(color.name().mid(1).toUpper());
+}
+
+void ColorDockWidget::onHexEdited()
+{
+    const QString text = m_hexEdit->text();
+    if (text.length() != 6)
+        return;
+
+    const QColor color(QStringLiteral("#") + text);
+    if (!color.isValid())
+        return;
+
+    const QSignalBlocker blocker(m_colorSelector);
+    m_colorSelector->setColor(color);
+
+    onColorPickerChanged(color);
 }
 
 // ===========================================================================

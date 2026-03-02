@@ -1116,7 +1116,7 @@ BlockBox Engine::layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth)
     }
 
     Content::ParagraphFormat fmt;
-    fmt.lineHeightPercent = 130; // more spacing for code
+    fmt.lineHeightPercent = cb.lineHeightPercent;
     qreal innerWidth = availWidth - cb.padding * 2 - 24.0; // margins
     box.lines = breakIntoLines(inlines, cb.style, fmt, innerWidth,
                                false /* no markdown ranges for code */);

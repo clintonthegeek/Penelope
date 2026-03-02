@@ -22,64 +22,61 @@
     "paragraphStyles": {
         "Default Paragraph Style": {
             "fontSize": 11.0,
-            "lineHeightPercent": 100,
+            "lineHeightPercent": 150,
             "fontFeatures": [
                 "liga",
-                "kern",
-                "calt",
-                "onum"
+                "kern"
             ]
         },
         "Heading": {
             "parent": "Default Paragraph Style",
             "fontWeight": "bold",
-            "alignment": "left"
+            "alignment": "left",
+            "lineHeightPercent": 120
         },
         "BodyText": {
             "parent": "Default Paragraph Style",
-            "alignment": "justify",
-            "spaceAfter": 6.0
+            "alignment": "left",
+            "spaceAfter": 0
         },
         "Heading1": {
             "parent": "Heading",
-            "fontSize": 28.0,
-            "spaceBefore": 24.0,
-            "spaceAfter": 12.0
+            "fontSize": 18.0,
+            "spaceBefore": 18.0,
+            "spaceAfter": 8.0
         },
         "Heading2": {
             "parent": "Heading",
-            "fontSize": 22.0,
-            "spaceBefore": 20.0,
-            "spaceAfter": 10.0
+            "fontSize": 16.0,
+            "spaceBefore": 16.0,
+            "spaceAfter": 6.0
         },
         "Heading3": {
             "parent": "Heading",
-            "fontSize": 18.0,
-            "spaceBefore": 16.0,
-            "spaceAfter": 8.0
+            "fontSize": 14.0,
+            "spaceBefore": 14.0,
+            "spaceAfter": 6.0
         },
         "Heading4": {
             "parent": "Heading",
-            "fontSize": 15.0,
+            "fontSize": 13.0,
             "spaceBefore": 12.0,
-            "spaceAfter": 6.0
+            "spaceAfter": 4.0
         },
         "Heading5": {
             "parent": "Heading",
-            "fontSize": 13.0,
+            "fontSize": 12.0,
             "spaceBefore": 10.0,
             "spaceAfter": 4.0
         },
         "Heading6": {
             "parent": "Heading",
             "fontSize": 11.0,
-            "fontItalic": true,
             "spaceBefore": 8.0,
             "spaceAfter": 4.0
         },
         "BlockQuote": {
-            "parent": "BodyText",
-            "fontItalic": true
+            "parent": "BodyText"
         },
         "ListItem": {
             "parent": "BodyText"
@@ -118,9 +115,7 @@
             "fontSize": 11.0,
             "fontFeatures": [
                 "liga",
-                "kern",
-                "calt",
-                "onum"
+                "kern"
             ]
         },
         "DefaultText": {
@@ -151,7 +146,7 @@
         },
         "Code": {
             "parent": "Default Character Style",
-            "fontSize": 10.0
+            "fontSize": 11.0
         },
         "InlineCode": {
             "parent": "Code"
@@ -171,10 +166,10 @@
         "Default": {
             "borderCollapse": true,
             "cellPadding": {
-                "top": 3,
-                "bottom": 3,
-                "left": 6,
-                "right": 6
+                "top": 2,
+                "bottom": 2,
+                "left": 4,
+                "right": 4
             },
             "outerBorder": {
                 "width": 1.0

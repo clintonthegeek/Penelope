@@ -22,18 +22,17 @@
     "paragraphStyles": {
         "Default Paragraph Style": {
             "fontSize": 11.0,
-            "lineHeightPercent": 100,
+            "lineHeightPercent": 120,
             "fontFeatures": [
                 "liga",
-                "kern",
-                "calt",
-                "onum"
+                "kern"
             ]
         },
         "Heading": {
             "parent": "Default Paragraph Style",
             "fontWeight": "bold",
-            "alignment": "left"
+            "alignment": "left",
+            "lineHeightPercent": 108
         },
         "BodyText": {
             "parent": "Default Paragraph Style",
@@ -118,9 +117,7 @@
             "fontSize": 11.0,
             "fontFeatures": [
                 "liga",
-                "kern",
-                "calt",
-                "onum"
+                "kern"
             ]
         },
         "DefaultText": {

@@ -22,7 +22,7 @@
     "paragraphStyles": {
         "Default Paragraph Style": {
             "fontSize": 11.0,
-            "lineHeightPercent": 100,
+            "lineHeightPercent": 118,
             "fontFeatures": [
                 "liga",
                 "kern",
@@ -33,17 +33,18 @@
         "Heading": {
             "parent": "Default Paragraph Style",
             "fontWeight": "bold",
-            "alignment": "left"
+            "alignment": "left",
+            "lineHeightPercent": 105
         },
         "BodyText": {
             "parent": "Default Paragraph Style",
             "alignment": "justify",
-            "spaceAfter": 6.0
+            "spaceAfter": 4.0
         },
         "Heading1": {
             "parent": "Heading",
-            "fontSize": 28.0,
-            "spaceBefore": 24.0,
+            "fontSize": 30.0,
+            "spaceBefore": 28.0,
             "spaceAfter": 12.0
         },
         "Heading2": {

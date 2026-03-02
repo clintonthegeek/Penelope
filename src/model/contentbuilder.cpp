@@ -620,6 +620,7 @@ int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
         if (m_styleManager) {
             cb.style = resolveTextStyle(QStringLiteral("CodeBlock"));
             ParagraphStyle ps = m_styleManager->resolvedParagraphStyle(QStringLiteral("CodeBlock"));
+            cb.lineHeightPercent = ps.lineHeightPercent();
             if (ps.hasBackground())
                 cb.background = ps.background();
         } else {

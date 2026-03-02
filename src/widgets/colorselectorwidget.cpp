@@ -141,7 +141,10 @@ void ColorSelectorWidget::mouseMoveEvent(QMouseEvent *event)
 
 void ColorSelectorWidget::mouseReleaseEvent(QMouseEvent *event)
 {
-    m_grabbing = None;
+    if (m_grabbing != None) {
+        m_grabbing = None;
+        Q_EMIT colorChanged(color());
+    }
     event->accept();
 }
 
@@ -398,7 +401,6 @@ void ColorSelectorWidget::selectRingColor(int x, int y)
     m_hue = qBound(0.0, hue, 1.0 - 1e-10);
     m_triangleDirty = true;
 
-    Q_EMIT colorChanged(color());
     update();
 }
 
@@ -424,7 +426,6 @@ void ColorSelectorWidget::selectTriangleColor(int x, int y)
     m_triangleBlip.setX(wp.x() / qreal(width()));
     m_triangleBlip.setY(wp.y() / qreal(height()));
 
-    Q_EMIT colorChanged(color());
     update();
 }
 

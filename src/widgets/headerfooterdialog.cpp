@@ -69,72 +69,74 @@ HeaderFooterDialog::HeaderFooterDialog(const PageLayout &layout, QWidget *parent
     // Tile palette
     mainLayout->addWidget(createTilePalette());
 
-    // Default header/footer section
-    m_defaultSection = new QWidget;
-    auto *defaultLayout = new QVBoxLayout(m_defaultSection);
-    defaultLayout->setContentsMargins(0, 0, 0, 0);
+    // --- First Page (checkable group box) ---
+    m_firstPageGroup = new QGroupBox(tr("First Page"));
+    m_firstPageGroup->setCheckable(true);
+    m_firstPageGroup->setChecked(false);
+    auto *firstPageLayout = new QVBoxLayout(m_firstPageGroup);
 
-    auto *headerGroup = new QGroupBox(tr("Header"));
-    auto *headerLayout = new QVBoxLayout(headerGroup);
-    headerLayout->addWidget(createFieldRow(m_headerLeftEdit, m_headerCenterEdit, m_headerRightEdit));
-    defaultLayout->addWidget(headerGroup);
+    auto *firstHeaderLabel = new QLabel(tr("Header:"));
+    firstPageLayout->addWidget(firstHeaderLabel);
+    firstPageLayout->addWidget(createFieldRow(m_firstHeaderLeftEdit, m_firstHeaderCenterEdit, m_firstHeaderRightEdit));
 
-    auto *footerGroup = new QGroupBox(tr("Footer"));
-    auto *footerLayout = new QVBoxLayout(footerGroup);
-    footerLayout->addWidget(createFieldRow(m_footerLeftEdit, m_footerCenterEdit, m_footerRightEdit));
-    defaultLayout->addWidget(footerGroup);
+    auto *firstFooterLabel = new QLabel(tr("Footer:"));
+    firstPageLayout->addWidget(firstFooterLabel);
+    firstPageLayout->addWidget(createFieldRow(m_firstFooterLeftEdit, m_firstFooterCenterEdit, m_firstFooterRightEdit));
 
-    mainLayout->addWidget(m_defaultSection);
+    mainLayout->addWidget(m_firstPageGroup);
 
-    // Different first page
-    m_differentFirstPage = new QCheckBox(tr("Different first page"));
-    mainLayout->addWidget(m_differentFirstPage);
+    // --- Main (regular group box) ---
+    auto *mainGroup = new QGroupBox(tr("Main"));
+    auto *mainGroupLayout = new QVBoxLayout(mainGroup);
 
-    m_firstPageSection = new QWidget;
-    auto *firstLayout = new QVBoxLayout(m_firstPageSection);
-    firstLayout->setContentsMargins(0, 0, 0, 0);
+    // Wrapper for Main's header/footer fields (enabled/disabled as a unit)
+    m_mainHeaderFooterRow = new QWidget;
+    auto *mainFieldsLayout = new QVBoxLayout(m_mainHeaderFooterRow);
+    mainFieldsLayout->setContentsMargins(0, 0, 0, 0);
 
-    auto *firstHeaderGroup = new QGroupBox(tr("First Page — Header"));
-    auto *firstHeaderLayout = new QVBoxLayout(firstHeaderGroup);
-    firstHeaderLayout->addWidget(createFieldRow(m_firstHeaderLeftEdit, m_firstHeaderCenterEdit, m_firstHeaderRightEdit));
-    firstLayout->addWidget(firstHeaderGroup);
+    auto *mainHeaderLabel = new QLabel(tr("Header:"));
+    mainFieldsLayout->addWidget(mainHeaderLabel);
+    mainFieldsLayout->addWidget(createFieldRow(m_headerLeftEdit, m_headerCenterEdit, m_headerRightEdit));
 
-    auto *firstFooterGroup = new QGroupBox(tr("First Page — Footer"));
-    auto *firstFooterLayout = new QVBoxLayout(firstFooterGroup);
-    firstFooterLayout->addWidget(createFieldRow(m_firstFooterLeftEdit, m_firstFooterCenterEdit, m_firstFooterRightEdit));
-    firstLayout->addWidget(firstFooterGroup);
+    auto *mainFooterLabel = new QLabel(tr("Footer:"));
+    mainFieldsLayout->addWidget(mainFooterLabel);
+    mainFieldsLayout->addWidget(createFieldRow(m_footerLeftEdit, m_footerCenterEdit, m_footerRightEdit));
 
-    mainLayout->addWidget(m_firstPageSection);
+    mainGroupLayout->addWidget(m_mainHeaderFooterRow);
 
-    // Different odd/even pages
+    // Different odd/even checkbox
     m_differentOddEven = new QCheckBox(tr("Different odd and even pages"));
-    mainLayout->addWidget(m_differentOddEven);
+    mainGroupLayout->addWidget(m_differentOddEven);
 
-    m_oddEvenSection = new QWidget;
-    auto *oddEvenLayout = new QVBoxLayout(m_oddEvenSection);
-    oddEvenLayout->setContentsMargins(0, 0, 0, 0);
+    // Odd Pages sub-group (uses "right" edits internally)
+    m_oddPagesGroup = new QGroupBox(tr("Odd Pages"));
+    auto *oddLayout = new QVBoxLayout(m_oddPagesGroup);
 
-    auto *leftHeaderGroup = new QGroupBox(tr("Even Pages — Header"));
-    auto *leftHeaderLayout = new QVBoxLayout(leftHeaderGroup);
-    leftHeaderLayout->addWidget(createFieldRow(m_leftHeaderLeftEdit, m_leftHeaderCenterEdit, m_leftHeaderRightEdit));
-    oddEvenLayout->addWidget(leftHeaderGroup);
+    auto *oddHeaderLabel = new QLabel(tr("Header:"));
+    oddLayout->addWidget(oddHeaderLabel);
+    oddLayout->addWidget(createFieldRow(m_rightHeaderLeftEdit, m_rightHeaderCenterEdit, m_rightHeaderRightEdit));
 
-    auto *leftFooterGroup = new QGroupBox(tr("Even Pages — Footer"));
-    auto *leftFooterLayout = new QVBoxLayout(leftFooterGroup);
-    leftFooterLayout->addWidget(createFieldRow(m_leftFooterLeftEdit, m_leftFooterCenterEdit, m_leftFooterRightEdit));
-    oddEvenLayout->addWidget(leftFooterGroup);
+    auto *oddFooterLabel = new QLabel(tr("Footer:"));
+    oddLayout->addWidget(oddFooterLabel);
+    oddLayout->addWidget(createFieldRow(m_rightFooterLeftEdit, m_rightFooterCenterEdit, m_rightFooterRightEdit));
 
-    auto *rightHeaderGroup = new QGroupBox(tr("Odd Pages — Header"));
-    auto *rightHeaderLayout = new QVBoxLayout(rightHeaderGroup);
-    rightHeaderLayout->addWidget(createFieldRow(m_rightHeaderLeftEdit, m_rightHeaderCenterEdit, m_rightHeaderRightEdit));
-    oddEvenLayout->addWidget(rightHeaderGroup);
+    mainGroupLayout->addWidget(m_oddPagesGroup);
 
-    auto *rightFooterGroup = new QGroupBox(tr("Odd Pages — Footer"));
-    auto *rightFooterLayout = new QVBoxLayout(rightFooterGroup);
-    rightFooterLayout->addWidget(createFieldRow(m_rightFooterLeftEdit, m_rightFooterCenterEdit, m_rightFooterRightEdit));
-    oddEvenLayout->addWidget(rightFooterGroup);
+    // Even Pages sub-group (uses "left" edits internally)
+    m_evenPagesGroup = new QGroupBox(tr("Even Pages"));
+    auto *evenLayout = new QVBoxLayout(m_evenPagesGroup);
 
-    mainLayout->addWidget(m_oddEvenSection);
+    auto *evenHeaderLabel = new QLabel(tr("Header:"));
+    evenLayout->addWidget(evenHeaderLabel);
+    evenLayout->addWidget(createFieldRow(m_leftHeaderLeftEdit, m_leftHeaderCenterEdit, m_leftHeaderRightEdit));
+
+    auto *evenFooterLabel = new QLabel(tr("Footer:"));
+    evenLayout->addWidget(evenFooterLabel);
+    evenLayout->addWidget(createFieldRow(m_leftFooterLeftEdit, m_leftFooterCenterEdit, m_leftFooterRightEdit));
+
+    mainGroupLayout->addWidget(m_evenPagesGroup);
+
+    mainLayout->addWidget(mainGroup);
 
     // Button box
     auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -142,13 +144,12 @@ HeaderFooterDialog::HeaderFooterDialog(const PageLayout &layout, QWidget *parent
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     mainLayout->addWidget(buttonBox);
 
-    // Visibility connections
-    connect(m_differentFirstPage, &QCheckBox::toggled, this, &HeaderFooterDialog::updateMasterPageVisibility);
-    connect(m_differentOddEven, &QCheckBox::toggled, this, &HeaderFooterDialog::updateMasterPageVisibility);
+    // State connections
+    connect(m_differentOddEven, &QCheckBox::toggled, this, &HeaderFooterDialog::updateFieldStates);
 
     // Load initial values
     loadFromLayout(layout);
-    updateMasterPageVisibility();
+    updateFieldStates();
 }
 
 QWidget *HeaderFooterDialog::createTilePalette()
@@ -198,10 +199,12 @@ QWidget *HeaderFooterDialog::createFieldRow(DropTargetLineEdit *&leftEdit,
     return widget;
 }
 
-void HeaderFooterDialog::updateMasterPageVisibility()
+void HeaderFooterDialog::updateFieldStates()
 {
-    m_firstPageSection->setVisible(m_differentFirstPage->isChecked());
-    m_oddEvenSection->setVisible(m_differentOddEven->isChecked());
+    const bool oddEven = m_differentOddEven->isChecked();
+    m_mainHeaderFooterRow->setEnabled(!oddEven);
+    m_oddPagesGroup->setEnabled(oddEven);
+    m_evenPagesGroup->setEnabled(oddEven);
 }
 
 void HeaderFooterDialog::loadFromLayout(const PageLayout &layout)
@@ -216,7 +219,7 @@ void HeaderFooterDialog::loadFromLayout(const PageLayout &layout)
 
     // Check if first page master exists
     bool hasFirst = layout.masterPages.contains(QStringLiteral("first"));
-    m_differentFirstPage->setChecked(hasFirst);
+    m_firstPageGroup->setChecked(hasFirst);
     if (hasFirst) {
         const MasterPage &mp = layout.masterPages[QStringLiteral("first")];
         if (mp.hasHeaderLeft)   m_firstHeaderLeftEdit->setText(mp.headerLeft);
@@ -269,7 +272,7 @@ PageLayout HeaderFooterDialog::result() const
     pl.masterPages.remove(QStringLiteral("right"));
 
     // First page
-    if (m_differentFirstPage->isChecked()) {
+    if (m_firstPageGroup->isChecked()) {
         MasterPage mp;
         mp.name = QStringLiteral("first");
 

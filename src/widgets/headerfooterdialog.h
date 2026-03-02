@@ -6,6 +6,7 @@
 #include "pagelayout.h"
 
 class QCheckBox;
+class QGroupBox;
 class DropTargetLineEdit;
 
 class HeaderFooterDialog : public QDialog
@@ -22,7 +23,7 @@ private:
     QWidget *createFieldRow(DropTargetLineEdit *&leftEdit,
                             DropTargetLineEdit *&centerEdit,
                             DropTargetLineEdit *&rightEdit);
-    void updateMasterPageVisibility();
+    void updateFieldStates();
     void loadFromLayout(const PageLayout &layout);
 
     // Default header/footer fields
@@ -34,8 +35,7 @@ private:
     DropTargetLineEdit *m_footerRightEdit = nullptr;
 
     // First page overrides
-    QCheckBox *m_differentFirstPage = nullptr;
-    QWidget *m_firstPageSection = nullptr;
+    QGroupBox *m_firstPageGroup = nullptr;
     DropTargetLineEdit *m_firstHeaderLeftEdit = nullptr;
     DropTargetLineEdit *m_firstHeaderCenterEdit = nullptr;
     DropTargetLineEdit *m_firstHeaderRightEdit = nullptr;
@@ -45,8 +45,9 @@ private:
 
     // Odd/even page overrides
     QCheckBox *m_differentOddEven = nullptr;
-    QWidget *m_oddEvenSection = nullptr;
-    QWidget *m_defaultSection = nullptr;
+    QWidget *m_mainHeaderFooterRow = nullptr;
+    QGroupBox *m_oddPagesGroup = nullptr;
+    QGroupBox *m_evenPagesGroup = nullptr;
     DropTargetLineEdit *m_leftHeaderLeftEdit = nullptr;
     DropTargetLineEdit *m_leftHeaderCenterEdit = nullptr;
     DropTargetLineEdit *m_leftHeaderRightEdit = nullptr;

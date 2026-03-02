@@ -208,8 +208,7 @@ void ColorDockWidget::loadPaletteIntoTree(const QString &id)
         it.value()->setIcon(0, swatchIcon(c));
     }
 
-    const bool editable = !m_paletteManager->isBuiltin(id);
-    m_colorSelector->setEnabled(editable && !selectedRole().isEmpty());
+    m_colorSelector->setEnabled(!selectedRole().isEmpty());
 
     // Refresh color selector to show the currently-selected role
     onRoleSelected();
@@ -227,9 +226,7 @@ void ColorDockWidget::onRoleSelected()
         return;
     }
 
-    const QString paletteId = m_selectorBar->currentId();
-    const bool editable = !paletteId.isEmpty() && !m_paletteManager->isBuiltin(paletteId);
-    m_colorSelector->setEnabled(editable);
+    m_colorSelector->setEnabled(true);
 
     const QColor c = m_workingColors.value(role, Qt::gray);
     const QSignalBlocker blocker(m_colorSelector);
@@ -254,9 +251,19 @@ void ColorDockWidget::onColorPickerChanged(const QColor &color)
     if (role.isEmpty())
         return;
 
-    const QString paletteId = m_selectorBar->currentId();
-    if (paletteId.isEmpty() || m_paletteManager->isBuiltin(paletteId))
+    QString paletteId = m_selectorBar->currentId();
+    if (paletteId.isEmpty())
         return;
+
+    // Auto-duplicate built-in palettes on first edit
+    if (m_paletteManager->isBuiltin(paletteId)) {
+        ColorPalette pal = m_paletteManager->palette(paletteId);
+        pal.id.clear();
+        pal.name = tr("Copy of %1").arg(pal.name);
+        pal.colors = m_workingColors;
+        paletteId = m_paletteManager->savePalette(pal);
+        m_selectorBar->setCurrentId(paletteId);
+    }
 
     // Update working copy and tree swatch
     m_workingColors.insert(role, color);

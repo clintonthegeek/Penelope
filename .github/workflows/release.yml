@@ -22,7 +22,7 @@ jobs:
           # KDE Neon provides them. Pin low so Ubuntu packages win when available.
           wget -qO- https://archive.neon.kde.org/public.key \
             | sudo tee /etc/apt/trusted.gpg.d/kde-neon.asc >/dev/null
-          echo "deb http://archive.neon.kde.org/stable_noble noble main" \
+          echo "deb https://archive.neon.kde.org/user noble main" \
             | sudo tee /etc/apt/sources.list.d/kde-neon.list
           cat <<'PIN' | sudo tee /etc/apt/preferences.d/kde-neon
           Package: *

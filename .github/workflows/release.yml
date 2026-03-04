@@ -16,26 +16,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Add KDE Neon repo (KF6 dev packages)
+      - name: Add KDE Neon repo (Qt6 + KF6)
         run: |
-          # KF6 -dev packages may not be in stock Ubuntu 24.04;
-          # KDE Neon provides them. Pin low so Ubuntu packages win when available.
+          # Ubuntu 24.04 ships Qt 6.4 and no KF6. KDE Neon provides Qt 6.8+
+          # and KF6 as a coherent set — pin high so the full stack is used.
           wget -qO- https://archive.neon.kde.org/public.key \
             | sudo tee /etc/apt/trusted.gpg.d/kde-neon.asc >/dev/null
           echo "deb https://archive.neon.kde.org/user noble main" \
             | sudo tee /etc/apt/sources.list.d/kde-neon.list
-          cat <<'PIN' | sudo tee /etc/apt/preferences.d/kde-neon
-          Package: *
-          Pin: origin archive.neon.kde.org
-          Pin-Priority: 100
-          PIN
 
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config dpkg-dev \
-            qt6-base-dev qt6-base-dev-tools \
+            qt6-base-dev \
             extra-cmake-modules \
             libkf6coreaddons-dev libkf6i18n-dev libkf6xmlgui-dev \
             libkf6widgetsaddons-dev libkf6iconthemes-dev \

@@ -412,7 +412,7 @@ install(FILES ../icons/penelope.svg
 )
 
 # Third-party license notices (bundled in .deb under /usr/share/doc/penelope/)
-install(FILES ../LICENSE/DejaVu-License.txt
+install(FILES ../LICENSES/DejaVu-License.txt
     DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/penelope
     RENAME copyright-dejavu
 )

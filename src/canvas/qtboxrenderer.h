@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_QTBOXRENDERER_H
-#define PRETTYREADER_QTBOXRENDERER_H
+#ifndef PENELOPE_QTBOXRENDERER_H
+#define PENELOPE_QTBOXRENDERER_H
 
 #include "boxtreerenderer.h"
 
@@ -89,4 +89,4 @@ private:
     QList<LinkHitRect> m_linkHitRects;
 };
 
-#endif // PRETTYREADER_QTBOXRENDERER_H
+#endif // PENELOPE_QTBOXRENDERER_H

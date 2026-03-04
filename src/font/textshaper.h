@@ -5,8 +5,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_TEXTSHAPER_H
-#define PRETTYREADER_TEXTSHAPER_H
+#ifndef PENELOPE_TEXTSHAPER_H
+#define PENELOPE_TEXTSHAPER_H
 
 #include <QList>
 #include <QString>
@@ -76,4 +76,4 @@ private:
     FontFace *m_fallbackFont = nullptr;
 };
 
-#endif // PRETTYREADER_TEXTSHAPER_H
+#endif // PENELOPE_TEXTSHAPER_H

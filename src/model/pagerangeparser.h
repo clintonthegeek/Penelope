@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PAGERANGEPARSER_H
-#define PRETTYREADER_PAGERANGEPARSER_H
+#ifndef PENELOPE_PAGERANGEPARSER_H
+#define PENELOPE_PAGERANGEPARSER_H
 
 #include <QSet>
 #include <QString>
@@ -23,4 +23,4 @@ Result parse(const QString &expr, int totalPages);
 
 } // namespace PageRangeParser
 
-#endif // PRETTYREADER_PAGERANGEPARSER_H
+#endif // PENELOPE_PAGERANGEPARSER_H

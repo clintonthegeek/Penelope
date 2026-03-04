@@ -214,5 +214,5 @@ from `LayoutResult` after layout.
 | `src/app/mainwindow.cpp` | Wire dialog into export flow |
 | `src/pdf/pdfgenerator.h/cpp` | Accept options, metadata, bookmarks filter |
 | `src/pdf/pdfwriter.h/cpp` | Viewer prefs, metadata fields, CMap modes |
-| `src/app/prettyreader.kcfg` | Add PdfExport settings group |
+| `src/app/penelope.kcfg` | Add PdfExport settings group |
 | `src/CMakeLists.txt` | Add new source files |

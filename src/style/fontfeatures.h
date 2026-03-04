@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_FONTFEATURES_H
-#define PRETTYREADER_FONTFEATURES_H
+#ifndef PENELOPE_FONTFEATURES_H
+#define PENELOPE_FONTFEATURES_H
 
 #include <QFlags>
 #include <QFont>
@@ -8,7 +8,7 @@
 
 namespace FontFeatures {
 
-// OpenType feature tags that PrettyReader supports.
+// OpenType feature tags that Penelope supports.
 // These map to 4-byte OT feature tags.
 enum Feature : quint32 {
     None          = 0,
@@ -97,4 +97,4 @@ inline Features fromStringList(const QStringList &list)
 
 } // namespace FontFeatures
 
-#endif // PRETTYREADER_FONTFEATURES_H
+#endif // PENELOPE_FONTFEATURES_H

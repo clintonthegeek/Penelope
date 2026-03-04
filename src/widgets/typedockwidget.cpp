@@ -22,7 +22,6 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
-#include <QScrollArea>
 #include <QStackedWidget>
 #include <QToolBox>
 #include <QTreeView>
@@ -132,22 +131,14 @@ void TypeDockWidget::buildUI()
             this, [this]() { onTreeSelectionChanged(); });
 
     // Properties Editor (stacked: paragraph/char, table, footnotes)
-    auto wrapInScroll = [](QWidget *w) -> QScrollArea * {
-        auto *sa = new QScrollArea;
-        sa->setWidgetResizable(true);
-        sa->setFrameShape(QFrame::NoFrame);
-        sa->setWidget(w);
-        return sa;
-    };
-
     m_propsEditor = new StylePropertiesEditor;
     m_tablePropsEditor = new TableStylePropertiesEditor;
     m_footnoteConfig = new FootnoteConfigWidget;
 
     m_editorStack = new QStackedWidget;
-    m_editorStack->addWidget(wrapInScroll(m_propsEditor));      // index 0
-    m_editorStack->addWidget(wrapInScroll(m_tablePropsEditor));  // index 1
-    m_editorStack->addWidget(wrapInScroll(m_footnoteConfig));    // index 2
+    m_editorStack->addWidget(m_propsEditor);          // index 0
+    m_editorStack->addWidget(m_tablePropsEditor);      // index 1
+    m_editorStack->addWidget(m_footnoteConfig);        // index 2
     m_editorStack->hide();
     stylesLayout->addWidget(m_editorStack, 1);
 

@@ -2,8 +2,8 @@
 // HSV ring+triangle color selector, adapted from Krita's Advanced Color Selector.
 // Original: SPDX-FileCopyrightText: 2010 Adam Celarek <kdedev at xibo dot at>
 
-#ifndef PRETTYREADER_COLORSELECTORWIDGET_H
-#define PRETTYREADER_COLORSELECTORWIDGET_H
+#ifndef PENELOPE_COLORSELECTORWIDGET_H
+#define PENELOPE_COLORSELECTORWIDGET_H
 
 #include <QImage>
 #include <QWidget>
@@ -95,4 +95,4 @@ private:
     static constexpr qreal s_innerRingFraction = 0.82;
 };
 
-#endif // PRETTYREADER_COLORSELECTORWIDGET_H
+#endif // PENELOPE_COLORSELECTORWIDGET_H

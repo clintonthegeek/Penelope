@@ -6,7 +6,7 @@
 #include <QDoubleSpinBox>
 #include <QFontComboBox>
 #include <QFontDatabase>
-#include <QGroupBox>
+#include <QToolBox>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -96,28 +96,27 @@ void StylePropertiesEditor::buildUI()
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(8);
+    layout->setSpacing(4);
 
-    // --- Style section ---
-    auto *styleGroup = new QGroupBox(tr("Style"));
-    auto *styleLayout = new QVBoxLayout(styleGroup);
-    styleLayout->setContentsMargins(6, 6, 6, 6);
-    styleLayout->setSpacing(4);
-
+    // --- Parent row (always visible) ---
     auto *parentRow = new QHBoxLayout;
     parentRow->addWidget(new QLabel(tr("Parent:")));
     m_parentCombo = new QComboBox;
+    m_parentCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     parentRow->addWidget(m_parentCombo, 1);
-    styleLayout->addLayout(parentRow);
+    layout->addLayout(parentRow);
 
     connect(m_parentCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this]() { Q_EMIT propertyChanged(); });
-    layout->addWidget(styleGroup);
 
-    // --- Character section ---
-    auto *charGroup = new QGroupBox(tr("Character"));
-    auto *charLayout = new QVBoxLayout(charGroup);
-    charLayout->setContentsMargins(6, 6, 6, 6);
+    // --- Section toolbox ---
+    m_sectionBox = new QToolBox;
+    layout->addWidget(m_sectionBox, 1);
+
+    // --- Character page ---
+    auto *charPage = new QWidget;
+    auto *charLayout = new QVBoxLayout(charPage);
+    charLayout->setContentsMargins(4, 4, 4, 4);
     charLayout->setSpacing(4);
 
     // Font family row
@@ -125,6 +124,7 @@ void StylePropertiesEditor::buildUI()
     m_fontInd.label = new QLabel(tr("Font:"));
     m_fontInd.resetBtn = createResetButton();
     m_fontCombo = new QFontComboBox;
+    m_fontCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_fontInd.control = m_fontCombo;
     fontRow->addWidget(m_fontInd.label);
     fontRow->addWidget(m_fontCombo, 1);
@@ -136,6 +136,7 @@ void StylePropertiesEditor::buildUI()
     m_fontStyleInd.label = new QLabel(tr("Style:"));
     m_fontStyleInd.resetBtn = createResetButton();
     m_fontStyleCombo = new QComboBox;
+    m_fontStyleCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_fontStyleInd.control = m_fontStyleCombo;
     fontStyleRow->addWidget(m_fontStyleInd.label);
     fontStyleRow->addWidget(m_fontStyleCombo, 1);
@@ -250,12 +251,13 @@ void StylePropertiesEditor::buildUI()
         Q_EMIT propertyChanged();
     });
 
-    layout->addWidget(charGroup);
+    charLayout->addStretch();
+    m_sectionBox->addItem(charPage, tr("Character"));
 
-    // --- Font features section ---
-    m_fontFeaturesGroup = new QGroupBox(tr("OpenType Features"));
-    auto *ffLayout = new QVBoxLayout(m_fontFeaturesGroup);
-    ffLayout->setContentsMargins(6, 6, 6, 6);
+    // --- OpenType Features page ---
+    auto *ffPage = new QWidget;
+    auto *ffLayout = new QVBoxLayout(ffPage);
+    ffLayout->setContentsMargins(4, 4, 4, 4);
     ffLayout->setSpacing(2);
 
     auto *ffRow1 = new QHBoxLayout;
@@ -300,12 +302,13 @@ void StylePropertiesEditor::buildUI()
     connect(m_kerningCheck, &QCheckBox::toggled, this, onFfChanged);
     connect(m_contextAltsCheck, &QCheckBox::toggled, this, onFfChanged);
 
-    layout->addWidget(m_fontFeaturesGroup);
+    ffLayout->addStretch();
+    m_sectionBox->addItem(ffPage, tr("OpenType Features"));
 
-    // --- Paragraph section ---
-    m_paragraphSection = new QGroupBox(tr("Paragraph"));
-    auto *paraLayout = new QVBoxLayout(m_paragraphSection);
-    paraLayout->setContentsMargins(6, 6, 6, 6);
+    // --- Paragraph page ---
+    auto *paraPage = new QWidget;
+    auto *paraLayout = new QVBoxLayout(paraPage);
+    paraLayout->setContentsMargins(4, 4, 4, 4);
     paraLayout->setSpacing(4);
 
     // Alignment row
@@ -599,8 +602,8 @@ void StylePropertiesEditor::buildUI()
         Q_EMIT propertyChanged();
     });
 
-    layout->addWidget(m_paragraphSection);
-    layout->addStretch();
+    paraLayout->addStretch();
+    m_paragraphPageIndex = m_sectionBox->addItem(paraPage, tr("Paragraph"));
 }
 
 void StylePropertiesEditor::blockAllSignals(bool block)
@@ -677,7 +680,7 @@ void StylePropertiesEditor::loadParagraphStyle(const ParagraphStyle &style,
 {
     blockAllSignals(true);
     m_isParagraphMode = true;
-    m_paragraphSection->setVisible(true);
+    m_sectionBox->setItemEnabled(m_paragraphPageIndex, true);
 
     // Store resolved style for reset functionality
     m_resolvedPara = resolved;
@@ -743,7 +746,6 @@ void StylePropertiesEditor::loadParagraphStyle(const ParagraphStyle &style,
     m_liningNumsCheck->setChecked(ff & FontFeatures::LiningNums);
     m_kerningCheck->setChecked(ff & FontFeatures::Kerning);
     m_contextAltsCheck->setChecked(ff & FontFeatures::ContextAlts);
-    m_fontFeaturesGroup->setVisible(true);
 
     blockAllSignals(false);
     updatePropertyIndicators();
@@ -755,7 +757,7 @@ void StylePropertiesEditor::loadCharacterStyle(const CharacterStyle &style,
 {
     blockAllSignals(true);
     m_isParagraphMode = false;
-    m_paragraphSection->setVisible(false);
+    m_sectionBox->setItemEnabled(m_paragraphPageIndex, false);
 
     // Store resolved style for reset functionality
     m_resolvedChar = resolved;
@@ -798,7 +800,6 @@ void StylePropertiesEditor::loadCharacterStyle(const CharacterStyle &style,
     m_liningNumsCheck->setChecked(ff & FontFeatures::LiningNums);
     m_kerningCheck->setChecked(ff & FontFeatures::Kerning);
     m_contextAltsCheck->setChecked(ff & FontFeatures::ContextAlts);
-    m_fontFeaturesGroup->setVisible(true);
 
     blockAllSignals(false);
     updatePropertyIndicators();
@@ -912,7 +913,7 @@ void StylePropertiesEditor::clear()
     m_sizeSpin->setValue(11.0);
     m_underlineBtn->setChecked(false);
     m_strikeBtn->setChecked(false);
-    m_paragraphSection->setVisible(true);
+    m_sectionBox->setItemEnabled(m_paragraphPageIndex, true);
     m_explicit = {};
     m_resolvedPara = ParagraphStyle();
     m_resolvedChar = CharacterStyle();

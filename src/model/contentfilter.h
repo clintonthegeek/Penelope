@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_CONTENTFILTER_H
-#define PRETTYREADER_CONTENTFILTER_H
+#ifndef PENELOPE_CONTENTFILTER_H
+#define PENELOPE_CONTENTFILTER_H
 
 #include <QSet>
 
@@ -21,4 +21,4 @@ Content::Document filterSections(const Content::Document &doc,
 
 } // namespace ContentFilter
 
-#endif // PRETTYREADER_CONTENTFILTER_H
+#endif // PENELOPE_CONTENTFILTER_H

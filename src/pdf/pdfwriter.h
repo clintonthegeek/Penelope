@@ -10,8 +10,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFWRITER_H
-#define PRETTYREADER_PDFWRITER_H
+#ifndef PENELOPE_PDFWRITER_H
+#define PENELOPE_PDFWRITER_H
 
 #include <type_traits>
 
@@ -116,4 +116,4 @@ private:
 
 } // namespace Pdf
 
-#endif // PRETTYREADER_PDFWRITER_H
+#endif // PENELOPE_PDFWRITER_H

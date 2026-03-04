@@ -14,7 +14,7 @@ SingleInstanceGuard::SingleInstanceGuard(MainWindow *window, QObject *parent)
 
 QString SingleInstanceGuard::serverName()
 {
-    return QStringLiteral("PrettyReader-%1").arg(qEnvironmentVariable("USER", QStringLiteral("default")));
+    return QStringLiteral("Penelope-%1").arg(qEnvironmentVariable("USER", QStringLiteral("default")));
 }
 
 bool SingleInstanceGuard::tryAcquire(const QStringList &filePaths)

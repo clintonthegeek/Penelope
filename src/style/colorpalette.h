@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_COLORPALETTE_H
-#define PRETTYREADER_COLORPALETTE_H
+#ifndef PENELOPE_COLORPALETTE_H
+#define PENELOPE_COLORPALETTE_H
 
 #include <QColor>
 #include <QHash>
@@ -62,4 +62,4 @@ public:
     QJsonObject toJson() const;
 };
 
-#endif // PRETTYREADER_COLORPALETTE_H
+#endif // PENELOPE_COLORPALETTE_H

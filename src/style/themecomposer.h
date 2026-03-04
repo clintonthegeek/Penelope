@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_THEMECOMPOSER_H
-#define PRETTYREADER_THEMECOMPOSER_H
+#ifndef PENELOPE_THEMECOMPOSER_H
+#define PENELOPE_THEMECOMPOSER_H
 
 #include <QObject>
 
@@ -54,4 +54,4 @@ private:
     TypeSet m_typeSet;
 };
 
-#endif // PRETTYREADER_THEMECOMPOSER_H
+#endif // PENELOPE_THEMECOMPOSER_H

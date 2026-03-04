@@ -1,9 +1,9 @@
-# PrettyReader: Reconnaissance Report
+# Penelope: Reconnaissance Report
 
 ## Overview
 
 This document summarizes the investigation of four codebases conducted as
-groundwork for PrettyReader, a markdown reading application with rich styling,
+groundwork for Penelope, a markdown reading application with rich styling,
 paginated rendering, and first-class print/PDF support.
 
 Sources investigated:
@@ -175,7 +175,7 @@ is sound but extraction requires replacing:
 | KXMLGUIClient | QAction/QMenu | Easy but manual |
 | KConfig | QSettings or JSON | Easy |
 
-Since PrettyReader embraces KDE dependencies, most of this becomes moot -- we can
+Since Penelope embraces KDE dependencies, most of this becomes moot -- we can
 use KDE's widgets directly rather than replacing them.
 
 ---

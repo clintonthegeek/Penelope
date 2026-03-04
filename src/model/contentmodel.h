@@ -10,8 +10,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_CONTENTMODEL_H
-#define PRETTYREADER_CONTENTMODEL_H
+#ifndef PENELOPE_CONTENTMODEL_H
+#define PENELOPE_CONTENTMODEL_H
 
 #include <QColor>
 #include <QList>
@@ -229,4 +229,4 @@ struct Document {
 
 } // namespace Content
 
-#endif // PRETTYREADER_CONTENTMODEL_H
+#endif // PENELOPE_CONTENTMODEL_H

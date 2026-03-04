@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_RENDERCACHE_H
-#define PRETTYREADER_RENDERCACHE_H
+#ifndef PENELOPE_RENDERCACHE_H
+#define PENELOPE_RENDERCACHE_H
 
 #include <QHash>
 #include <QImage>
@@ -81,4 +81,4 @@ private:
     RenderWorker *m_worker = nullptr;
 };
 
-#endif // PRETTYREADER_RENDERCACHE_H
+#endif // PENELOPE_RENDERCACHE_H

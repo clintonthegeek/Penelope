@@ -23,8 +23,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFEXPORTOPTIONS_H
-#define PRETTYREADER_PDFEXPORTOPTIONS_H
+#ifndef PENELOPE_PDFEXPORTOPTIONS_H
+#define PENELOPE_PDFEXPORTOPTIONS_H
 
 #include <QSet>
 #include <QString>
@@ -60,12 +60,12 @@ struct PdfExportOptions {
     PageLayout pageLayout = Continuous;
 };
 
-#endif // PRETTYREADER_PDFEXPORTOPTIONS_H
+#endif // PENELOPE_PDFEXPORTOPTIONS_H
 ```
 
 **Step 2: Add to CMakeLists.txt**
 
-In `src/CMakeLists.txt`, add `model/pdfexportoptions.h` after `model/contentmodel.h` in the `PrettyReaderCore` source list.
+In `src/CMakeLists.txt`, add `model/pdfexportoptions.h` after `model/contentmodel.h` in the `PenelopeCore` source list.
 
 **Step 3: Build**
 
@@ -97,8 +97,8 @@ A standalone function that parses expressions like `1-5, 8, first, last, (last-3
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PAGERANGEPARSER_H
-#define PRETTYREADER_PAGERANGEPARSER_H
+#ifndef PENELOPE_PAGERANGEPARSER_H
+#define PENELOPE_PAGERANGEPARSER_H
 
 #include <QSet>
 #include <QString>
@@ -117,7 +117,7 @@ Result parse(const QString &expr, int totalPages);
 
 } // namespace PageRangeParser
 
-#endif // PRETTYREADER_PAGERANGEPARSER_H
+#endif // PENELOPE_PAGERANGEPARSER_H
 ```
 
 **Step 2: Write the implementation**
@@ -297,7 +297,7 @@ git commit -m "Add page range expression parser with first/last/arithmetic"
 ### Task 3: Add PdfExport KConfig group
 
 **Files:**
-- Modify: `src/app/prettyreader.kcfg`
+- Modify: `src/app/penelope.kcfg`
 
 **Step 1: Add the PdfExport group**
 
@@ -348,7 +348,7 @@ Expected: KConfig code generator picks up new entries, builds clean.
 **Step 3: Commit**
 
 ```bash
-git add src/app/prettyreader.kcfg
+git add src/app/penelope.kcfg
 git commit -m "Add PdfExport KConfig group for export dialog defaults"
 ```
 
@@ -370,8 +370,8 @@ Three pages: General (metadata + text copy mode), Content (heading tree + page r
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFEXPORTDIALOG_H
-#define PRETTYREADER_PDFEXPORTDIALOG_H
+#ifndef PENELOPE_PDFEXPORTDIALOG_H
+#define PENELOPE_PDFEXPORTDIALOG_H
 
 #include <KPageDialog>
 
@@ -440,7 +440,7 @@ private:
     bool m_updatingTree = false;
 };
 
-#endif // PRETTYREADER_PDFEXPORTDIALOG_H
+#endif // PENELOPE_PDFEXPORTDIALOG_H
 ```
 
 **Step 2: Write the implementation**
@@ -991,7 +991,7 @@ In `pdfgenerator.cpp`, replace the Info object block (around lines 212-220) with
     // Info object
     writer.startObj(writer.infoObj());
     writer.write("<<\n");
-    writer.write("/Producer " + Pdf::toLiteralString(QStringLiteral("PrettyReader")) + "\n");
+    writer.write("/Producer " + Pdf::toLiteralString(QStringLiteral("Penelope")) + "\n");
 
     // Title: prefer export options, fall back to m_title
     QString infoTitle = m_exportOptions.title.isEmpty() ? m_title : m_exportOptions.title;
@@ -1101,8 +1101,8 @@ Implement a function that removes excluded sections from a `Content::Document` b
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_CONTENTFILTER_H
-#define PRETTYREADER_CONTENTFILTER_H
+#ifndef PENELOPE_CONTENTFILTER_H
+#define PENELOPE_CONTENTFILTER_H
 
 #include <QSet>
 
@@ -1119,7 +1119,7 @@ Content::Document filterSections(const Content::Document &doc,
 
 } // namespace ContentFilter
 
-#endif // PRETTYREADER_CONTENTFILTER_H
+#endif // PENELOPE_CONTENTFILTER_H
 ```
 
 **Step 2: Write the implementation**
@@ -1211,7 +1211,7 @@ Change `onFileExportPdf()` to: build content → show PdfExportDialog → filter
 #include "pdfexportoptions.h"
 #include "contentfilter.h"
 #include "pagerangeparser.h"
-#include "prettyreadersettings.h"
+#include "penelopesettings.h"
 ```
 
 (Some of these may already be included.)
@@ -1272,10 +1272,10 @@ Replace the body of the `if (view->isPdfMode())` block (lines 594-659 approximat
         ContentBuilder contentBuilder;
         contentBuilder.setBasePath(fi.absolutePath());
         contentBuilder.setStyleManager(styleManager);
-        if (PrettyReaderSettings::self()->hyphenationEnabled()
-            || PrettyReaderSettings::self()->hyphenateJustifiedText())
+        if (PenelopeSettings::self()->hyphenationEnabled()
+            || PenelopeSettings::self()->hyphenateJustifiedText())
             contentBuilder.setHyphenator(m_hyphenator);
-        if (PrettyReaderSettings::self()->shortWordsEnabled())
+        if (PenelopeSettings::self()->shortWordsEnabled())
             contentBuilder.setShortWords(m_shortWords);
         contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
         Content::Document contentDoc = contentBuilder.build(markdown);
@@ -1285,13 +1285,13 @@ Replace the body of the `if (view->isPdfMode())` block (lines 594-659 approximat
         m_fontManager->resetUsage();
         Layout::Engine preLayoutEngine(m_fontManager, m_textShaper);
         preLayoutEngine.setHyphenateJustifiedText(
-            PrettyReaderSettings::self()->hyphenateJustifiedText());
+            PenelopeSettings::self()->hyphenateJustifiedText());
         Layout::LayoutResult preLayout = preLayoutEngine.layout(contentDoc, pl);
         int pageCount = preLayout.pages.size();
 
         // Load saved options
         PdfExportOptions opts;
-        auto *settings = PrettyReaderSettings::self();
+        auto *settings = PenelopeSettings::self();
         opts.author = settings->pdfAuthor();
         opts.textCopyMode = static_cast<PdfExportOptions::TextCopyMode>(
             settings->pdfTextCopyMode());
@@ -1369,7 +1369,7 @@ Replace the body of the `if (view->isPdfMode())` block (lines 594-659 approximat
         m_fontManager->resetUsage();
         Layout::Engine layoutEngine(m_fontManager, m_textShaper);
         layoutEngine.setHyphenateJustifiedText(
-            PrettyReaderSettings::self()->hyphenateJustifiedText());
+            PenelopeSettings::self()->hyphenateJustifiedText());
         Layout::LayoutResult layoutResult = layoutEngine.layout(filteredDoc, pl);
 
         // Filter pages by range
@@ -1433,7 +1433,7 @@ git commit -m "Wire PDF export dialog into export pipeline with section/page fil
 | `src/model/pagerangeparser.h/cpp` | New: page range expression parser |
 | `src/model/contentfilter.h/cpp` | New: section filtering by heading exclusion |
 | `src/widgets/pdfexportdialog.h/cpp` | New: KPageDialog with 3 pages |
-| `src/app/prettyreader.kcfg` | Add PdfExport settings group |
+| `src/app/penelope.kcfg` | Add PdfExport settings group |
 | `src/pdf/pdfgenerator.h/cpp` | Metadata, viewer prefs, bookmark depth filter |
 | `src/app/mainwindow.cpp` | Wire dialog into export flow |
 | `src/CMakeLists.txt` | Add new source files |

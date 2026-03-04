@@ -5,8 +5,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_SFNT_H
-#define PRETTYREADER_SFNT_H
+#ifndef PENELOPE_SFNT_H
+#define PENELOPE_SFNT_H
 
 #include <QByteArray>
 #include <QList>
@@ -25,4 +25,4 @@ SubsetResult subsetFace(const QByteArray &fontData, const QList<uint> &glyphIds,
 
 } // namespace sfnt
 
-#endif // PRETTYREADER_SFNT_H
+#endif // PENELOPE_SFNT_H

@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_RTFUTILS_H
-#define PRETTYREADER_RTFUTILS_H
+#ifndef PENELOPE_RTFUTILS_H
+#define PENELOPE_RTFUTILS_H
 
 #include <QByteArray>
 #include <QString>
@@ -71,4 +71,4 @@ inline int toHalfPoints(qreal points)
 
 } // namespace RtfUtils
 
-#endif // PRETTYREADER_RTFUTILS_H
+#endif // PENELOPE_RTFUTILS_H

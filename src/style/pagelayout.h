@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_PAGELAYOUT_H
-#define PRETTYREADER_PAGELAYOUT_H
+#ifndef PENELOPE_PAGELAYOUT_H
+#define PENELOPE_PAGELAYOUT_H
 
 #include <QColor>
 #include <QHash>
@@ -145,4 +145,4 @@ struct PageLayout
     }
 };
 
-#endif // PRETTYREADER_PAGELAYOUT_H
+#endif // PENELOPE_PAGELAYOUT_H

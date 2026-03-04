@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_THEMEMANAGER_H
-#define PRETTYREADER_THEMEMANAGER_H
+#ifndef PENELOPE_THEMEMANAGER_H
+#define PENELOPE_THEMEMANAGER_H
 
 #include <QObject>
 #include <QString>
@@ -28,4 +28,4 @@ private:
     void resolveAllStyles(StyleManager *sm);
 };
 
-#endif // PRETTYREADER_THEMEMANAGER_H
+#endif // PENELOPE_THEMEMANAGER_H

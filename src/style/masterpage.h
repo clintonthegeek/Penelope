@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_MASTERPAGE_H
-#define PRETTYREADER_MASTERPAGE_H
+#ifndef PENELOPE_MASTERPAGE_H
+#define PENELOPE_MASTERPAGE_H
 
 #include <QMarginsF>
 #include <QString>
@@ -48,4 +48,4 @@ struct MasterPage
     }
 };
 
-#endif // PRETTYREADER_MASTERPAGE_H
+#endif // PENELOPE_MASTERPAGE_H

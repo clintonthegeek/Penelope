@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_PAGEITEM_H
-#define PRETTYREADER_PAGEITEM_H
+#ifndef PENELOPE_PAGEITEM_H
+#define PENELOPE_PAGEITEM_H
 
 #include <QGraphicsItem>
 #include <QMarginsF>
@@ -36,4 +36,4 @@ private:
     QString m_title;
 };
 
-#endif // PRETTYREADER_PAGEITEM_H
+#endif // PENELOPE_PAGEITEM_H

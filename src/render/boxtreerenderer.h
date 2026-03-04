@@ -11,8 +11,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_BOXTREERENDERER_H
-#define PRETTYREADER_BOXTREERENDERER_H
+#ifndef PENELOPE_BOXTREERENDERER_H
+#define PENELOPE_BOXTREERENDERER_H
 
 #include "layoutengine.h"
 
@@ -146,4 +146,4 @@ protected:
                                         qreal availWidth) const;
 };
 
-#endif // PRETTYREADER_BOXTREERENDERER_H
+#endif // PENELOPE_BOXTREERENDERER_H

@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_TYPESET_H
-#define PRETTYREADER_TYPESET_H
+#ifndef PENELOPE_TYPESET_H
+#define PENELOPE_TYPESET_H
 
 #include <QJsonObject>
 #include <QString>
@@ -56,4 +56,4 @@ public:
     QJsonObject toJson() const;
 };
 
-#endif // PRETTYREADER_TYPESET_H
+#endif // PENELOPE_TYPESET_H

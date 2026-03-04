@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(PrettyReader VERSION 0.1.0 LANGUAGES CXX)
+project(Penelope VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,3 +46,18 @@ pkg_check_modules(HARFBUZZ_ICU REQUIRED harfbuzz-icu)
 pkg_check_modules(HARFBUZZ_SUBSET REQUIRED harfbuzz-subset)
 
 add_subdirectory(src)
+
+# ── Packaging (CPack) ─────────────────────────────────────────────────
+set(CPACK_PACKAGE_NAME "penelope")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A beautiful paginated markdown reader")
+set(CPACK_PACKAGE_CONTACT "clintonthegeek")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/clintonthegeek/Penelope")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_SECTION "text")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+include(CPack)

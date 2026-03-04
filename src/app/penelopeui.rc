@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="prettyreader" version="20">
+<gui name="penelope" version="20">
 
   <MenuBar>
     <Menu name="file">

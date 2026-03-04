@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_RTFFILTEROPTIONS_H
-#define PRETTYREADER_RTFFILTEROPTIONS_H
+#ifndef PENELOPE_RTFFILTEROPTIONS_H
+#define PENELOPE_RTFFILTEROPTIONS_H
 
 struct RtfFilterOptions {
     // Character-level
@@ -69,4 +69,4 @@ struct RtfFilterOptions {
     }
 };
 
-#endif // PRETTYREADER_RTFFILTEROPTIONS_H
+#endif // PENELOPE_RTFFILTEROPTIONS_H

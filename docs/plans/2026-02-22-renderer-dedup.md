@@ -71,13 +71,13 @@ implementations. The traversal methods will be added in Task 2.
 **Step 3: Register in CMakeLists.txt**
 
 Add `render/boxtreerenderer.cpp`, `render/boxtreerenderer.h` to the
-`PrettyReaderCore` STATIC library sources. Add
+`PenelopeCore` STATIC library sources. Add
 `${CMAKE_CURRENT_SOURCE_DIR}/render` to the `target_include_directories` PUBLIC
 list.
 
 **Step 4: Build to verify compilation**
 
-Run: `cmake --build build --target PrettyReaderCore`
+Run: `cmake --build build --target PenelopeCore`
 Expected: Clean compilation, no errors.
 
 **Step 5: Commit**
@@ -186,7 +186,7 @@ Port from `webviewrenderer.cpp:537-544`. Calls `drawImage()`.
 
 **Step 12: Build to verify compilation**
 
-Run: `cmake --build build --target PrettyReaderCore`
+Run: `cmake --build build --target PenelopeCore`
 Expected: Clean compilation (no concrete subclass yet, but the base builds).
 
 **Step 13: Commit**
@@ -234,7 +234,7 @@ Add `canvas/qtboxrenderer.cpp` and `canvas/qtboxrenderer.h`.
 
 **Step 4: Build to verify compilation**
 
-Run: `cmake --build build --target PrettyReaderCore`
+Run: `cmake --build build --target PenelopeCore`
 Expected: Clean compilation.
 
 **Step 5: Commit**
@@ -281,7 +281,7 @@ void WebViewItem::paint(QPainter *painter, ...) {
 
 **Step 2: Build and test visually**
 
-Run: `cmake --build build && ./build/src/PrettyReader`
+Run: `cmake --build build && ./build/src/Penelope`
 Open a markdown file in web view mode. Verify:
 - Text renders correctly (fonts, sizes, colors)
 - Justification alignment matches previous behavior
@@ -368,7 +368,7 @@ Add `pdf/pdfboxrenderer.cpp` and `pdf/pdfboxrenderer.h`.
 
 **Step 5: Build to verify compilation**
 
-Run: `cmake --build build --target PrettyReaderCore`
+Run: `cmake --build build --target PenelopeCore`
 Expected: Clean compilation.
 
 **Step 6: Commit**
@@ -456,7 +456,7 @@ Also remove from `pdfgenerator.h`:
 
 **Step 3: Build and test**
 
-Run: `cmake --build build && ./build/src/PrettyReader`
+Run: `cmake --build build && ./build/src/Penelope`
 Test PDF generation:
 - Open a file, render in paginated mode
 - Export to PDF
@@ -508,7 +508,7 @@ Expected: Clean compilation.
 
 **Step 5: Final visual verification**
 
-Run: `./build/src/PrettyReader`
+Run: `./build/src/Penelope`
 - Test web view rendering (open file, verify all element types)
 - Test PDF export (File > Export PDF, verify output)
 - Test paginated print view

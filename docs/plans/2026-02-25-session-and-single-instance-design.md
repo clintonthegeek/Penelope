@@ -4,7 +4,7 @@
 
 1. **Tab close bug**: Closing a tab doesn't clean up sidebar state. No special handling for closing the last tab.
 2. **No session restore**: Open files aren't remembered across launches.
-3. **No single instance**: Opening a file when PrettyReader is already running creates a second window/process instead of adding a tab.
+3. **No single instance**: Opening a file when Penelope is already running creates a second window/process instead of adding a tab.
 
 ## Requirements
 
@@ -57,7 +57,7 @@ Replace the direct `tabCloseRequested → removeTab` connection with `MainWindow
 
 **Windows fallback (QLocalServer/QLocalSocket):**
 - `SingleInstanceGuard` class in `src/app/`.
-- Named pipe: `"PrettyReader-{username}"`.
+- Named pipe: `"Penelope-{username}"`.
 - First instance: creates `QLocalServer`, listens for connections.
 - Second instance: connects, sends file paths as newline-delimited UTF-8, exits.
 - First instance: receives paths → `MainWindow::activateWithFiles()`.

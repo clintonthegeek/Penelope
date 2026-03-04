@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_LAYOUTENGINE_H
-#define PRETTYREADER_LAYOUTENGINE_H
+#ifndef PENELOPE_LAYOUTENGINE_H
+#define PENELOPE_LAYOUTENGINE_H
 
 #include <QColor>
 #include <QImage>
@@ -347,4 +347,4 @@ private:
 
 } // namespace Layout
 
-#endif // PRETTYREADER_LAYOUTENGINE_H
+#endif // PENELOPE_LAYOUTENGINE_H

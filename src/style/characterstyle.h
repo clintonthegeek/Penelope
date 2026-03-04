@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_CHARACTERSTYLE_H
-#define PRETTYREADER_CHARACTERSTYLE_H
+#ifndef PENELOPE_CHARACTERSTYLE_H
+#define PENELOPE_CHARACTERSTYLE_H
 
 #include <QColor>
 #include <QFont>
@@ -89,4 +89,4 @@ private:
     bool m_hasFontFeatures = false;
 };
 
-#endif // PRETTYREADER_CHARACTERSTYLE_H
+#endif // PENELOPE_CHARACTERSTYLE_H

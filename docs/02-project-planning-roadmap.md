@@ -1,4 +1,4 @@
-# PrettyReader: Project Planning Roadmap
+# Penelope: Project Planning Roadmap
 
 ## Locked-In Requirements
 
@@ -25,7 +25,7 @@
 ### Rendering Pipeline
 
 ```
-.md file on disk (never modified by PrettyReader)
+.md file on disk (never modified by Penelope)
     | read
     v
 MD4C Parser (CommonMark + GitHub Flavored extensions)

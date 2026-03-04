@@ -1,5 +1,5 @@
 #include "preferencesdialog.h"
-#include "prettyreadersettings.h"
+#include "penelopesettings.h"
 #include "hyphenator.h"
 
 #include <KLocalizedString>
@@ -15,8 +15,8 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
-PrettyReaderConfigDialog::PrettyReaderConfigDialog(QWidget *parent)
-    : KConfigDialog(parent, QStringLiteral("settings"), PrettyReaderSettings::self())
+PenelopeConfigDialog::PenelopeConfigDialog(QWidget *parent)
+    : KConfigDialog(parent, QStringLiteral("settings"), PenelopeSettings::self())
 {
     // ===== General Page =====
     auto *generalPage = new QWidget;

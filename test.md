@@ -1,6 +1,6 @@
-# PrettyReader Test Document
+# Penelope Test Document
 
-This is a **test document** for *PrettyReader* M2. It exercises all the major
+This is a **test document** for *Penelope* M2. It exercises all the major
 markdown elements that the DocumentBuilder should handle.
 
 ## Headings
@@ -57,7 +57,7 @@ Fenced code block:
 #include <iostream>
 
 int main() {
-    std::cout << "Hello from PrettyReader!" << std::endl;
+    std::cout << "Hello from Penelope!" << std::endl;
     return 0;
 }
 ```
@@ -96,6 +96,6 @@ Ellipsis: And then&hellip;
 
 ## Conclusion
 
-This document tests the core rendering pipeline of **PrettyReader** M2.
+This document tests the core rendering pipeline of **Penelope** M2.
 If all elements above are properly formatted, the DocumentBuilder is working
 correctly.

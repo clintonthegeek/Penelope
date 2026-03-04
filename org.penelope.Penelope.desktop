@@ -1,11 +1,11 @@
 #!/usr/bin/env xdg-open
 [Desktop Entry]
 Type=Application
-Name=PrettyReader
+Name=Penelope
 GenericName=Markdown Reader
 Comment=A beautiful paginated markdown reader
-Exec=PrettyReader %U
-Icon=document-viewer
+Exec=penelope %U
+Icon=penelope
 Terminal=false
 Categories=Qt;KDE;Office;Viewer;
 MimeType=text/markdown;text/x-markdown;text/plain;

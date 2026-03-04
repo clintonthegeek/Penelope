@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_DOCUMENTVIEW_H
-#define PRETTYREADER_DOCUMENTVIEW_H
+#ifndef PENELOPE_DOCUMENTVIEW_H
+#define PENELOPE_DOCUMENTVIEW_H
 
 #include <QGraphicsView>
 #include <QHash>
@@ -236,4 +236,4 @@ public:
     static constexpr qreal kSceneMargin = 40.0;
 };
 
-#endif // PRETTYREADER_DOCUMENTVIEW_H
+#endif // PENELOPE_DOCUMENTVIEW_H

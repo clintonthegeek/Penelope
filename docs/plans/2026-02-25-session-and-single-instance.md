@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Fix the tab-close bug, add session restore of open files, and make PrettyReader a single-instance application.
+**Goal:** Fix the tab-close bug, add session restore of open files, and make Penelope a single-instance application.
 
 **Architecture:** Fix tab close with a proper slot that cleans up sidebars and quits on last tab. Extend existing KConfig session save/restore to persist open files and per-tab ViewState. Use KDBusService on Linux (compile-time detected) and QLocalServer/QLocalSocket on Windows for single-instance behavior, with a shared `activateWithFiles()` entry point.
 
@@ -249,12 +249,12 @@ Run: `cmake --build build 2>&1 | tail -5`
 
 **Step 7: Manual test**
 
-Run: `./build/bin/PrettyReader docs/glyphs.pdf` (or any markdown file).
+Run: `./build/bin/Penelope docs/glyphs.pdf` (or any markdown file).
 - Open a second file. Zoom in on one tab. Scroll to a different position.
-- Close PrettyReader.
-- Launch `./build/bin/PrettyReader` with no arguments.
+- Close Penelope.
+- Launch `./build/bin/Penelope` with no arguments.
 - Both files should reopen. Zoom and scroll should be restored.
-- Launch `./build/bin/PrettyReader somefile.md` — only that file should open, no session restore.
+- Launch `./build/bin/Penelope somefile.md` — only that file should open, no session restore.
 
 **Step 8: Commit**
 
@@ -286,11 +286,11 @@ endif()
 
 **Step 2: Conditionally link KF6::DBusAddons**
 
-In `src/CMakeLists.txt`, after the `target_link_libraries(PrettyReader PRIVATE PrettyReaderCore)` block (line 373-376), add:
+In `src/CMakeLists.txt`, after the `target_link_libraries(Penelope PRIVATE PenelopeCore)` block (line 373-376), add:
 
 ```cmake
 if(KF6DBusAddons_FOUND)
-    target_link_libraries(PrettyReader PRIVATE KF6::DBusAddons)
+    target_link_libraries(Penelope PRIVATE KF6::DBusAddons)
 endif()
 ```
 
@@ -360,8 +360,8 @@ Run: `cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 **Step 6: Manual test (Linux)**
 
-- Run `./build/bin/PrettyReader docs/glyphs.pdf`
-- In another terminal, run `./build/bin/PrettyReader docs/hershey.pdf`
+- Run `./build/bin/Penelope docs/glyphs.pdf`
+- In another terminal, run `./build/bin/Penelope docs/hershey.pdf`
 - Second process should exit immediately; first window should gain a new tab with hershey.pdf.
 
 **Step 7: Commit**
@@ -387,8 +387,8 @@ Create `src/app/singleinstanceguard.h`:
 ```cpp
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_SINGLEINSTANCEGUARD_H
-#define PRETTYREADER_SINGLEINSTANCEGUARD_H
+#ifndef PENELOPE_SINGLEINSTANCEGUARD_H
+#define PENELOPE_SINGLEINSTANCEGUARD_H
 
 #include <QLocalServer>
 #include <QObject>
@@ -415,7 +415,7 @@ private:
     QLocalServer *m_server = nullptr;
 };
 
-#endif // PRETTYREADER_SINGLEINSTANCEGUARD_H
+#endif // PENELOPE_SINGLEINSTANCEGUARD_H
 ```
 
 **Step 2: Create SingleInstanceGuard implementation**
@@ -439,7 +439,7 @@ SingleInstanceGuard::SingleInstanceGuard(MainWindow *window, QObject *parent)
 
 QString SingleInstanceGuard::serverName()
 {
-    return QStringLiteral("PrettyReader-%1").arg(qEnvironmentVariable("USER", QStringLiteral("default")));
+    return QStringLiteral("Penelope-%1").arg(qEnvironmentVariable("USER", QStringLiteral("default")));
 }
 
 bool SingleInstanceGuard::tryAcquire(const QStringList &filePaths)
@@ -491,10 +491,10 @@ void SingleInstanceGuard::onNewConnection()
 
 **Step 3: Add sources to CMakeLists**
 
-In `src/CMakeLists.txt`, change the PrettyReader executable definition (lines 361-364) to include the new files conditionally:
+In `src/CMakeLists.txt`, change the Penelope executable definition (lines 361-364) to include the new files conditionally:
 
 ```cmake
-qt_add_executable(PrettyReader
+qt_add_executable(Penelope
     WIN32 MACOSX_BUNDLE
     app/main.cpp
     $<$<NOT:$<BOOL:${KF6DBusAddons_FOUND}>>:
@@ -581,8 +581,8 @@ Run: `cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 To test the fallback path on Linux (even though KDBusService is available), temporarily add `-DCMAKE_DISABLE_FIND_PACKAGE_KF6DBusAddons=ON` to the cmake configure command. Then:
 
-- Run `./build/bin/PrettyReader docs/glyphs.pdf`
-- In another terminal: `./build/bin/PrettyReader docs/hershey.pdf`
+- Run `./build/bin/Penelope docs/glyphs.pdf`
+- In another terminal: `./build/bin/Penelope docs/hershey.pdf`
 - Second process should exit immediately; first window gains a new tab.
 
 **Step 7: Commit**

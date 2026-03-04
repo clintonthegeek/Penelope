@@ -1,13 +1,13 @@
-# PrettyReader: Style System & Persistence Design (Planning Stage 3)
+# Penelope: Style System & Persistence Design (Planning Stage 3)
 
 ## Storage Architecture
 
 ```
-~/.config/PrettyReader/
-    prettyreaderrc              KConfigXT (global settings singleton)
+~/.config/Penelope/
+    peneloperc              KConfigXT (global settings singleton)
     file-metadata.json          Per-file display state (URL-keyed)
 
-~/.local/share/PrettyReader/
+~/.local/share/Penelope/
     themes/
         default.json            Bundled theme
         academic.json           Bundled theme
@@ -26,12 +26,12 @@
 
 ## Global Settings: KConfigXT Schema
 
-File: `src/app/prettyreader.kcfg`
+File: `src/app/penelope.kcfg`
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
-  <kcfgfile name="prettyreaderrc"/>
+  <kcfgfile name="peneloperc"/>
 
   <group name="General">
     <entry name="DefaultTheme" type="String">
@@ -85,10 +85,10 @@ File: `src/app/prettyreader.kcfg`
 
 CMake integration:
 ```cmake
-kconfig_add_kcfg_files(KCFG_SRCS app/prettyreadersettings.kcfgc GENERATE_MOC)
+kconfig_add_kcfg_files(KCFG_SRCS app/penelopesettings.kcfgc GENERATE_MOC)
 ```
 
-Generated class: `PrettyReaderSettings::self()->defaultTheme()`, etc.
+Generated class: `PenelopeSettings::self()->defaultTheme()`, etc.
 
 ---
 
@@ -102,7 +102,7 @@ inherit from the parent style (BodyText for paragraphs, DefaultText for characte
     "name": "Academic",
     "version": 1,
     "description": "Clean serif typography for academic reading",
-    "author": "PrettyReader",
+    "author": "Penelope",
 
     "page": {
         "size": "A4",
@@ -318,7 +318,7 @@ Solarized, GitHub, Nord, Catppuccin, etc.). The integration:
 
 1. Each document theme has a `codeTheme` field (string matching a
    KSyntaxHighlighting theme name, or empty for auto-detection).
-2. When `codeTheme` is empty, PrettyReader selects the KSyntaxHighlighting
+2. When `codeTheme` is empty, Penelope selects the KSyntaxHighlighting
    theme that best matches the document theme's code block background
    (light vs dark).
 3. The style dock has a code theme dropdown populated from
@@ -410,7 +410,7 @@ rapid slider/spinbox changes don't cause excessive relayout.
 
 - Built-in themes are read-only JSON files bundled as Qt resources.
 - "Save as New Theme" copies the current state to a new user JSON file.
-- User themes are written to `~/.local/share/PrettyReader/themes/`.
+- User themes are written to `~/.local/share/Penelope/themes/`.
 - The theme selector dropdown shows built-in themes first, then a separator,
   then user themes.
 
@@ -418,7 +418,7 @@ rapid slider/spinbox changes don't cause excessive relayout.
 
 ## File Watching
 
-When `AutoReloadOnChange` is enabled, PrettyReader watches the open `.md` file
+When `AutoReloadOnChange` is enabled, Penelope watches the open `.md` file
 using `QFileSystemWatcher` + debounce timer (300ms). On change:
 
 1. Re-read file contents

@@ -2,7 +2,7 @@
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
-#include <QGroupBox>
+#include <QToolBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSpinBox>
@@ -28,6 +28,7 @@ TableStylePropertiesEditor::createBorderRow(const QString &label,
     row.widthSpin->setSingleStep(0.5);
 
     row.styleCombo = new QComboBox;
+    row.styleCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     row.styleCombo->addItem(tr("Solid"), static_cast<int>(Qt::SolidLine));
     row.styleCombo->addItem(tr("Dashed"), static_cast<int>(Qt::DashLine));
     row.styleCombo->addItem(tr("Dotted"), static_cast<int>(Qt::DotLine));
@@ -44,16 +45,19 @@ void TableStylePropertiesEditor::buildUI()
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(8);
+    layout->setSpacing(0);
 
-    // --- Borders ---
-    auto *borderGroup = new QGroupBox(tr("Borders"));
-    auto *borderLayout = new QVBoxLayout(borderGroup);
-    borderLayout->setContentsMargins(6, 6, 6, 6);
+    auto *toolBox = new QToolBox;
+    layout->addWidget(toolBox, 1);
+
+    // --- Borders page ---
+    auto *borderPage = new QWidget;
+    auto *borderLayout = new QVBoxLayout(borderPage);
+    borderLayout->setContentsMargins(4, 4, 4, 4);
     borderLayout->setSpacing(4);
 
     auto addBorderRow = [&](const QString &label, BorderRow &row) {
-        row = createBorderRow(label, borderGroup);
+        row = createBorderRow(label, borderPage);
         auto *hbox = new QHBoxLayout;
         hbox->addWidget(new QLabel(label));
         hbox->addWidget(row.widthSpin);
@@ -65,12 +69,13 @@ void TableStylePropertiesEditor::buildUI()
     addBorderRow(tr("Inner:"), m_innerBorder);
     addBorderRow(tr("Header bottom:"), m_headerBottomBorder);
 
-    layout->addWidget(borderGroup);
+    borderLayout->addStretch();
+    toolBox->addItem(borderPage, tr("Borders"));
 
-    // --- Cell Padding ---
-    auto *padGroup = new QGroupBox(tr("Cell Padding"));
-    auto *padLayout = new QVBoxLayout(padGroup);
-    padLayout->setContentsMargins(6, 6, 6, 6);
+    // --- Cell Padding page ---
+    auto *padPage = new QWidget;
+    auto *padLayout = new QVBoxLayout(padPage);
+    padLayout->setContentsMargins(4, 4, 4, 4);
     padLayout->setSpacing(4);
 
     auto makePadSpin = [this]() {
@@ -101,23 +106,26 @@ void TableStylePropertiesEditor::buildUI()
     padRow2->addWidget(m_padRightSpin);
     padLayout->addLayout(padRow2);
 
-    layout->addWidget(padGroup);
+    padLayout->addStretch();
+    toolBox->addItem(padPage, tr("Cell Padding"));
 
-    // --- Paragraph Styles ---
-    auto *paraGroup = new QGroupBox(tr("Paragraph Styles"));
-    auto *paraLayout = new QVBoxLayout(paraGroup);
-    paraLayout->setContentsMargins(6, 6, 6, 6);
+    // --- Paragraph Styles page ---
+    auto *paraPage = new QWidget;
+    auto *paraLayout = new QVBoxLayout(paraPage);
+    paraLayout->setContentsMargins(4, 4, 4, 4);
     paraLayout->setSpacing(4);
 
     auto *headerParaRow = new QHBoxLayout;
     headerParaRow->addWidget(new QLabel(tr("Header cells:")));
     m_headerParaCombo = new QComboBox;
+    m_headerParaCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     headerParaRow->addWidget(m_headerParaCombo, 1);
     paraLayout->addLayout(headerParaRow);
 
     auto *bodyParaRow = new QHBoxLayout;
     bodyParaRow->addWidget(new QLabel(tr("Body cells:")));
     m_bodyParaCombo = new QComboBox;
+    m_bodyParaCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     bodyParaRow->addWidget(m_bodyParaCombo, 1);
     paraLayout->addLayout(bodyParaRow);
 
@@ -126,8 +134,8 @@ void TableStylePropertiesEditor::buildUI()
     connect(m_bodyParaCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &TableStylePropertiesEditor::propertyChanged);
 
-    layout->addWidget(paraGroup);
-    layout->addStretch();
+    paraLayout->addStretch();
+    toolBox->addItem(paraPage, tr("Paragraph Styles"));
 }
 
 void TableStylePropertiesEditor::blockAllSignals(bool block)

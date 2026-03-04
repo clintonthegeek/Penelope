@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_STYLETREEMODEL_H
-#define PRETTYREADER_STYLETREEMODEL_H
+#ifndef PENELOPE_STYLETREEMODEL_H
+#define PENELOPE_STYLETREEMODEL_H
 
 #include <QAbstractItemModel>
 #include <QStringList>
@@ -59,4 +59,4 @@ private:
     bool m_showPreviews = false;
 };
 
-#endif // PRETTYREADER_STYLETREEMODEL_H
+#endif // PENELOPE_STYLETREEMODEL_H

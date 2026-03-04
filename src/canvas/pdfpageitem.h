@@ -6,8 +6,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFPAGEITEM_H
-#define PRETTYREADER_PDFPAGEITEM_H
+#ifndef PENELOPE_PDFPAGEITEM_H
+#define PENELOPE_PDFPAGEITEM_H
 
 #include <QColor>
 #include <QGraphicsItem>
@@ -44,4 +44,4 @@ private:
     QList<QRectF> m_selectionRects;  // page-local coords
 };
 
-#endif // PRETTYREADER_PDFPAGEITEM_H
+#endif // PENELOPE_PDFPAGEITEM_H

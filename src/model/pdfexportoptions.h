@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFEXPORTOPTIONS_H
-#define PRETTYREADER_PDFEXPORTOPTIONS_H
+#ifndef PENELOPE_PDFEXPORTOPTIONS_H
+#define PENELOPE_PDFEXPORTOPTIONS_H
 
 #include <QSet>
 #include <QString>
@@ -44,4 +44,4 @@ struct PdfExportOptions {
     PageLayout pageLayout = Continuous;
 };
 
-#endif // PRETTYREADER_PDFEXPORTOPTIONS_H
+#endif // PENELOPE_PDFEXPORTOPTIONS_H

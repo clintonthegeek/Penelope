@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_DOCUMENTBUILDER_H
-#define PRETTYREADER_DOCUMENTBUILDER_H
+#ifndef PENELOPE_DOCUMENTBUILDER_H
+#define PENELOPE_DOCUMENTBUILDER_H
 
 #include <QObject>
 #include <QStack>
@@ -119,4 +119,4 @@ private:
     FootnoteStyle m_footnoteStyle;
 };
 
-#endif // PRETTYREADER_DOCUMENTBUILDER_H
+#endif // PENELOPE_DOCUMENTBUILDER_H

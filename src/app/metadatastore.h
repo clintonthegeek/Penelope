@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_METADATASTORE_H
-#define PRETTYREADER_METADATASTORE_H
+#ifndef PENELOPE_METADATASTORE_H
+#define PENELOPE_METADATASTORE_H
 
 #include <QJsonObject>
 #include <QObject>
@@ -28,4 +28,4 @@ private:
     QString hashPath(const QString &filePath) const;
 };
 
-#endif // PRETTYREADER_METADATASTORE_H
+#endif // PENELOPE_METADATASTORE_H

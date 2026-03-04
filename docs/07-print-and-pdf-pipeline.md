@@ -1,4 +1,4 @@
-# PrettyReader: Print & PDF Pipeline Design (Planning Stage 5)
+# Penelope: Print & PDF Pipeline Design (Planning Stage 5)
 
 ## Architecture Overview
 
@@ -255,7 +255,7 @@ void PrintController::exportPdf(const QString &filePath) {
     printer.setPageMargins(m_pageLayout.margins(), QPageLayout::Point);
 
     // PDF metadata
-    printer.setCreator(QStringLiteral("PrettyReader"));
+    printer.setCreator(QStringLiteral("Penelope"));
     printer.setDocName(m_document->metaInformation(QTextDocument::DocumentTitle));
 
     renderDocument(&printer);

@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_CONTENTBUILDER_H
-#define PRETTYREADER_CONTENTBUILDER_H
+#ifndef PENELOPE_CONTENTBUILDER_H
+#define PENELOPE_CONTENTBUILDER_H
 
 #include <QObject>
 #include <QStack>
@@ -144,4 +144,4 @@ private:
     QString m_processedMarkdown;
 };
 
-#endif // PRETTYREADER_CONTENTBUILDER_H
+#endif // PENELOPE_CONTENTBUILDER_H

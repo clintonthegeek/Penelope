@@ -9,8 +9,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_CONTENTRTFEXPORTER_H
-#define PRETTYREADER_CONTENTRTFEXPORTER_H
+#ifndef PENELOPE_CONTENTRTFEXPORTER_H
+#define PENELOPE_CONTENTRTFEXPORTER_H
 
 #include <QByteArray>
 #include <QColor>
@@ -62,4 +62,4 @@ private:
     RtfFilterOptions m_filter;
 };
 
-#endif // PRETTYREADER_CONTENTRTFEXPORTER_H
+#endif // PENELOPE_CONTENTRTFEXPORTER_H

@@ -192,7 +192,7 @@ Expected: Build succeeds
 
 **Step 3: Manual test**
 
-Run: `./build/bin/PrettyReader`
+Run: `./build/bin/Penelope`
 - Open a document
 - In Theme dock, single-click a type set → it applies (existing behavior, should still work)
 - Double-click a type set → Type dock should raise with that set selected
@@ -374,7 +374,7 @@ Expected: Build succeeds
 
 **Step 3: Manual test**
 
-Run: `./build/bin/PrettyReader`
+Run: `./build/bin/Penelope`
 - Open a document
 - Resize the Theme dock very narrow → tiles should NOT squish, scroll area width prevents it
 - Resize the Theme dock very short → vertical scrollbar should appear

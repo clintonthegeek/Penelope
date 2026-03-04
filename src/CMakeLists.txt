@@ -1,8 +1,8 @@
 # Generate KConfig settings class from kcfg schema
-kconfig_add_kcfg_files(PRETTYREADER_KCFG_SRCS app/prettyreadersettings.kcfgc GENERATE_MOC)
+kconfig_add_kcfg_files(PENELOPE_KCFG_SRCS app/penelopesettings.kcfgc GENERATE_MOC)
 
-add_library(PrettyReaderCore STATIC
-    ${PRETTYREADER_KCFG_SRCS}
+add_library(PenelopeCore STATIC
+    ${PENELOPE_KCFG_SRCS}
     app/mainwindow.cpp
     app/mainwindow.h
     app/metadatastore.cpp
@@ -160,7 +160,7 @@ add_library(PrettyReaderCore STATIC
     widgets/themepickerdock.h
 )
 
-target_include_directories(PrettyReaderCore
+target_include_directories(PenelopeCore
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/app
@@ -189,7 +189,7 @@ find_library(HYPHEN_LIBRARY NAMES hyphen REQUIRED)
 find_path(HYPHEN_INCLUDE_DIR NAMES hyphen.h REQUIRED)
 
 # Bundle theme JSON files as Qt resources
-qt_add_resources(PrettyReaderCore "themes"
+qt_add_resources(PenelopeCore "themes"
     PREFIX "/themes"
     BASE themes
     FILES
@@ -199,7 +199,7 @@ qt_add_resources(PrettyReaderCore "themes"
 )
 
 # Bundle color palette JSON files as Qt resources
-qt_add_resources(PrettyReaderCore "palettes"
+qt_add_resources(PenelopeCore "palettes"
     PREFIX "/palettes"
     BASE themes/palettes
     FILES
@@ -227,7 +227,7 @@ qt_add_resources(PrettyReaderCore "palettes"
 )
 
 # Bundle page template JSON files as Qt resources
-qt_add_resources(PrettyReaderCore "templates"
+qt_add_resources(PenelopeCore "templates"
     PREFIX "/templates"
     BASE themes/templates
     FILES
@@ -237,7 +237,7 @@ qt_add_resources(PrettyReaderCore "templates"
 )
 
 # Bundle type set JSON files as Qt resources
-qt_add_resources(PrettyReaderCore "typesets"
+qt_add_resources(PenelopeCore "typesets"
     PREFIX "/typesets"
     BASE themes/typesets
     FILES
@@ -259,7 +259,7 @@ qt_add_resources(PrettyReaderCore "typesets"
 )
 
 # Bundle hyphenation dictionaries as Qt resources
-qt_add_resources(PrettyReaderCore "dicts"
+qt_add_resources(PenelopeCore "dicts"
     PREFIX "/dicts"
     BASE dicts
     FILES
@@ -268,7 +268,7 @@ qt_add_resources(PrettyReaderCore "dicts"
 )
 
 # Bundle fallback symbol font as Qt resource
-qt_add_resources(PrettyReaderCore "fonts"
+qt_add_resources(PenelopeCore "fonts"
     PREFIX "/fonts"
     BASE dicts
     FILES
@@ -276,7 +276,7 @@ qt_add_resources(PrettyReaderCore "fonts"
 )
 
 # Bundle glyph artwork (checkbox SVGs) as Qt resources
-qt_add_resources(PrettyReaderCore "glyphs"
+qt_add_resources(PenelopeCore "glyphs"
     PREFIX "/glyphs"
     BASE glyphs
     FILES
@@ -285,7 +285,7 @@ qt_add_resources(PrettyReaderCore "glyphs"
 )
 
 # Bundle Hershey vector font data as Qt resources
-qt_add_resources(PrettyReaderCore "hershey"
+qt_add_resources(PenelopeCore "hershey"
     PREFIX "/hershey"
     BASE hershey
     FILES
@@ -323,7 +323,7 @@ qt_add_resources(PrettyReaderCore "hershey"
         hershey/timesrb.jhf
 )
 
-target_include_directories(PrettyReaderCore
+target_include_directories(PenelopeCore
     PRIVATE
         ${MD4C_INCLUDE_DIR}
         ${HYPHEN_INCLUDE_DIR}
@@ -332,7 +332,7 @@ target_include_directories(PrettyReaderCore
         ${HARFBUZZ_SUBSET_INCLUDE_DIRS}
 )
 
-target_link_libraries(PrettyReaderCore
+target_link_libraries(PenelopeCore
     PUBLIC
         Qt6::Core
         Qt6::Gui
@@ -362,46 +362,57 @@ target_link_libraries(PrettyReaderCore
         ${HARFBUZZ_SUBSET_LIBRARIES}
 )
 
-qt_add_executable(PrettyReader
+qt_add_executable(Penelope
     WIN32 MACOSX_BUNDLE
     app/main.cpp
 )
+set_target_properties(Penelope PROPERTIES OUTPUT_NAME penelope)
 
 if(NOT KF6DBusAddons_FOUND)
-    target_sources(PrettyReader PRIVATE
+    target_sources(Penelope PRIVATE
         app/singleinstanceguard.h
         app/singleinstanceguard.cpp
     )
-    target_link_libraries(PrettyReader PRIVATE Qt6::Network)
+    target_link_libraries(Penelope PRIVATE Qt6::Network)
 endif()
 
 # Embed XMLGUI resource file
-qt_add_resources(PrettyReader "xmlgui"
-    PREFIX "/kxmlgui5/prettyreader"
+qt_add_resources(Penelope "xmlgui"
+    PREFIX "/kxmlgui5/penelope"
     BASE app
-    FILES app/prettyreaderui.rc
+    FILES app/penelopeui.rc
 )
 
-target_link_libraries(PrettyReader
+target_link_libraries(Penelope
     PRIVATE
-        PrettyReaderCore
+        PenelopeCore
 )
 
 if(KF6DBusAddons_FOUND)
-    target_link_libraries(PrettyReader PRIVATE KF6::DBusAddons)
+    target_link_libraries(Penelope PRIVATE KF6::DBusAddons)
 endif()
 
 include(GNUInstallDirs)
 
-install(TARGETS PrettyReader
+install(TARGETS Penelope
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES app/prettyreaderui.rc
-    DESTINATION ${KDE_INSTALL_KXMLGUIDIR}/prettyreader
+install(FILES app/penelopeui.rc
+    DESTINATION ${KDE_INSTALL_KXMLGUIDIR}/penelope
 )
 
-install(FILES ../org.prettyreader.PrettyReader.desktop
+install(FILES ../org.penelope.Penelope.desktop
     DESTINATION ${KDE_INSTALL_APPDIR}
+)
+
+install(FILES ../icons/penelope.svg
+    DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
+)
+
+# Third-party license notices (bundled in .deb under /usr/share/doc/penelope/)
+install(FILES ../LICENSE/DejaVu-License.txt
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/penelope
+    RENAME copyright-dejavu
 )

@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_DOCUMENTTAB_H
-#define PRETTYREADER_DOCUMENTTAB_H
+#ifndef PENELOPE_DOCUMENTTAB_H
+#define PENELOPE_DOCUMENTTAB_H
 
 #include <QWidget>
 
@@ -60,4 +60,4 @@ private:
     quint64 m_compositionGeneration = 0;
 };
 
-#endif // PRETTYREADER_DOCUMENTTAB_H
+#endif // PENELOPE_DOCUMENTTAB_H

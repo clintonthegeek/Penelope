@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_RTFCOPYOPTIONSDIALOG_H
-#define PRETTYREADER_RTFCOPYOPTIONSDIALOG_H
+#ifndef PENELOPE_RTFCOPYOPTIONSDIALOG_H
+#define PENELOPE_RTFCOPYOPTIONSDIALOG_H
 
 #include <QDialog>
 
@@ -50,4 +50,4 @@ private:
     QCheckBox *m_marginsCb = nullptr;
 };
 
-#endif // PRETTYREADER_RTFCOPYOPTIONSDIALOG_H
+#endif // PENELOPE_RTFCOPYOPTIONSDIALOG_H

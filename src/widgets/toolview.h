@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_TOOLVIEW_H
-#define PRETTYREADER_TOOLVIEW_H
+#ifndef PENELOPE_TOOLVIEW_H
+#define PENELOPE_TOOLVIEW_H
 
 #include <QFrame>
 
@@ -22,4 +22,4 @@ private:
     QLabel *m_titleLabel;
 };
 
-#endif // PRETTYREADER_TOOLVIEW_H
+#endif // PENELOPE_TOOLVIEW_H

@@ -1,4 +1,4 @@
-# PrettyReader: Markdown-to-QTextDocument Mapping (Planning Stage 2)
+# Penelope: Markdown-to-QTextDocument Mapping (Planning Stage 2)
 
 ## Key Discovery: Qt 6 + Calligra Properties Coexist Perfectly
 

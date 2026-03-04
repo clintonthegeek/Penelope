@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_PAGETEMPLATEPICKERWIDGET_H
-#define PRETTYREADER_PAGETEMPLATEPICKERWIDGET_H
+#ifndef PENELOPE_PAGETEMPLATEPICKERWIDGET_H
+#define PENELOPE_PAGETEMPLATEPICKERWIDGET_H
 
 #include "resourcepickerwidget.h"
 
@@ -23,4 +23,4 @@ private:
     PageTemplateManager *m_manager = nullptr;
 };
 
-#endif // PRETTYREADER_PAGETEMPLATEPICKERWIDGET_H
+#endif // PENELOPE_PAGETEMPLATEPICKERWIDGET_H

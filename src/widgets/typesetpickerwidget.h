@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_TYPESETPICKERWIDGET_H
-#define PRETTYREADER_TYPESETPICKERWIDGET_H
+#ifndef PENELOPE_TYPESETPICKERWIDGET_H
+#define PENELOPE_TYPESETPICKERWIDGET_H
 
 #include "resourcepickerwidget.h"
 
@@ -23,4 +23,4 @@ private:
     TypeSetManager *m_manager = nullptr;
 };
 
-#endif // PRETTYREADER_TYPESETPICKERWIDGET_H
+#endif // PENELOPE_TYPESETPICKERWIDGET_H

@@ -1,14 +1,14 @@
-#ifndef PRETTYREADER_PREFERENCESDIALOG_H
-#define PRETTYREADER_PREFERENCESDIALOG_H
+#ifndef PENELOPE_PREFERENCESDIALOG_H
+#define PENELOPE_PREFERENCESDIALOG_H
 
 #include <KConfigDialog>
 
-class PrettyReaderConfigDialog : public KConfigDialog
+class PenelopeConfigDialog : public KConfigDialog
 {
     Q_OBJECT
 
 public:
-    explicit PrettyReaderConfigDialog(QWidget *parent);
+    explicit PenelopeConfigDialog(QWidget *parent);
 };
 
-#endif // PRETTYREADER_PREFERENCESDIALOG_H
+#endif // PENELOPE_PREFERENCESDIALOG_H

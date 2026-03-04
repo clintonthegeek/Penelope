@@ -9,8 +9,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_CODESPANCOLLECTOR_H
-#define PRETTYREADER_CODESPANCOLLECTOR_H
+#ifndef PENELOPE_CODESPANCOLLECTOR_H
+#define PENELOPE_CODESPANCOLLECTOR_H
 
 #include <QColor>
 #include <QList>
@@ -92,4 +92,4 @@ private:
     int m_lineOffset = 0;
 };
 
-#endif // PRETTYREADER_CODESPANCOLLECTOR_H
+#endif // PENELOPE_CODESPANCOLLECTOR_H

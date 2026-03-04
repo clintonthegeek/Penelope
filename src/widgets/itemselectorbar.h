@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_ITEMSELECTORBAR_H
-#define PRETTYREADER_ITEMSELECTORBAR_H
+#ifndef PENELOPE_ITEMSELECTORBAR_H
+#define PENELOPE_ITEMSELECTORBAR_H
 
 #include <QWidget>
 
@@ -37,4 +37,4 @@ private:
     QStringList m_builtinIds;
 };
 
-#endif // PRETTYREADER_ITEMSELECTORBAR_H
+#endif // PENELOPE_ITEMSELECTORBAR_H

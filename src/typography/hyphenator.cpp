@@ -102,7 +102,7 @@ bool Hyphenator::loadDictionary(const QString &language)
         // Write to a persistent temp file (lives as long as the app)
         QString tempDir = QStandardPaths::writableLocation(
             QStandardPaths::TempLocation);
-        realPath = tempDir + QLatin1String("/prettyreader_")
+        realPath = tempDir + QLatin1String("/penelope_")
                    + QFileInfo(path).fileName();
         QFile tempFile(realPath);
         if (!tempFile.open(QIODevice::WriteOnly))

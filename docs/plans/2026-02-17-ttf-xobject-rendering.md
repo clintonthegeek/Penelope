@@ -25,7 +25,7 @@ After the `unwrapParagraphs` field (line 21), add:
 
 **Step 2: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -5`
+Run: `cmake --build build --target Penelope 2>&1 | tail -5`
 Expected: Clean build
 
 **Step 3: Commit**
@@ -81,7 +81,7 @@ In `pdfexportdialog.cpp`, after `m_unwrapParagraphsCheck->setChecked(...)` (line
 
 **Step 5: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -5`
+Run: `cmake --build build --target Penelope 2>&1 | tail -5`
 
 **Step 6: Commit**
 
@@ -146,7 +146,7 @@ After the `renderHersheyGlyphBox` declaration (line 58-59), add:
 
 **Step 5: Build (expect errors — callers not updated yet)**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compilation errors from `ensureGlyphForm` callers — this is correct, we fix them in the next tasks.
 
 **Step 6: Commit**
@@ -258,7 +258,7 @@ Do the same for the trailing Hershey hyphen call site (~line 833).
 
 **Step 4: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compiles (TTF branch exists but isn't called yet)
 
 **Step 5: Commit**
@@ -359,7 +359,7 @@ Note: TTF bold is a different `FontFace` (not a synthesis flag), so `bold` is al
 
 **Step 2: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -5`
+Run: `cmake --build build --target Penelope 2>&1 | tail -5`
 
 **Step 3: Commit**
 
@@ -457,7 +457,7 @@ Replace the `else if (lastGbox.font->ftFace)` block with:
 
 **Step 4: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -5`
+Run: `cmake --build build --target Penelope 2>&1 | tail -5`
 
 **Step 5: Commit**
 
@@ -531,7 +531,7 @@ The condition that selects HvInv vs CIDFont needs to also check `xobjectGlyphs`.
 
 **Step 5: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -5`
+Run: `cmake --build build --target Penelope 2>&1 | tail -5`
 
 **Step 6: Commit**
 
@@ -545,7 +545,7 @@ feat: skip CIDFont embedding and use Base14 Helvetica in XObject mode
 
 **Step 1: Full build**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -10`
+Run: `cmake --build build --target Penelope 2>&1 | tail -10`
 Expected: Clean, no warnings
 
 **Step 2: Test with xobjectGlyphs OFF (regression)**

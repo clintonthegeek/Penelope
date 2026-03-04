@@ -23,9 +23,9 @@
 ```bash
 cd /tmp
 git clone --depth 1 https://github.com/kamalmostafa/hershey-fonts.git
-mkdir -p /home/clinton/dev/PrettyReader/src/hershey
-cp /tmp/hershey-fonts/hershey-fonts/*.jhf /home/clinton/dev/PrettyReader/src/hershey/
-ls /home/clinton/dev/PrettyReader/src/hershey/*.jhf | wc -l
+mkdir -p /home/clinton/dev/Penelope/src/hershey
+cp /tmp/hershey-fonts/hershey-fonts/*.jhf /home/clinton/dev/Penelope/src/hershey/
+ls /home/clinton/dev/Penelope/src/hershey/*.jhf | wc -l
 ```
 
 Expected: 32 (or close — verify exact count from the repo).
@@ -36,7 +36,7 @@ In `src/CMakeLists.txt`, after the `glyphs` resource block (line 168), add:
 
 ```cmake
 # Bundle Hershey vector font data as Qt resources
-qt_add_resources(PrettyReaderCore "hershey"
+qt_add_resources(PenelopeCore "hershey"
     PREFIX "/hershey"
     BASE hershey
     FILES
@@ -111,8 +111,8 @@ This header defines `HersheyGlyph`, `HersheyFont` (loads one .jhf file), and `He
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_HERSHEYFONT_H
-#define PRETTYREADER_HERSHEYFONT_H
+#ifndef PENELOPE_HERSHEYFONT_H
+#define PENELOPE_HERSHEYFONT_H
 
 #include <QHash>
 #include <QList>
@@ -197,7 +197,7 @@ private:
     bool m_loaded = false;
 };
 
-#endif // PRETTYREADER_HERSHEYFONT_H
+#endif // PENELOPE_HERSHEYFONT_H
 ```
 
 **Step 2: Create `src/font/hersheyfont.cpp`**
@@ -1487,7 +1487,7 @@ Note: No `fontFeatures` in Hershey styles since Hershey fonts don't support Open
 In `src/CMakeLists.txt`, add `themes/hershey.json` to the themes resource block (line 141):
 
 ```cmake
-qt_add_resources(PrettyReaderCore "themes"
+qt_add_resources(PenelopeCore "themes"
     PREFIX "/themes"
     BASE themes
     FILES
@@ -1602,7 +1602,7 @@ git commit -m "feat: filter font selector to Hershey families when Hershey mode 
 
 ```bash
 cmake --build build --parallel
-./build/src/PrettyReader
+./build/src/Penelope
 ```
 
 **Step 2: Test with Hershey theme**

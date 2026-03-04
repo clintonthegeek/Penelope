@@ -130,7 +130,7 @@ Called from `renderLineBox()` when glyph box font is Hershey. For each glyph:
 
 ### Resource Bundling
 
-32 .jhf files in `src/hershey/` directory, added via `qt_add_resources(PrettyReaderCore "hershey" PREFIX "/" FILES ...)` in `src/CMakeLists.txt`.
+32 .jhf files in `src/hershey/` directory, added via `qt_add_resources(PenelopeCore "hershey" PREFIX "/" FILES ...)` in `src/CMakeLists.txt`.
 
 ## Change Map
 

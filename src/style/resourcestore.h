@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_RESOURCESTORE_H
-#define PRETTYREADER_RESOURCESTORE_H
+#ifndef PENELOPE_RESOURCESTORE_H
+#define PENELOPE_RESOURCESTORE_H
 
 #include <QDir>
 #include <QFile>
@@ -214,4 +214,4 @@ private:
     QString m_userDir;
 };
 
-#endif // PRETTYREADER_RESOURCESTORE_H
+#endif // PENELOPE_RESOURCESTORE_H

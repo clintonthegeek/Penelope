@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_TYPEDOCKWIDGET_H
-#define PRETTYREADER_TYPEDOCKWIDGET_H
+#ifndef PENELOPE_TYPEDOCKWIDGET_H
+#define PENELOPE_TYPEDOCKWIDGET_H
 
 #include <QWidget>
 
@@ -91,4 +91,4 @@ private:
     bool m_selectedIsFootnote = false;
 };
 
-#endif // PRETTYREADER_TYPEDOCKWIDGET_H
+#endif // PENELOPE_TYPEDOCKWIDGET_H

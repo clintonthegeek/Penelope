@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_HYPHENATOR_H
-#define PRETTYREADER_HYPHENATOR_H
+#ifndef PENELOPE_HYPHENATOR_H
+#define PENELOPE_HYPHENATOR_H
 
 #include <QHash>
 #include <QString>
@@ -42,4 +42,4 @@ private:
     static void initDictPaths();
 };
 
-#endif // PRETTYREADER_HYPHENATOR_H
+#endif // PENELOPE_HYPHENATOR_H

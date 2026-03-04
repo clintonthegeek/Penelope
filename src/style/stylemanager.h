@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_STYLEMANAGER_H
-#define PRETTYREADER_STYLEMANAGER_H
+#ifndef PENELOPE_STYLEMANAGER_H
+#define PENELOPE_STYLEMANAGER_H
 
 #include "characterstyle.h"
 #include "footnotestyle.h"
@@ -54,4 +54,4 @@ private:
     FootnoteStyle m_footnoteStyle;
 };
 
-#endif // PRETTYREADER_STYLEMANAGER_H
+#endif // PENELOPE_STYLEMANAGER_H

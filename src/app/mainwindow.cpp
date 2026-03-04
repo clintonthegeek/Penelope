@@ -38,7 +38,7 @@
 #include "thememanager.h"
 #include "footnotestyle.h"
 #include "preferencesdialog.h"
-#include "prettyreadersettings.h"
+#include "penelopesettings.h"
 #include "languagepickerdialog.h"
 #include "rtfcopyoptionsdialog.h"
 
@@ -127,7 +127,7 @@ MainWindow::MainWindow(QWidget *parent)
             if (m_sourceViewAction)
                 m_sourceViewAction->setChecked(true);
         } else {
-            bool webMode = PrettyReaderSettings::self()->useWebView();
+            bool webMode = PenelopeSettings::self()->useWebView();
             if (webMode && m_webViewAction)
                 m_webViewAction->setChecked(true);
             else if (!webMode && m_printViewAction)
@@ -167,7 +167,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_textShaper->setFallbackFont(fallback);
 
     // Apply settings
-    auto *settings = PrettyReaderSettings::self();
+    auto *settings = PenelopeSettings::self();
     if (settings->hyphenationEnabled() || settings->hyphenateJustifiedText()) {
         m_hyphenator->loadDictionary(settings->hyphenationLanguage());
         m_hyphenator->setMinWordLength(settings->hyphenationMinWordLength());
@@ -498,7 +498,7 @@ void MainWindow::setupActions()
     m_fitWidthAction = ac->addAction(QStringLiteral("view_zoom_fit_width"));
     m_fitWidthAction->setText(i18n("Fit &Width"));
     m_fitWidthAction->setIcon(QIcon::fromTheme(QStringLiteral("zoom-fit-width")));
-    m_fitWidthAction->setEnabled(!PrettyReaderSettings::self()->useWebView());
+    m_fitWidthAction->setEnabled(!PenelopeSettings::self()->useWebView());
     connect(m_fitWidthAction, &QAction::triggered, this, &MainWindow::onFitWidth);
 
     auto *fitPage = ac->addAction(QStringLiteral("view_zoom_fit_page"));
@@ -514,15 +514,15 @@ void MainWindow::setupActions()
     m_webViewAction->setText(i18n("&Web View"));
     m_webViewAction->setIcon(QIcon::fromTheme(QStringLiteral("text-html")));
     m_webViewAction->setCheckable(true);
-    m_webViewAction->setChecked(PrettyReaderSettings::self()->useWebView());
+    m_webViewAction->setChecked(PenelopeSettings::self()->useWebView());
     m_webViewAction->setActionGroup(renderModeGroup);
     connect(m_webViewAction, &QAction::triggered, this, [this]() {
         // Exit source mode if active
         auto *tab = currentDocumentTab();
         if (tab && tab->isSourceMode())
             tab->setSourceMode(false);
-        PrettyReaderSettings::self()->setUseWebView(true);
-        PrettyReaderSettings::self()->save();
+        PenelopeSettings::self()->setUseWebView(true);
+        PenelopeSettings::self()->save();
         onRenderModeChanged();
     });
 
@@ -530,14 +530,14 @@ void MainWindow::setupActions()
     m_printViewAction->setText(i18n("&Print View"));
     m_printViewAction->setIcon(QIcon::fromTheme(QStringLiteral("document-print-preview")));
     m_printViewAction->setCheckable(true);
-    m_printViewAction->setChecked(!PrettyReaderSettings::self()->useWebView());
+    m_printViewAction->setChecked(!PenelopeSettings::self()->useWebView());
     m_printViewAction->setActionGroup(renderModeGroup);
     connect(m_printViewAction, &QAction::triggered, this, [this]() {
         auto *tab = currentDocumentTab();
         if (tab && tab->isSourceMode())
             tab->setSourceMode(false);
-        PrettyReaderSettings::self()->setUseWebView(false);
-        PrettyReaderSettings::self()->save();
+        PenelopeSettings::self()->setUseWebView(false);
+        PenelopeSettings::self()->save();
         onRenderModeChanged();
     });
 
@@ -823,7 +823,7 @@ void MainWindow::setupActions()
         if (view) view->copySelectionAsMarkdown();
     });
 
-    setupGUI(Default, QStringLiteral("prettyreaderui.rc"));
+    setupGUI(Default, QStringLiteral("penelopeui.rc"));
 
     // Show text labels by default; LowPriority actions get icon-only
     toolBar()->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -888,10 +888,10 @@ void MainWindow::onFileExportPdf()
         ContentBuilder contentBuilder;
         contentBuilder.setBasePath(fi.absolutePath());
         contentBuilder.setStyleManager(styleManager);
-        if (PrettyReaderSettings::self()->hyphenationEnabled()
-            || PrettyReaderSettings::self()->hyphenateJustifiedText())
+        if (PenelopeSettings::self()->hyphenationEnabled()
+            || PenelopeSettings::self()->hyphenateJustifiedText())
             contentBuilder.setHyphenator(m_hyphenator);
-        if (PrettyReaderSettings::self()->shortWordsEnabled())
+        if (PenelopeSettings::self()->shortWordsEnabled())
             contentBuilder.setShortWords(m_shortWords);
         contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
         Content::Document contentDoc = contentBuilder.build(markdown);
@@ -901,13 +901,13 @@ void MainWindow::onFileExportPdf()
         m_fontManager->resetUsage();
         Layout::Engine preLayoutEngine(m_fontManager, m_textShaper);
         preLayoutEngine.setHyphenateJustifiedText(
-            PrettyReaderSettings::self()->hyphenateJustifiedText());
+            PenelopeSettings::self()->hyphenateJustifiedText());
         Layout::LayoutResult preLayout = preLayoutEngine.layout(contentDoc, pl);
         int pageCount = preLayout.pages.size();
 
         // Load saved options from KConfig
         PdfExportOptions opts;
-        auto *settings = PrettyReaderSettings::self();
+        auto *settings = PenelopeSettings::self();
         opts.author = settings->pdfAuthor();
         opts.markdownCopy = settings->pdfMarkdownCopy();
         opts.unwrapParagraphs = settings->pdfUnwrapParagraphs();
@@ -1049,7 +1049,7 @@ void MainWindow::onFileExportPdf()
         m_fontManager->resetUsage();
         Layout::Engine layoutEngine(m_fontManager, m_textShaper);
         layoutEngine.setHyphenateJustifiedText(
-            PrettyReaderSettings::self()->hyphenateJustifiedText());
+            PenelopeSettings::self()->hyphenateJustifiedText());
         if (opts.markdownCopy)
             layoutEngine.setMarkdownDecorations(true);
         Layout::LayoutResult layoutResult = layoutEngine.layout(filteredDoc, pl);
@@ -1261,7 +1261,7 @@ void MainWindow::showPreferences()
     if (KConfigDialog::showDialog(QStringLiteral("settings")))
         return;
 
-    auto *dialog = new PrettyReaderConfigDialog(this);
+    auto *dialog = new PenelopeConfigDialog(this);
     connect(dialog, &KConfigDialog::settingsChanged,
             this, &MainWindow::onSettingsChanged);
     dialog->show();
@@ -1269,7 +1269,7 @@ void MainWindow::showPreferences()
 
 void MainWindow::onSettingsChanged()
 {
-    auto *settings = PrettyReaderSettings::self();
+    auto *settings = PenelopeSettings::self();
 
     // Reconfigure hyphenator
     if (settings->hyphenationEnabled() || settings->hyphenateJustifiedText()) {
@@ -1286,7 +1286,7 @@ void MainWindow::onSettingsChanged()
 
 void MainWindow::onRenderModeChanged()
 {
-    bool webMode = PrettyReaderSettings::self()->useWebView();
+    bool webMode = PenelopeSettings::self()->useWebView();
     bool printMode = !webMode;
 
     // Show/hide template picker based on render mode
@@ -1547,15 +1547,15 @@ void MainWindow::rebuildCurrentDocument()
     PageLayout pl = m_pageDockWidget->currentPageLayout();
     QFileInfo fi(filePath);
 
-    if (PrettyReaderSettings::self()->usePdfRenderer()) {
+    if (PenelopeSettings::self()->usePdfRenderer()) {
         // --- New rendering pipeline (shared content building) ---
         ContentBuilder contentBuilder;
         contentBuilder.setBasePath(fi.absolutePath());
         contentBuilder.setStyleManager(styleManager);
-        if (PrettyReaderSettings::self()->hyphenationEnabled()
-            || PrettyReaderSettings::self()->hyphenateJustifiedText())
+        if (PenelopeSettings::self()->hyphenationEnabled()
+            || PenelopeSettings::self()->hyphenateJustifiedText())
             contentBuilder.setHyphenator(m_hyphenator);
-        if (PrettyReaderSettings::self()->shortWordsEnabled())
+        if (PenelopeSettings::self()->shortWordsEnabled())
             contentBuilder.setShortWords(m_shortWords);
         contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
         Content::Document contentDoc = contentBuilder.build(markdown);
@@ -1566,9 +1566,9 @@ void MainWindow::rebuildCurrentDocument()
 
         Layout::Engine layoutEngine(m_fontManager, m_textShaper);
         layoutEngine.setHyphenateJustifiedText(
-            PrettyReaderSettings::self()->hyphenateJustifiedText());
+            PenelopeSettings::self()->hyphenateJustifiedText());
 
-        if (PrettyReaderSettings::self()->useWebView()) {
+        if (PenelopeSettings::self()->useWebView()) {
             // --- Web view pipeline ---
             qreal availWidth = view->viewport()->width() - 2 * DocumentView::kSceneMargin;
             qreal zoomFactor = view->zoomPercent() / 100.0;
@@ -1626,7 +1626,7 @@ void MainWindow::rebuildCurrentDocument()
             Layout::LayoutResult layoutResult = layoutEngine.layout(contentDoc, pl);
 
             PdfGenerator pdfGen(m_fontManager);
-            pdfGen.setMaxJustifyGap(PrettyReaderSettings::self()->maxJustifyGap());
+            pdfGen.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
             QByteArray pdf = pdfGen.generate(layoutResult, pl, fi.baseName());
 
             // Clear legacy document if switching pipelines
@@ -1680,10 +1680,10 @@ void MainWindow::rebuildCurrentDocument()
         auto *builder = new DocumentBuilder(doc, this);
         builder->setBasePath(fi.absolutePath());
         builder->setStyleManager(styleManager);
-        if (PrettyReaderSettings::self()->hyphenationEnabled()
-            || PrettyReaderSettings::self()->hyphenateJustifiedText())
+        if (PenelopeSettings::self()->hyphenationEnabled()
+            || PenelopeSettings::self()->hyphenateJustifiedText())
             builder->setHyphenator(m_hyphenator);
-        if (PrettyReaderSettings::self()->shortWordsEnabled())
+        if (PenelopeSettings::self()->shortWordsEnabled())
             builder->setShortWords(m_shortWords);
         builder->setFootnoteStyle(styleManager->footnoteStyle());
         builder->build(markdown);
@@ -1745,7 +1745,7 @@ void MainWindow::openFile(const QUrl &url)
     PageLayout openPl = m_pageDockWidget->currentPageLayout();
     tab->documentView()->setPageLayout(openPl);
 
-    const bool webMode = PrettyReaderSettings::self()->useWebView();
+    const bool webMode = PenelopeSettings::self()->useWebView();
     if (webMode)
         tab->documentView()->setRenderMode(DocumentView::WebMode);
 
@@ -1763,15 +1763,15 @@ void MainWindow::openFile(const QUrl &url)
 
     if (webMode) {
         // Web mode: defer to rebuildCurrentDocument() after tab is current
-    } else if (PrettyReaderSettings::self()->usePdfRenderer()) {
+    } else if (PenelopeSettings::self()->usePdfRenderer()) {
         // --- New PDF rendering pipeline ---
         ContentBuilder contentBuilder;
         contentBuilder.setBasePath(fi.absolutePath());
         contentBuilder.setStyleManager(styleManager);
-        if (PrettyReaderSettings::self()->hyphenationEnabled()
-            || PrettyReaderSettings::self()->hyphenateJustifiedText())
+        if (PenelopeSettings::self()->hyphenationEnabled()
+            || PenelopeSettings::self()->hyphenateJustifiedText())
             contentBuilder.setHyphenator(m_hyphenator);
-        if (PrettyReaderSettings::self()->shortWordsEnabled())
+        if (PenelopeSettings::self()->shortWordsEnabled())
             contentBuilder.setShortWords(m_shortWords);
         contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
         Content::Document contentDoc = contentBuilder.build(markdown);
@@ -1782,11 +1782,11 @@ void MainWindow::openFile(const QUrl &url)
 
         Layout::Engine layoutEngine(m_fontManager, m_textShaper);
         layoutEngine.setHyphenateJustifiedText(
-            PrettyReaderSettings::self()->hyphenateJustifiedText());
+            PenelopeSettings::self()->hyphenateJustifiedText());
         Layout::LayoutResult layoutResult = layoutEngine.layout(contentDoc, openPl);
 
         PdfGenerator pdfGen(m_fontManager);
-        pdfGen.setMaxJustifyGap(PrettyReaderSettings::self()->maxJustifyGap());
+        pdfGen.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
         QByteArray pdf = pdfGen.generate(layoutResult, openPl, fi.baseName());
 
         tab->documentView()->setPdfData(pdf);
@@ -1830,10 +1830,10 @@ void MainWindow::openFile(const QUrl &url)
         auto *builder = new DocumentBuilder(doc, this);
         builder->setBasePath(fi.absolutePath());
         builder->setStyleManager(styleManager);
-        if (PrettyReaderSettings::self()->hyphenationEnabled()
-            || PrettyReaderSettings::self()->hyphenateJustifiedText())
+        if (PenelopeSettings::self()->hyphenationEnabled()
+            || PenelopeSettings::self()->hyphenateJustifiedText())
             builder->setHyphenator(m_hyphenator);
-        if (PrettyReaderSettings::self()->shortWordsEnabled())
+        if (PenelopeSettings::self()->shortWordsEnabled())
             builder->setShortWords(m_shortWords);
         builder->setFootnoteStyle(styleManager->footnoteStyle());
         builder->build(markdown);
@@ -1847,14 +1847,14 @@ void MainWindow::openFile(const QUrl &url)
     tab->documentView()->setDocumentInfo(fi.fileName(), fi.baseName());
 
     // Apply saved view mode from settings
-    auto settingsViewMode = PrettyReaderSettings::self()->viewMode();
+    auto settingsViewMode = PenelopeSettings::self()->viewMode();
     DocumentView::ViewMode dvMode = DocumentView::Continuous;
     switch (settingsViewMode) {
-    case PrettyReaderSettings::SinglePage:                dvMode = DocumentView::SinglePage; break;
-    case PrettyReaderSettings::FacingPages:               dvMode = DocumentView::FacingPages; break;
-    case PrettyReaderSettings::FacingPagesFirstAlone:     dvMode = DocumentView::FacingPagesFirstAlone; break;
-    case PrettyReaderSettings::ContinuousFacing:          dvMode = DocumentView::ContinuousFacing; break;
-    case PrettyReaderSettings::ContinuousFacingFirstAlone: dvMode = DocumentView::ContinuousFacingFirstAlone; break;
+    case PenelopeSettings::SinglePage:                dvMode = DocumentView::SinglePage; break;
+    case PenelopeSettings::FacingPages:               dvMode = DocumentView::FacingPages; break;
+    case PenelopeSettings::FacingPagesFirstAlone:     dvMode = DocumentView::FacingPagesFirstAlone; break;
+    case PenelopeSettings::ContinuousFacing:          dvMode = DocumentView::ContinuousFacing; break;
+    case PenelopeSettings::ContinuousFacingFirstAlone: dvMode = DocumentView::ContinuousFacingFirstAlone; break;
     default: break;
     }
     tab->documentView()->setViewMode(dvMode);

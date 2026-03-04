@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_RESOURCEPICKERWIDGET_H
-#define PRETTYREADER_RESOURCEPICKERWIDGET_H
+#ifndef PENELOPE_RESOURCEPICKERWIDGET_H
+#define PENELOPE_RESOURCEPICKERWIDGET_H
 
 #include <QMouseEvent>
 #include <QPainter>
@@ -116,4 +116,4 @@ private:
     QWidget *m_gridContainer = nullptr;
 };
 
-#endif // PRETTYREADER_RESOURCEPICKERWIDGET_H
+#endif // PENELOPE_RESOURCEPICKERWIDGET_H

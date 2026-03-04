@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_SINGLEINSTANCEGUARD_H
-#define PRETTYREADER_SINGLEINSTANCEGUARD_H
+#ifndef PENELOPE_SINGLEINSTANCEGUARD_H
+#define PENELOPE_SINGLEINSTANCEGUARD_H
 
 #include <QLocalServer>
 #include <QObject>
@@ -28,4 +28,4 @@ private:
     QLocalServer *m_server = nullptr;
 };
 
-#endif // PRETTYREADER_SINGLEINSTANCEGUARD_H
+#endif // PENELOPE_SINGLEINSTANCEGUARD_H

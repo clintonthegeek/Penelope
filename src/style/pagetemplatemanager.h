@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PAGETEMPLATEMANAGER_H
-#define PRETTYREADER_PAGETEMPLATEMANAGER_H
+#ifndef PENELOPE_PAGETEMPLATEMANAGER_H
+#define PENELOPE_PAGETEMPLATEMANAGER_H
 
 #include <QObject>
 #include <QString>
@@ -35,4 +35,4 @@ private:
     ResourceStore m_store;
 };
 
-#endif // PRETTYREADER_PAGETEMPLATEMANAGER_H
+#endif // PENELOPE_PAGETEMPLATEMANAGER_H

@@ -12,8 +12,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFGENERATOR_H
-#define PRETTYREADER_PDFGENERATOR_H
+#ifndef PENELOPE_PDFGENERATOR_H
+#define PENELOPE_PDFGENERATOR_H
 
 #include <QByteArray>
 #include <QString>
@@ -145,4 +145,4 @@ private:
     Pdf::ResourceDict *m_resources = nullptr;  // set during generate(), null otherwise
 };
 
-#endif // PRETTYREADER_PDFGENERATOR_H
+#endif // PENELOPE_PDFGENERATOR_H

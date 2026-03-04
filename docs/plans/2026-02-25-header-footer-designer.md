@@ -24,8 +24,8 @@ A QLineEdit subclass that accepts drag-and-drop of text/plain MIME data and inse
 Create `src/widgets/droptargetlineedit.h`:
 
 ```cpp
-#ifndef PRETTYREADER_DROPTARGETLINEEDIT_H
-#define PRETTYREADER_DROPTARGETLINEEDIT_H
+#ifndef PENELOPE_DROPTARGETLINEEDIT_H
+#define PENELOPE_DROPTARGETLINEEDIT_H
 
 #include <QLineEdit>
 
@@ -45,7 +45,7 @@ protected:
     void dropEvent(QDropEvent *event) override;
 };
 
-#endif // PRETTYREADER_DROPTARGETLINEEDIT_H
+#endif // PENELOPE_DROPTARGETLINEEDIT_H
 ```
 
 **Step 2: Create the implementation file**
@@ -134,8 +134,8 @@ The modal dialog with tile palette, header/footer sections, and OK/Cancel button
 Create `src/widgets/headerfooterdialog.h`:
 
 ```cpp
-#ifndef PRETTYREADER_HEADERFOOTERDIALOG_H
-#define PRETTYREADER_HEADERFOOTERDIALOG_H
+#ifndef PENELOPE_HEADERFOOTERDIALOG_H
+#define PENELOPE_HEADERFOOTERDIALOG_H
 
 #include <QDialog>
 
@@ -200,7 +200,7 @@ private:
     PageLayout m_baseLayout;
 };
 
-#endif // PRETTYREADER_HEADERFOOTERDIALOG_H
+#endif // PENELOPE_HEADERFOOTERDIALOG_H
 ```
 
 **Step 2: Create the implementation file**
@@ -722,7 +722,7 @@ Expected: Build succeeds.
 
 **Step 4: Manual test**
 
-Run: `./build/bin/PrettyReader`
+Run: `./build/bin/Penelope`
 - Open a document
 - Go to the Page dock
 - Verify Header and Footer checkboxes are visible
@@ -882,7 +882,7 @@ Expected: Clean build, no errors.
 
 **Step 2: Manual end-to-end test**
 
-Run: `./build/bin/PrettyReader`
+Run: `./build/bin/Penelope`
 
 1. Open a multi-page markdown document
 2. Go to Page dock → check Header, check Footer

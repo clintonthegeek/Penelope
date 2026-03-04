@@ -3,7 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
-#include <QGroupBox>
+#include <QToolBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -20,17 +20,21 @@ void FootnoteConfigWidget::buildUI()
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(8);
+    layout->setSpacing(0);
 
-    // --- Numbering ---
-    auto *numGroup = new QGroupBox(tr("Footnotes"));
-    auto *numLayout = new QVBoxLayout(numGroup);
-    numLayout->setContentsMargins(6, 6, 6, 6);
+    auto *toolBox = new QToolBox;
+    layout->addWidget(toolBox, 1);
+
+    // --- Footnotes page ---
+    auto *numPage = new QWidget;
+    auto *numLayout = new QVBoxLayout(numPage);
+    numLayout->setContentsMargins(4, 4, 4, 4);
     numLayout->setSpacing(4);
 
     auto *formatRow = new QHBoxLayout;
     formatRow->addWidget(new QLabel(tr("Format:")));
     m_formatCombo = new QComboBox;
+    m_formatCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_formatCombo->addItem(tr("Arabic (1, 2, 3)"),
                             static_cast<int>(FootnoteStyle::Arabic));
     m_formatCombo->addItem(tr("Roman lower (i, ii, iii)"),
@@ -54,6 +58,7 @@ void FootnoteConfigWidget::buildUI()
 
     startRow->addWidget(new QLabel(tr("Restart:")));
     m_restartCombo = new QComboBox;
+    m_restartCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_restartCombo->addItem(tr("Per document"),
                              static_cast<int>(FootnoteStyle::PerDocument));
     m_restartCombo->addItem(tr("Per page"),
@@ -74,12 +79,13 @@ void FootnoteConfigWidget::buildUI()
     fixRow->addStretch();
     numLayout->addLayout(fixRow);
 
-    layout->addWidget(numGroup);
+    numLayout->addStretch();
+    toolBox->addItem(numPage, tr("Footnotes"));
 
-    // --- Appearance ---
-    auto *appearGroup = new QGroupBox(tr("Appearance"));
-    auto *appearLayout = new QVBoxLayout(appearGroup);
-    appearLayout->setContentsMargins(6, 6, 6, 6);
+    // --- Appearance page ---
+    auto *appearPage = new QWidget;
+    auto *appearLayout = new QVBoxLayout(appearPage);
+    appearLayout->setContentsMargins(4, 4, 4, 4);
     appearLayout->setSpacing(4);
 
     m_superRefCheck = new QCheckBox(tr("Superscript references in text"));
@@ -91,12 +97,13 @@ void FootnoteConfigWidget::buildUI()
     m_endnotesCheck = new QCheckBox(tr("Display as endnotes"));
     appearLayout->addWidget(m_endnotesCheck);
 
-    layout->addWidget(appearGroup);
+    appearLayout->addStretch();
+    toolBox->addItem(appearPage, tr("Appearance"));
 
-    // --- Separator ---
-    auto *sepGroup = new QGroupBox(tr("Separator"));
-    auto *sepLayout = new QVBoxLayout(sepGroup);
-    sepLayout->setContentsMargins(6, 6, 6, 6);
+    // --- Separator page ---
+    auto *sepPage = new QWidget;
+    auto *sepLayout = new QVBoxLayout(sepPage);
+    sepLayout->setContentsMargins(4, 4, 4, 4);
     sepLayout->setSpacing(4);
 
     m_separatorCheck = new QCheckBox(tr("Show separator line"));
@@ -126,8 +133,8 @@ void FootnoteConfigWidget::buildUI()
         m_sepLengthSpin->setEnabled(on);
     });
 
-    layout->addWidget(sepGroup);
-    layout->addStretch();
+    sepLayout->addStretch();
+    toolBox->addItem(sepPage, tr("Separator"));
 
     // Connect all change signals
     connect(m_formatCombo, qOverload<int>(&QComboBox::currentIndexChanged),

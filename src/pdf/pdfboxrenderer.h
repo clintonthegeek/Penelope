@@ -9,8 +9,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFBOXRENDERER_H
-#define PRETTYREADER_PDFBOXRENDERER_H
+#ifndef PENELOPE_PDFBOXRENDERER_H
+#define PENELOPE_PDFBOXRENDERER_H
 
 #include "boxtreerenderer.h"
 #include "pdfexportoptions.h"
@@ -203,4 +203,4 @@ private:
     QList<PdfLinkAnnotation> m_linkAnnotations;
 };
 
-#endif // PRETTYREADER_PDFBOXRENDERER_H
+#endif // PENELOPE_PDFBOXRENDERER_H

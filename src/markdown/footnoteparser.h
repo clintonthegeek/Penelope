@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_FOOTNOTEPARSER_H
-#define PRETTYREADER_FOOTNOTEPARSER_H
+#ifndef PENELOPE_FOOTNOTEPARSER_H
+#define PENELOPE_FOOTNOTEPARSER_H
 
 #include <QList>
 #include <QString>
@@ -52,4 +52,4 @@ private:
     QList<FootnoteDefinition> m_footnotes;
 };
 
-#endif // PRETTYREADER_FOOTNOTEPARSER_H
+#endif // PENELOPE_FOOTNOTEPARSER_H

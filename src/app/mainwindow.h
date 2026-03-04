@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_MAINWINDOW_H
-#define PRETTYREADER_MAINWINDOW_H
+#ifndef PENELOPE_MAINWINDOW_H
+#define PENELOPE_MAINWINDOW_H
 
 #include <KXmlGuiWindow>
 
@@ -123,4 +123,4 @@ private:
     quint64 m_compositionGeneration = 1;
 };
 
-#endif // PRETTYREADER_MAINWINDOW_H
+#endif // PENELOPE_MAINWINDOW_H

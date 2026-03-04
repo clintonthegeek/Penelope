@@ -61,7 +61,7 @@ Add the method declaration near `renderHersheyGlyphBox` (after line 59):
 
 **Step 3: Build and verify it compiles**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compiles cleanly (no uses of the new types yet)
 
 **Step 4: Commit**
@@ -149,7 +149,7 @@ PdfGenerator::GlyphFormEntry PdfGenerator::ensureGlyphForm(
 
 **Step 2: Build and verify it compiles**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compiles cleanly (ensureGlyphForm exists but isn't called yet)
 
 **Step 3: Commit**
@@ -199,7 +199,7 @@ In `generate()`, with the other `.clear()` calls (around line 75-79), add:
 
 **Step 4: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compiles cleanly
 
 **Step 5: Commit**
@@ -270,7 +270,7 @@ The color must now be set per-glyph before the `Do`. Add the stroke color inside
 
 **Step 2: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compiles
 
 **Step 3: Commit**
@@ -313,7 +313,7 @@ Replace the Hershey hyphen rendering block (lines 826-851):
 
 **Step 2: Build and verify**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Compiles
 
 **Step 3: Commit**
@@ -349,7 +349,7 @@ with:
 
 **Step 2: Build and do a visual test**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Then manually export a PDF and compare stroke thickness with the old rendering. Glyphs should look identical.
 
 **Step 3: Commit**
@@ -367,7 +367,7 @@ fix: correct XObject stroke width to match old fontSize-based calculation
 
 **Step 1: Build the full app**
 
-Run: `cmake --build build --target PrettyReader 2>&1 | tail -20`
+Run: `cmake --build build --target Penelope 2>&1 | tail -20`
 Expected: Clean build, no warnings
 
 **Step 2: Visual comparison test**

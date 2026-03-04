@@ -7,7 +7,7 @@
 #include "codespancollector.h"
 #include "fontmanager.h"
 #include "linebreaker.h"
-#include "prettyreadersettings.h"
+#include "penelopesettings.h"
 #include "textshaper.h"
 
 
@@ -1170,7 +1170,7 @@ TableBox Engine::layoutTable(const Content::Table &table, qreal availWidth)
     auto metrics = measureColumnMetrics(table);
 
     QList<qreal> colWidths;
-    if (PrettyReaderSettings::self()->tableLayoutAlgorithm() == PrettyReaderSettings::EnumTableLayoutAlgorithm::Optimal)
+    if (PenelopeSettings::self()->tableLayoutAlgorithm() == PenelopeSettings::EnumTableLayoutAlgorithm::Optimal)
         colWidths = distributeColumnsOptimal(table, metrics, availWidth);
     else
         colWidths = distributeColumnsAuto(metrics, availWidth);

@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_TOCWIDGET_H
-#define PRETTYREADER_TOCWIDGET_H
+#ifndef PENELOPE_TOCWIDGET_H
+#define PENELOPE_TOCWIDGET_H
 
 #include <QHash>
 #include <QWidget>
@@ -37,4 +37,4 @@ private:
     QHash<int, QTreeWidgetItem *> m_headingsByLine; // keyed by source startLine
 };
 
-#endif // PRETTYREADER_TOCWIDGET_H
+#endif // PENELOPE_TOCWIDGET_H

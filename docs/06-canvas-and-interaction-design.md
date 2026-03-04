@@ -1,4 +1,4 @@
-# PrettyReader: Canvas & Interaction Design (Planning Stage 4)
+# Penelope: Canvas & Interaction Design (Planning Stage 4)
 
 ## Architecture: QGraphicsView-Based Paginated Canvas
 

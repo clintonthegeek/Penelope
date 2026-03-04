@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PAGETEMPLATE_H
-#define PRETTYREADER_PAGETEMPLATE_H
+#ifndef PENELOPE_PAGETEMPLATE_H
+#define PENELOPE_PAGETEMPLATE_H
 
 #include <QJsonObject>
 #include <QString>
@@ -29,4 +29,4 @@ struct PageTemplate
     QJsonObject toJson() const;
 };
 
-#endif // PRETTYREADER_PAGETEMPLATE_H
+#endif // PENELOPE_PAGETEMPLATE_H

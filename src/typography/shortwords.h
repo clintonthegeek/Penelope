@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_SHORTWORDS_H
-#define PRETTYREADER_SHORTWORDS_H
+#ifndef PENELOPE_SHORTWORDS_H
+#define PENELOPE_SHORTWORDS_H
 
 #include <QSet>
 #include <QString>
@@ -29,4 +29,4 @@ private:
     QString m_language;
 };
 
-#endif // PRETTYREADER_SHORTWORDS_H
+#endif // PENELOPE_SHORTWORDS_H

@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_STYLEPROPERTIESEDITOR_H
-#define PRETTYREADER_STYLEPROPERTIESEDITOR_H
+#ifndef PENELOPE_STYLEPROPERTIESEDITOR_H
+#define PENELOPE_STYLEPROPERTIESEDITOR_H
 
 #include "paragraphstyle.h"
 #include "characterstyle.h"
@@ -11,9 +11,9 @@ class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QFontComboBox;
-class QGroupBox;
 class QLabel;
 class QSpinBox;
+class QToolBox;
 class QToolButton;
 class StyleManager;
 
@@ -67,8 +67,8 @@ private:
     // TODO: implement underline and strikethrough functionality
     QToolButton *m_underlineBtn = nullptr;
     QToolButton *m_strikeBtn = nullptr;
-    // Font features section
-    QGroupBox *m_fontFeaturesGroup = nullptr;
+    // Section toolbox
+    QToolBox *m_sectionBox = nullptr;
     QCheckBox *m_ligaturesCheck = nullptr;
     QCheckBox *m_smallCapsCheck = nullptr;
     QCheckBox *m_oldStyleNumsCheck = nullptr;
@@ -77,7 +77,7 @@ private:
     QCheckBox *m_contextAltsCheck = nullptr;
 
     // Paragraph section
-    QGroupBox *m_paragraphSection = nullptr;
+    int m_paragraphPageIndex = -1;
     QToolButton *m_alignLeftBtn = nullptr;
     QToolButton *m_alignCenterBtn = nullptr;
     QToolButton *m_alignRightBtn = nullptr;
@@ -133,4 +133,4 @@ private:
     CharacterStyle m_resolvedChar;
 };
 
-#endif // PRETTYREADER_STYLEPROPERTIESEDITOR_H
+#endif // PENELOPE_STYLEPROPERTIESEDITOR_H

@@ -17,22 +17,22 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
-    KLocalizedString::setApplicationDomain("prettyreader");
+    KLocalizedString::setApplicationDomain("penelope");
 
     KAboutData aboutData(
-        QStringLiteral("prettyreader"),
-        i18n("PrettyReader"),
+        QStringLiteral("penelope"),
+        i18n("Penelope"),
         QStringLiteral("0.1.0"),
         i18n("A beautiful paginated markdown reader"),
         KAboutLicense::GPL_V3,
         i18n("(c) 2025-2026"),
         QString(),
-        QStringLiteral("https://github.com/clintonthegeek/PrettyReader")
+        QStringLiteral("https://github.com/clintonthegeek/Penelope")
     );
     aboutData.addAuthor(i18n("Clinton Ignatov"), i18n("Developer"), QString());
-    aboutData.setOrganizationDomain("prettyreader.org");
+    aboutData.setOrganizationDomain("penelope.org");
     aboutData.setDesktopFileName(
-        QStringLiteral("org.prettyreader.PrettyReader"));
+        QStringLiteral("org.penelope.Penelope"));
 
     KAboutData::setApplicationData(aboutData);
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("document-viewer")));

@@ -137,8 +137,8 @@ Create `src/layout/linebreaker.h` with the Knuth-Plass data model:
  * linebreaker.h — Knuth-Plass optimal line breaking
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#ifndef PRETTYREADER_LINEBREAKER_H
-#define PRETTYREADER_LINEBREAKER_H
+#ifndef PENELOPE_LINEBREAKER_H
+#define PENELOPE_LINEBREAKER_H
 
 #include <QList>
 #include <limits>
@@ -236,7 +236,7 @@ BlendedSpacing computeBlendedSpacing(qreal adjustmentRatio,
 
 } // namespace LineBreaking
 
-#endif // PRETTYREADER_LINEBREAKER_H
+#endif // PENELOPE_LINEBREAKER_H
 ```
 
 **Step 2: Create stub implementation**
@@ -1201,7 +1201,7 @@ git commit -m "Move justify gap threshold to layout engine, simplify PDF generat
 
 ```bash
 make -C build -j$(($(nproc)-1))
-./build/bin/PrettyReader
+./build/bin/Penelope
 ```
 
 Open a markdown document with:

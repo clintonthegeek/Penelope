@@ -8,7 +8,7 @@
 
 **Tech Stack:** Existing layout engine, PdfGenerator, FreeType glyph ID lookup. No new dependencies.
 
-**Relationship to "Copy as Markdown" feature:** The existing Copy as Markdown feature (`DocumentView::copySelectionAsMarkdown()`) works at the viewer level — it maps selection rectangles to original markdown source lines via the source map. That feature is for copying within PrettyReader. This new feature embeds markdown syntax into the PDF itself so external viewers (Okular, Acrobat, etc.) return markdown. The two features are completely independent; no code is shared.
+**Relationship to "Copy as Markdown" feature:** The existing Copy as Markdown feature (`DocumentView::copySelectionAsMarkdown()`) works at the viewer level — it maps selection rectangles to original markdown source lines via the source map. That feature is for copying within Penelope. This new feature embeds markdown syntax into the PDF itself so external viewers (Okular, Acrobat, etc.) return markdown. The two features are completely independent; no code is shared.
 
 ---
 

@@ -9,8 +9,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_FONTDEGRADATIONMAP_H
-#define PRETTYREADER_FONTDEGRADATIONMAP_H
+#ifndef PENELOPE_FONTDEGRADATIONMAP_H
+#define PENELOPE_FONTDEGRADATIONMAP_H
 
 #include <QFont>
 #include <QString>
@@ -35,4 +35,4 @@ private:
     FontDegradationMap() = delete;
 };
 
-#endif // PRETTYREADER_FONTDEGRADATIONMAP_H
+#endif // PENELOPE_FONTDEGRADATIONMAP_H

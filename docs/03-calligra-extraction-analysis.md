@@ -1,4 +1,4 @@
-# PrettyReader: Calligra Source Extraction Analysis (Planning Stage 1)
+# Penelope: Calligra Source Extraction Analysis (Planning Stage 1)
 
 ## Executive Summary
 
@@ -190,7 +190,7 @@ class KoTextLayoutRootAreaProvider {
 };
 ```
 
-**For PrettyReader, we implement our own provider** that:
+**For Penelope, we implement our own provider** that:
 - Creates root areas corresponding to page regions
 - Returns page rectangles (based on page layout settings)
 - Returns obstructions for any images on the page
@@ -407,7 +407,7 @@ cleaning.
 
 ---
 
-## V. Dependency Summary: What PrettyReader Pulls In
+## V. Dependency Summary: What Penelope Pulls In
 
 ### From Calligra (extracted & adapted source, in our tree)
 

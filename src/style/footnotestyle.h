@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_FOOTNOTESTYLE_H
-#define PRETTYREADER_FOOTNOTESTYLE_H
+#ifndef PENELOPE_FOOTNOTESTYLE_H
+#define PENELOPE_FOOTNOTESTYLE_H
 
 #include <QString>
 
@@ -24,4 +24,4 @@ struct FootnoteStyle
     QString formatNumber(int n) const;
 };
 
-#endif // PRETTYREADER_FOOTNOTESTYLE_H
+#endif // PENELOPE_FOOTNOTESTYLE_H

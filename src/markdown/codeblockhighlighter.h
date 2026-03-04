@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_CODEBLOCKHIGHLIGHTER_H
-#define PRETTYREADER_CODEBLOCKHIGHLIGHTER_H
+#ifndef PENELOPE_CODEBLOCKHIGHLIGHTER_H
+#define PENELOPE_CODEBLOCKHIGHLIGHTER_H
 
 #include <KSyntaxHighlighting/AbstractHighlighter>
 #include <KSyntaxHighlighting/Repository>
@@ -24,4 +24,4 @@ private:
     QTextBlock m_currentBlock;
 };
 
-#endif // PRETTYREADER_CODEBLOCKHIGHLIGHTER_H
+#endif // PENELOPE_CODEBLOCKHIGHLIGHTER_H

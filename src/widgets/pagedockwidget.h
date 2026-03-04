@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_PAGEDOCKWIDGET_H
-#define PRETTYREADER_PAGEDOCKWIDGET_H
+#ifndef PENELOPE_PAGEDOCKWIDGET_H
+#define PENELOPE_PAGEDOCKWIDGET_H
 
 #include <QWidget>
 
@@ -45,4 +45,4 @@ private:
     PageLayoutWidget *m_pageLayoutWidget = nullptr;
 };
 
-#endif // PRETTYREADER_PAGEDOCKWIDGET_H
+#endif // PENELOPE_PAGEDOCKWIDGET_H

@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_FONTMANAGER_H
-#define PRETTYREADER_FONTMANAGER_H
+#ifndef PENELOPE_FONTMANAGER_H
+#define PENELOPE_FONTMANAGER_H
 
 #include <QHash>
 #include <QObject>
@@ -92,4 +92,4 @@ private:
     QString resolveFontPath(const QString &family, int weight, bool italic) const;
 };
 
-#endif // PRETTYREADER_FONTMANAGER_H
+#endif // PENELOPE_FONTMANAGER_H

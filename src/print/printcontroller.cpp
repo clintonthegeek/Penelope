@@ -81,7 +81,7 @@ void PrintController::exportPdf(const QString &filePath, QWidget *parentWidget)
     printer.setOutputFileName(path);
     configurePrinter(&printer);
 
-    printer.setCreator(QStringLiteral("PrettyReader"));
+    printer.setCreator(QStringLiteral("Penelope"));
     if (!m_documentTitle.isEmpty())
         printer.setDocName(m_documentTitle);
 
@@ -139,6 +139,9 @@ void PrintController::renderDocumentFromPdf(QPrinter *printer)
     if (!doc)
         return;
 
+    // renderToPainter() requires the QPainter backend (not the default Splash).
+    doc->setRenderBackend(Poppler::Document::QPainterBackend);
+
     int totalPages = doc->numPages();
 
     // Respect page range from print dialog (1-based; 0 means all pages)
@@ -149,13 +152,16 @@ void PrintController::renderDocumentFromPdf(QPrinter *printer)
     fromPage = qBound(1, fromPage, totalPages);
     toPage = qBound(fromPage, toPage, totalPages);
 
+    // Full-page mode: QPainter origin covers the entire physical page,
+    // matching PDF coordinate space where margins are baked into content.
+    printer->setFullPage(true);
+
     QPainter painter(printer);
     if (!painter.isActive())
         return;
 
-    // renderToPainter draws vectors directly — no rasterization.
-    // Pass printer resolution so PDF coordinates map 1:1 to device pixels.
-    qreal dpi = printer->resolution();
+    // Pass printer resolution so PDF points map 1:1 to device pixels.
+    const qreal dpi = printer->resolution();
 
     bool firstPage = true;
     for (int i = fromPage - 1; i < toPage; ++i) {

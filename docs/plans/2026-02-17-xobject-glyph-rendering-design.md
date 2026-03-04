@@ -2,7 +2,7 @@
 
 ## Problem
 
-PrettyReader's PDF export needs visible glyph art that does NOT participate in
+Penelope's PDF export needs visible glyph art that does NOT participate in
 text extraction.  The Markdown-copy feature (Layer 3) places invisible
 `3 Tr` text with `ActualText` dictionaries for copy-paste; any visible text
 operators (`Tj`, `TJ`) compete with this layer, confusing PDF viewers.

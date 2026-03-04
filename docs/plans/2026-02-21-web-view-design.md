@@ -5,7 +5,7 @@
 
 ## Overview
 
-Add a dynamic "web" view mode to PrettyReader — a continuous, reflow-based text view
+Add a dynamic "web" view mode to Penelope — a continuous, reflow-based text view
 with no page boundaries, no headers/footers, word-wrapped to the viewport width. All
 footnotes appear at the document bottom. Tables and code blocks wrap to fit the viewport.
 The view uses the same HarfBuzz shaping and Knuth-Plass line breaking as the print view,
@@ -149,7 +149,7 @@ Zoom scales text size (like browser Ctrl+/-):
 ### Toolbar Toggle
 
 A `QActionGroup` with two `QAction`s (Print / Web), displayed as toggle buttons in
-the toolbar. Persisted in `PrettyReaderSettings`.
+the toolbar. Persisted in `PenelopeSettings`.
 
 ### Mode Switching
 

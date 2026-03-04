@@ -290,7 +290,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
     // Info object
     writer.startObj(writer.infoObj());
     writer.write("<<\n");
-    writer.write("/Producer " + Pdf::toLiteralString(QStringLiteral("PrettyReader")) + "\n");
+    writer.write("/Producer " + Pdf::toLiteralString(QStringLiteral("Penelope")) + "\n");
     QString infoTitle = m_exportOptions.title.isEmpty() ? m_title : m_exportOptions.title;
     if (!infoTitle.isEmpty())
         writer.write("/Title " + Pdf::toLiteralString(Pdf::toUTF16(infoTitle)) + "\n");

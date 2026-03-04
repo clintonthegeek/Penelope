@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_SIDEBAR_H
-#define PRETTYREADER_SIDEBAR_H
+#ifndef PENELOPE_SIDEBAR_H
+#define PENELOPE_SIDEBAR_H
 
 #include <QWidget>
 
@@ -54,4 +54,4 @@ private:
     int m_nextTabId = 0;
 };
 
-#endif // PRETTYREADER_SIDEBAR_H
+#endif // PENELOPE_SIDEBAR_H

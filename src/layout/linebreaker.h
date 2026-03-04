@@ -2,8 +2,8 @@
  * linebreaker.h — Knuth-Plass optimal line breaking
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#ifndef PRETTYREADER_LINEBREAKER_H
-#define PRETTYREADER_LINEBREAKER_H
+#ifndef PENELOPE_LINEBREAKER_H
+#define PENELOPE_LINEBREAKER_H
 
 #include <QList>
 
@@ -83,4 +83,4 @@ qreal computeAdjustmentRatio(const QList<Item> &items,
 
 } // namespace LineBreaking
 
-#endif // PRETTYREADER_LINEBREAKER_H
+#endif // PENELOPE_LINEBREAKER_H

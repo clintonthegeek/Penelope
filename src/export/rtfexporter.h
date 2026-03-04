@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_RTFEXPORTER_H
-#define PRETTYREADER_RTFEXPORTER_H
+#ifndef PENELOPE_RTFEXPORTER_H
+#define PENELOPE_RTFEXPORTER_H
 
 #include <QByteArray>
 #include <QColor>
@@ -64,4 +64,4 @@ private:
     QMap<QRgb, int> m_colorMap;
 };
 
-#endif // PRETTYREADER_RTFEXPORTER_H
+#endif // PENELOPE_RTFEXPORTER_H

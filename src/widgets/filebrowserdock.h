@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_FILEBROWSERDOCK_H
-#define PRETTYREADER_FILEBROWSERDOCK_H
+#ifndef PENELOPE_FILEBROWSERDOCK_H
+#define PENELOPE_FILEBROWSERDOCK_H
 
 #include <QWidget>
 
@@ -32,4 +32,4 @@ private:
     KDirSortFilterProxyModel *m_proxyModel = nullptr;
 };
 
-#endif // PRETTYREADER_FILEBROWSERDOCK_H
+#endif // PENELOPE_FILEBROWSERDOCK_H

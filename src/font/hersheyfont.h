@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_HERSHEYFONT_H
-#define PRETTYREADER_HERSHEYFONT_H
+#ifndef PENELOPE_HERSHEYFONT_H
+#define PENELOPE_HERSHEYFONT_H
 
 #include <QHash>
 #include <QPointF>
@@ -131,4 +131,4 @@ namespace HersheyConstants {
     constexpr qreal kBoldStrokeMultiplier = 1.8;
 }
 
-#endif // PRETTYREADER_HERSHEYFONT_H
+#endif // PENELOPE_HERSHEYFONT_H

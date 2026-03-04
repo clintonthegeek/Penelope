@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_WEBVIEWITEM_H
-#define PRETTYREADER_WEBVIEWITEM_H
+#ifndef PENELOPE_WEBVIEWITEM_H
+#define PENELOPE_WEBVIEWITEM_H
 
 #include "layoutengine.h"
 #include "qtboxrenderer.h"
@@ -39,4 +39,4 @@ private:
     QColor m_pageBackground = Qt::white;
 };
 
-#endif // PRETTYREADER_WEBVIEWITEM_H
+#endif // PENELOPE_WEBVIEWITEM_H

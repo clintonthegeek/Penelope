@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_PARAGRAPHSTYLE_H
-#define PRETTYREADER_PARAGRAPHSTYLE_H
+#ifndef PENELOPE_PARAGRAPHSTYLE_H
+#define PENELOPE_PARAGRAPHSTYLE_H
 
 #include <QFont>
 #include <QString>
@@ -136,4 +136,4 @@ private:
     bool m_hasForeground = false;
 };
 
-#endif // PRETTYREADER_PARAGRAPHSTYLE_H
+#endif // PENELOPE_PARAGRAPHSTYLE_H

@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_TABLESTYLE_H
-#define PRETTYREADER_TABLESTYLE_H
+#ifndef PENELOPE_TABLESTYLE_H
+#define PENELOPE_TABLESTYLE_H
 
 #include <QColor>
 #include <QMarginsF>
@@ -96,4 +96,4 @@ private:
     QString m_bodyParagraphStyle{QStringLiteral("TableBody")};
 };
 
-#endif // PRETTYREADER_TABLESTYLE_H
+#endif // PENELOPE_TABLESTYLE_H

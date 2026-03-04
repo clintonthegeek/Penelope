@@ -1,6 +1,6 @@
-# PrettyReader
+# Penelope
 
-![PrettyReader screenshot](docs/Screenshot.jpg)
+![Penelope screenshot](docs/Screenshot.jpg)
 
 A markdown viewer for KDE.
 

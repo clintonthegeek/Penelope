@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_COLORDOCKWIDGET_H
-#define PRETTYREADER_COLORDOCKWIDGET_H
+#ifndef PENELOPE_COLORDOCKWIDGET_H
+#define PENELOPE_COLORDOCKWIDGET_H
 
 #include <QHash>
 #include <QWidget>
@@ -58,4 +58,4 @@ private:
     QHash<QString, QColor> m_workingColors;
 };
 
-#endif // PRETTYREADER_COLORDOCKWIDGET_H
+#endif // PENELOPE_COLORDOCKWIDGET_H

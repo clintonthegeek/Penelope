@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef PRETTYREADER_PDFEXPORTDIALOG_H
-#define PRETTYREADER_PDFEXPORTDIALOG_H
+#ifndef PENELOPE_PDFEXPORTDIALOG_H
+#define PENELOPE_PDFEXPORTDIALOG_H
 
 #include <KPageDialog>
 
@@ -80,4 +80,4 @@ private:
     bool m_updatingTree = false;
 };
 
-#endif // PRETTYREADER_PDFEXPORTDIALOG_H
+#endif // PENELOPE_PDFEXPORTDIALOG_H

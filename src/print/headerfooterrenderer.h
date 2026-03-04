@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_HEADERFOOTERRENDERER_H
-#define PRETTYREADER_HEADERFOOTERRENDERER_H
+#ifndef PENELOPE_HEADERFOOTERRENDERER_H
+#define PENELOPE_HEADERFOOTERRENDERER_H
 
 #include <QRectF>
 #include <QString>
@@ -28,4 +28,4 @@ QString resolveField(const QString &text, const PageMetadata &meta);
 
 } // namespace HeaderFooterRenderer
 
-#endif // PRETTYREADER_HEADERFOOTERRENDERER_H
+#endif // PENELOPE_HEADERFOOTERRENDERER_H

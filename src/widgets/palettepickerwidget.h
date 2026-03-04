@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef PRETTYREADER_PALETTEPICKERWIDGET_H
-#define PRETTYREADER_PALETTEPICKERWIDGET_H
+#ifndef PENELOPE_PALETTEPICKERWIDGET_H
+#define PENELOPE_PALETTEPICKERWIDGET_H
 
 #include "resourcepickerwidget.h"
 
@@ -22,4 +22,4 @@ private:
     PaletteManager *m_manager = nullptr;
 };
 
-#endif // PRETTYREADER_PALETTEPICKERWIDGET_H
+#endif // PENELOPE_PALETTEPICKERWIDGET_H

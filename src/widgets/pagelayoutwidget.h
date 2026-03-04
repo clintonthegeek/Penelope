@@ -1,5 +1,5 @@
-#ifndef PRETTYREADER_PAGELAYOUTWIDGET_H
-#define PRETTYREADER_PAGELAYOUTWIDGET_H
+#ifndef PENELOPE_PAGELAYOUTWIDGET_H
+#define PENELOPE_PAGELAYOUTWIDGET_H
 
 #include <QHash>
 #include <QWidget>
@@ -54,4 +54,4 @@ private:
     PageLayout m_baseLayout;    // base layout for inherit reference
 };
 
-#endif // PRETTYREADER_PAGELAYOUTWIDGET_H
+#endif // PENELOPE_PAGELAYOUTWIDGET_H

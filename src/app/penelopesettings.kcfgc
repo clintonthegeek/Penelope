@@ -1,5 +1,5 @@
-File=prettyreader.kcfg
-ClassName=PrettyReaderSettings
+File=penelope.kcfg
+ClassName=PenelopeSettings
 Mutators=true
 Singleton=true
 GlobalEnums=true

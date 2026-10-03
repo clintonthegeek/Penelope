@@ -156,7 +156,11 @@ private:
     qreal pdfY(qreal layoutY) const { return m_contentTopY - layoutY; }
 
     static QByteArray pdfCoord(qreal v);
+    static void appendCoord(QByteArray &out, qreal v);
+    static void appendHex16(QByteArray &out, quint16 v);
+    static void appendRect(QByteArray &out, qreal x, qreal y, qreal w, qreal h);
     static QByteArray colorOperator(const QColor &color, bool fill = true);
+    static void appendColorOperator(QByteArray &out, const QColor &color, bool fill = true);
     static QByteArray toUtf16BeHex(const QString &text);
 
     // --- Glyph rendering dispatch ---

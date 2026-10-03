@@ -4,6 +4,7 @@
  */
 
 #include "pdfboxrenderer.h"
+
 #include "fontmanager.h"
 #include "hersheyfont.h"
 #include "pdfwriter.h"
@@ -88,18 +89,68 @@ void PdfBoxRenderer::setContentOrigin(qreal originX, qreal contentTopY)
 
 QByteArray PdfBoxRenderer::pdfCoord(qreal v)
 {
-    return QByteArray::number(v, 'f', 2);
+    QByteArray out;
+    out.reserve(16);
+    appendCoord(out, v);
+    return out;
+}
+
+// Composing operators out of returned QByteArrays allocated once per number and
+// again for every concatenation, which dominated content-stream emission. These
+// append straight into the destination instead.
+//
+// The number formatting deliberately still goes through QByteArray::number:
+// Qt rounds a decimal halfway case away from zero where printf rounds half to
+// even, so 88.125 prints as "88.13" via Qt and "88.12" via snprintf. Font
+// metrics produce exact quarter/eighth values constantly, so substituting
+// snprintf here silently shifted glyph positions. Output is byte-for-byte
+// identical to the previous returning-value forms.
+void PdfBoxRenderer::appendCoord(QByteArray &out, qreal v)
+{
+    out.append(QByteArray::number(v, 'f', 2));
+}
+
+void PdfBoxRenderer::appendHex16(QByteArray &out, quint16 v)
+{
+    static const char kHex[] = "0123456789ABCDEF";
+    out.append('<');
+    out.append(kHex[(v >> 12) & 0xf]);
+    out.append(kHex[(v >> 8) & 0xf]);
+    out.append(kHex[(v >> 4) & 0xf]);
+    out.append(kHex[v & 0xf]);
+    out.append('>');
+}
+
+void PdfBoxRenderer::appendRect(QByteArray &out, qreal x, qreal y, qreal w, qreal h)
+{
+    appendCoord(out, x);
+    out.append(' ');
+    appendCoord(out, y);
+    out.append(' ');
+    appendCoord(out, w);
+    out.append(' ');
+    appendCoord(out, h);
+    out.append(" re");
+}
+
+void PdfBoxRenderer::appendColorOperator(QByteArray &out, const QColor &color, bool fill)
+{
+    if (!color.isValid())
+        return;
+    appendCoord(out, color.redF());
+    out.append(' ');
+    appendCoord(out, color.greenF());
+    out.append(' ');
+    appendCoord(out, color.blueF());
+    out.append(fill ? " rg\n" : " RG\n");
 }
 
 QByteArray PdfBoxRenderer::colorOperator(const QColor &color, bool fill)
 {
-    if (!color.isValid())
-        return {};
-    qreal r = color.redF();
-    qreal g = color.greenF();
-    qreal b = color.blueF();
-    QByteArray op = fill ? " rg\n" : " RG\n";
-    return pdfCoord(r) + " " + pdfCoord(g) + " " + pdfCoord(b) + op;
+    QByteArray out;
+    out.reserve(32);
+    appendColorOperator(out, color, fill);
+    return out;
 }
 
 QByteArray PdfBoxRenderer::toUtf16BeHex(const QString &text)
@@ -123,16 +174,19 @@ void PdfBoxRenderer::drawRect(const QRectF &rect, const QColor &fill,
     qreal pdfBottom = pdfY(rect.y()) - rect.height();
 
     if (fill.isValid()) {
-        *m_stream += "q\n" + colorOperator(fill, true);
-        *m_stream += pdfCoord(pdfLeft) + " " + pdfCoord(pdfBottom) + " "
-                + pdfCoord(rect.width()) + " " + pdfCoord(rect.height()) + " re f\n";
+        *m_stream += "q\n";
+        appendColorOperator(*m_stream, fill, true);
+        appendRect(*m_stream, pdfLeft, pdfBottom, rect.width(), rect.height());
+        *m_stream += " f\n";
         *m_stream += "Q\n";
     }
     if (stroke.isValid()) {
-        *m_stream += "q\n" + colorOperator(stroke, false);
-        *m_stream += pdfCoord(strokeWidth) + " w\n";
-        *m_stream += pdfCoord(pdfLeft) + " " + pdfCoord(pdfBottom) + " "
-                + pdfCoord(rect.width()) + " " + pdfCoord(rect.height()) + " re S\n";
+        *m_stream += "q\n";
+        appendColorOperator(*m_stream, stroke, false);
+        appendCoord(*m_stream, strokeWidth);
+        *m_stream += " w\n";
+        appendRect(*m_stream, pdfLeft, pdfBottom, rect.width(), rect.height());
+        *m_stream += " S\n";
         *m_stream += "Q\n";
     }
 }
@@ -199,9 +253,16 @@ void PdfBoxRenderer::drawLine(const QPointF &p1, const QPointF &p2,
     if (!m_stream) return;
 
     *m_stream += "q\n" + colorOperator(color, false);
-    *m_stream += pdfCoord(width) + " w\n";
-    *m_stream += pdfCoord(p1.x()) + " " + pdfCoord(pdfY(p1.y())) + " m "
-            + pdfCoord(p2.x()) + " " + pdfCoord(pdfY(p2.y())) + " l S\n";
+    appendCoord(*m_stream, width);
+    *m_stream += " w\n";
+    appendCoord(*m_stream, p1.x());
+    m_stream->append(' ');
+    appendCoord(*m_stream, pdfY(p1.y()));
+    *m_stream += " m ";
+    appendCoord(*m_stream, p2.x());
+    m_stream->append(' ');
+    appendCoord(*m_stream, pdfY(p2.y()));
+    *m_stream += " l S\n";
     *m_stream += "Q\n";
 }
 
@@ -269,15 +330,24 @@ void PdfBoxRenderer::drawGlyphsCIDFont(FontFace *face, qreal fontSize,
     qreal pdfBaseY = pdfY(baselineY);
 
     *m_stream += "BT\n";
-    *m_stream += "/" + fontName + " " + pdfCoord(fontSize) + " Tf\n";
-    *m_stream += colorOperator(foreground, true);
+    m_stream->append('/');
+    m_stream->append(fontName);
+    m_stream->append(' ');
+    appendCoord(*m_stream, fontSize);
+    m_stream->append(" Tf\n");
+    appendColorOperator(*m_stream, foreground, true);
 
     for (int i = 0; i < info.glyphIds.size(); ++i) {
         qreal gx = x + info.positions[i].x();
         qreal gy = pdfBaseY - info.positions[i].y(); // layout yOffset is top-down
 
-        *m_stream += "1 0 0 1 " + pdfCoord(gx) + " " + pdfCoord(gy) + " Tm\n";
-        *m_stream += Pdf::toHexString16(static_cast<quint16>(info.glyphIds[i])) + " Tj\n";
+        m_stream->append("1 0 0 1 ");
+        appendCoord(*m_stream, gx);
+        m_stream->append(' ');
+        appendCoord(*m_stream, gy);
+        m_stream->append(" Tm\n");
+        appendHex16(*m_stream, static_cast<quint16>(info.glyphIds[i]));
+        m_stream->append(" Tj\n");
 
         // Mark glyph used for subsetting
         if (m_markGlyphUsedCb)

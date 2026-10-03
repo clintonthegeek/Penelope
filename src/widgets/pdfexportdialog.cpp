@@ -384,6 +384,8 @@ void PdfExportDialog::onPageRangeChanged()
 {
     QString text = m_pageRangeEdit->text().trimmed();
     m_pageRangeModified = !text.isEmpty();
+    buttonBox()->button(QDialogButtonBox::Ok)->setEnabled(
+        PageRangeParser::parse(text, m_pageCount).valid);
 
     if (m_pageRangeModified && m_pageCount > 0) {
         auto result = PageRangeParser::parse(text, m_pageCount);

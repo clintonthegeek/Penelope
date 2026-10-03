@@ -15,6 +15,7 @@ static int resolveToken(const QString &token, int totalPages, bool &ok)
 {
     ok = true;
     QString t = token.trimmed().toLower();
+    if (totalPages < 1) { ok = false; return -1; }
     if (t == QLatin1String("first")) return 1;
     if (t == QLatin1String("last")) return totalPages;
 
@@ -24,7 +25,8 @@ static int resolveToken(const QString &token, int totalPages, bool &ok)
         QRegularExpression::CaseInsensitiveOption);
     auto m = parenRe.match(t);
     if (m.hasMatch()) {
-        int offset = m.captured(1).toInt();
+        int offset = m.captured(1).toInt(&ok);
+        if (!ok) return -1;
         int page = totalPages - offset;
         if (page < 1) { ok = false; return -1; }
         return page;
@@ -36,7 +38,8 @@ static int resolveToken(const QString &token, int totalPages, bool &ok)
         QRegularExpression::CaseInsensitiveOption);
     m = lastMinusRe.match(t);
     if (m.hasMatch()) {
-        int offset = m.captured(1).toInt();
+        int offset = m.captured(1).toInt(&ok);
+        if (!ok) return -1;
         int page = totalPages - offset;
         if (page < 1) { ok = false; return -1; }
         return page;
@@ -54,6 +57,11 @@ static int resolveToken(const QString &token, int totalPages, bool &ok)
 Result parse(const QString &expr, int totalPages)
 {
     Result result;
+    if (totalPages < 1) {
+        result.valid = false;
+        result.errorMessage = QObject::tr("No pages to export.");
+        return result;
+    }
     QString trimmed = expr.trimmed();
     if (trimmed.isEmpty()) {
         // Empty = all pages
@@ -66,7 +74,24 @@ Result parse(const QString &expr, int totalPages)
     QStringList parts = trimmed.split(QLatin1Char(','));
     for (const QString &part : parts) {
         QString p = part.trimmed();
-        if (p.isEmpty()) continue;
+        if (p.isEmpty()) {
+            result.valid = false;
+            result.errorMessage = QObject::tr("Empty page range item.");
+            return result;
+        }
+        static const QRegularExpression arithmetic(QStringLiteral(R"(^last\s*-\s*\d+$)"),
+                                                    QRegularExpression::CaseInsensitiveOption);
+        if (arithmetic.match(p).hasMatch()) {
+            bool ok;
+            int page = resolveToken(p, totalPages, ok);
+            if (!ok) {
+                result.valid = false;
+                result.errorMessage = QObject::tr("Invalid page: %1").arg(p);
+                return result;
+            }
+            result.pages.insert(page);
+            continue;
+        }
 
         // Find a '-' that acts as range separator (not inside parentheses,
         // not part of "last-N" arithmetic)

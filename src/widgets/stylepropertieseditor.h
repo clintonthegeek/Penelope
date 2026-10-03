@@ -64,7 +64,6 @@ private:
     QFontComboBox *m_fontCombo = nullptr;
     QComboBox *m_fontStyleCombo = nullptr;
     QDoubleSpinBox *m_sizeSpin = nullptr;
-    // TODO: implement underline and strikethrough functionality
     QToolButton *m_underlineBtn = nullptr;
     QToolButton *m_strikeBtn = nullptr;
     // Section toolbox

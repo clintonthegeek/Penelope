@@ -149,7 +149,7 @@ void StylePropertiesEditor::buildUI()
         repopulateFontStyleCombo(font.family());
     });
 
-    // Size row with disabled U/S buttons
+    // Size row with character decoration controls
     auto *sizeRow = new QHBoxLayout;
     sizeRow->setSpacing(4);
     m_sizeInd.label = new QLabel(tr("Size:"));
@@ -160,16 +160,12 @@ void StylePropertiesEditor::buildUI()
     m_sizeSpin->setSuffix(tr("pt"));
     m_sizeSpin->setDecimals(1);
 
-    // TODO: implement underline and strikethrough functionality in the
-    // document builder (QTextCharFormat supports them, but the markdown
-    // rendering pipeline does not apply them yet)
-    auto makeDisabledToggle = [](const QString &text, const QString &tooltip,
+    auto makeDecorationToggle = [](const QString &text, const QString &tooltip,
                                   bool underline, bool strike) {
         auto *btn = new QToolButton;
         btn->setText(text);
         btn->setCheckable(true);
         btn->setFixedSize(28, 28);
-        btn->setEnabled(false);
         btn->setToolTip(tooltip);
         QFont f;
         if (underline) f.setUnderline(true);
@@ -178,9 +174,17 @@ void StylePropertiesEditor::buildUI()
         return btn;
     };
 
-    m_underlineBtn = makeDisabledToggle(tr("U"), tr("Underline (not yet implemented)"), true, false);
-    m_strikeBtn = makeDisabledToggle(tr("S"), tr("Strikethrough (not yet implemented)"), false, true);
+    m_underlineBtn = makeDecorationToggle(tr("U"), tr("Underline"), true, false);
+    m_strikeBtn = makeDecorationToggle(tr("S"), tr("Strikethrough"), false, true);
 
+    connect(m_underlineBtn, &QToolButton::clicked, this, [this]() {
+        m_explicit.fontUnderline = true;
+        Q_EMIT propertyChanged();
+    });
+    connect(m_strikeBtn, &QToolButton::clicked, this, [this]() {
+        m_explicit.fontStrikeOut = true;
+        Q_EMIT propertyChanged();
+    });
     sizeRow->addWidget(m_sizeInd.label);
     sizeRow->addWidget(m_sizeSpin);
     sizeRow->addWidget(m_underlineBtn);
@@ -719,6 +723,8 @@ void StylePropertiesEditor::loadParagraphStyle(const ParagraphStyle &style,
                            resolved.fontWeight(), resolved.fontItalic()));
 
     m_sizeSpin->setValue(resolved.fontSize());
+    m_underlineBtn->setEnabled(false);
+    m_strikeBtn->setEnabled(false);
     m_underlineBtn->setChecked(false);
     m_strikeBtn->setChecked(false);
     // Paragraph properties
@@ -789,6 +795,8 @@ void StylePropertiesEditor::loadCharacterStyle(const CharacterStyle &style,
                            resolved.fontWeight(), resolved.fontItalic()));
 
     m_sizeSpin->setValue(resolved.fontSize());
+    m_underlineBtn->setEnabled(true);
+    m_strikeBtn->setEnabled(true);
     m_underlineBtn->setChecked(resolved.fontUnderline());
     m_strikeBtn->setChecked(resolved.fontStrikeOut());
     // Font features

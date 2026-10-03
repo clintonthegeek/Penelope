@@ -1,4 +1,5 @@
 #include "codeblockhighlighter.h"
+#include "penelopesettings.h"
 
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Format>
@@ -14,11 +15,13 @@ CodeBlockHighlighter::CodeBlockHighlighter()
 {
     KSyntaxHighlighting::Theme defaultTheme =
         m_repository.defaultTheme(KSyntaxHighlighting::Repository::LightTheme);
-    AbstractHighlighter::setTheme(defaultTheme);
+    auto chosen = m_repository.theme(PenelopeSettings::self()->codeHighlightTheme());
+    AbstractHighlighter::setTheme(chosen.isValid() ? chosen : defaultTheme);
 }
 
 void CodeBlockHighlighter::highlight(QTextDocument *document)
 {
+    if (!PenelopeSettings::self()->syntaxHighlightingEnabled()) return;
     QTextBlock block = document->begin();
     KSyntaxHighlighting::State state;
     QString currentLang;

@@ -15,6 +15,7 @@
 #include <QColor>
 #include <QList>
 #include <QString>
+#include "penelopesettings.h"
 
 #include <KSyntaxHighlighting/AbstractHighlighter>
 #include <KSyntaxHighlighting/Definition>
@@ -41,12 +42,14 @@ public:
         static KSyntaxHighlighting::Repository repo;
         m_repo = &repo;
         auto defaultTheme = repo.defaultTheme(KSyntaxHighlighting::Repository::LightTheme);
-        setTheme(defaultTheme);
+        auto chosen = repo.theme(PenelopeSettings::self()->codeHighlightTheme());
+        setTheme(chosen.isValid() ? chosen : defaultTheme);
     }
 
     QList<Span> highlight(const QString &code, const QString &language)
     {
         m_spans.clear();
+        if (!PenelopeSettings::self()->syntaxHighlightingEnabled()) return {};
         m_lineOffset = 0;
 
         auto def = m_repo->definitionForName(language);

@@ -8,106 +8,70 @@ QString FootnoteParser::process(const QString &markdownText)
     m_rawDefs.clear();
     m_footnotes.clear();
 
-    // Step 1: Extract all footnote definitions
-    extractDefinitions(markdownText);
-
-    if (m_rawDefs.isEmpty())
-        return markdownText;
-
-    // Step 2: Remove definitions from the text.
-    // A definition starts with [^label]: at the beginning of a line
-    // and continues with indented (4 spaces or 1 tab) continuation lines,
-    // separated by blank lines that are followed by indented content.
-    static const QRegularExpression defBlockRx(
-        QStringLiteral(R"((?:^|\n)\[\^([^\]]+)\]:[ \t]+[^\n]*(?:\n(?:[ \t]+[^\n]*|\s*))*)")
-    );
-
-    QString cleaned = markdownText;
-
-    // Remove definitions from bottom to top to preserve offsets
-    QList<QPair<int, int>> removeRanges;
-    auto it = defBlockRx.globalMatch(cleaned);
-    while (it.hasNext()) {
-        auto match = it.next();
-        int start = match.capturedStart();
-        int len = match.capturedLength();
-        // Skip the leading newline if we captured one
-        if (start > 0 && cleaned[start] == QLatin1Char('\n')) {
-            start++;
-            len--;
+    // Extract and blank definitions in a single pass. Keeping newlines makes
+    // source ranges usable by the TOC and source editor after preprocessing.
+    QStringList lines = markdownText.split(QLatin1Char('\n'));
+    QStringList referenceLines = lines;
+    static const QRegularExpression definition(QStringLiteral(R"(^\[\^([^\]]+)\]:[ \t]*(.*)$)"));
+    static const QRegularExpression fence(QStringLiteral(R"(^ {0,3}(`{3,}|~{3,})(.*)$)"));
+    QChar fenceChar;
+    int fenceLength = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        auto fm = fence.match(lines[i]);
+        if (!fenceChar.isNull()) {
+            referenceLines[i].clear();
+            if (fm.hasMatch() && fm.captured(1)[0] == fenceChar
+                && fm.captured(1).size() >= fenceLength && fm.captured(2).trimmed().isEmpty())
+                fenceChar = QChar();
+            continue;
         }
-        removeRanges.append({start, len});
-    }
-
-    // Remove in reverse order
-    for (int i = removeRanges.size() - 1; i >= 0; --i) {
-        cleaned.remove(removeRanges[i].first, removeRanges[i].second);
-    }
-
-    // Clean up excessive blank lines left by removal
-    static const QRegularExpression excessBlanks(QStringLiteral(R"(\n{3,})"));
-    cleaned.replace(excessBlanks, QStringLiteral("\n\n"));
-
-    // Step 3: Order footnotes by first reference appearance
-    orderByReference(markdownText);
-
-    return cleaned;
-}
-
-void FootnoteParser::extractDefinitions(const QString &text)
-{
-    // Match footnote definition: [^label]: content
-    // Continuation lines are indented by 4 spaces or a tab.
-    // Multiple paragraphs are separated by blank lines followed by indented content.
-    static const QRegularExpression defRx(
-        QStringLiteral(R"(^\[\^([^\]]+)\]:[ \t]+(.+))"),
-        QRegularExpression::MultilineOption);
-
-    QStringList lines = text.split(QLatin1Char('\n'));
-    int i = 0;
-    int defOrder = 0;
-
-    while (i < lines.size()) {
-        QRegularExpressionMatch match = defRx.match(lines[i]);
-        if (match.hasMatch()) {
-            RawDefinition def;
-            def.label = match.captured(1);
-            def.content = match.captured(2).trimmed();
-            def.sourceOrder = defOrder++;
-
-            // Collect continuation lines (indented by 4 spaces or tab)
-            ++i;
-            bool inBlankRun = false;
-            while (i < lines.size()) {
-                const QString &line = lines[i];
-                if (line.trimmed().isEmpty()) {
-                    // Blank line - might be paragraph separator within footnote
-                    inBlankRun = true;
-                    ++i;
-                    continue;
-                }
-                if (line.startsWith(QLatin1String("    "))
-                    || line.startsWith(QLatin1Char('\t'))) {
-                    // Continuation line
-                    if (inBlankRun) {
-                        def.content += QLatin1String("\n\n");
-                        inBlankRun = false;
-                    } else {
-                        def.content += QLatin1Char(' ');
-                    }
-                    def.content += line.mid(line.startsWith(QLatin1Char('\t')) ? 1 : 4).trimmed();
-                    ++i;
-                } else {
-                    // Not a continuation - end of this definition
-                    break;
-                }
+        if (fm.hasMatch()) {
+            fenceChar = fm.captured(1)[0];
+            fenceLength = fm.captured(1).size();
+            referenceLines[i].clear();
+            continue;
+        }
+        if (lines[i].startsWith(QLatin1String("    ")) || lines[i].startsWith(QLatin1Char('\t'))) {
+            referenceLines[i].clear();
+            continue;
+        }
+        auto match = definition.match(lines[i]);
+        if (!match.hasMatch()) continue;
+        RawDefinition def;
+        def.label = match.captured(1);
+        def.content = match.captured(2).trimmed();
+        def.sourceOrder = m_rawDefs.size();
+        const int start = i;
+        int end = i + 1;
+        bool blank = false;
+        while (end < lines.size()) {
+            if (lines[end].trimmed().isEmpty()) {
+                int next = end;
+                while (next < lines.size() && lines[next].trimmed().isEmpty()) ++next;
+                if (next == lines.size() || !(lines[next].startsWith(QLatin1String("    "))
+                    || lines[next].startsWith(QLatin1Char('\t')))) break;
+                blank = true;
+                end = next;
             }
-
-            m_rawDefs.append(def);
-        } else {
-            ++i;
+            if (!(lines[end].startsWith(QLatin1String("    "))
+                || lines[end].startsWith(QLatin1Char('\t')))) break;
+            def.content += blank ? QStringLiteral("\n\n") : QStringLiteral(" ");
+            def.content += lines[end].mid(lines[end].startsWith(QLatin1Char('\t')) ? 1 : 4).trimmed();
+            blank = false;
+            ++end;
         }
+        m_rawDefs.append(def);
+        for (int j = start; j < end; ++j) { lines[j].clear(); referenceLines[j].clear(); }
+        i = end - 1;
     }
+    QString references = referenceLines.join(QLatin1Char('\n'));
+    // Code spans and escaped references are literal text, not numbering sites.
+    static const QRegularExpression code(QStringLiteral(R"((`+).*?\1)"), QRegularExpression::DotMatchesEverythingOption);
+    references.replace(code, QString());
+    static const QRegularExpression escaped(QStringLiteral(R"(\\\[\^([^\]]+)\])"));
+    references.replace(escaped, QString());
+    orderByReference(references);
+    return lines.join(QLatin1Char('\n'));
 }
 
 void FootnoteParser::orderByReference(const QString &text)

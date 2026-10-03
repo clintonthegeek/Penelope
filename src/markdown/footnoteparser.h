@@ -37,7 +37,6 @@ public:
     const QList<FootnoteDefinition> &footnotes() const { return m_footnotes; }
 
 private:
-    void extractDefinitions(const QString &text);
     void orderByReference(const QString &text);
 
     // Raw definitions keyed by label

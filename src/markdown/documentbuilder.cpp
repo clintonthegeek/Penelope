@@ -12,6 +12,7 @@
 #include <QRegularExpression>
 #include <QFont>
 #include <QImage>
+#include "penelopesettings.h"
 #include <QTextBlock>
 #include <QTextBlockFormat>
 #include <QTextCharFormat>
@@ -704,6 +705,11 @@ int DocumentBuilder::leaveSpan(MD_SPANTYPE type, void *detail)
             resolved = src;
         }
 
+        if (!PenelopeSettings::self()->renderImages()) {
+            m_cursor.insertText(m_altText);
+            m_imageSrc.clear(); m_imageTitle.clear(); m_altText.clear();
+            break;
+        }
         QImage image(resolved);
         if (!image.isNull()) {
             QUrl url = QUrl(QStringLiteral("pretty://img/") + src);
@@ -958,8 +964,10 @@ QString DocumentBuilder::resolveEntity(const QString &entity)
             code = num.mid(1).toUInt(&ok, 16);
         else
             code = num.toUInt(&ok, 10);
-        if (ok && code > 0)
-            return QString(QChar(code));
+        if (ok && code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF)) {
+            const char32_t cp = code;
+            return QString::fromUcs4(&cp, 1);
+        }
     }
 
     // Unknown entity: return as-is

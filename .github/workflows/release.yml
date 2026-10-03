@@ -56,6 +56,9 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
       # ── .deb via CPack ──────────────────────────────────────────────
       - name: Package .deb
         run: cd build && cpack -G DEB

@@ -47,6 +47,11 @@ pkg_check_modules(HARFBUZZ_SUBSET REQUIRED harfbuzz-subset)
 
 add_subdirectory(src)
 
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 # ── Packaging (CPack) ─────────────────────────────────────────────────
 set(CPACK_PACKAGE_NAME "penelope")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")

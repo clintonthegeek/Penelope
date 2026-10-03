@@ -26,9 +26,9 @@ public:
 
     // Enqueue a render request. Replaces any prior request for the same page,
     // so only the latest requested size is rendered.
-    void enqueue(int pageNumber, int width, int height, qreal dpr) {
+    void enqueue(int pageNumber, int width, int height, qreal dpr, int generation) {
         QMutexLocker lock(&m_queueMutex);
-        m_queue[pageNumber] = {pageNumber, width, height, dpr};
+        m_queue[pageNumber] = {pageNumber, width, height, dpr, generation};
     }
 
     void clearQueue() {
@@ -52,7 +52,7 @@ public Q_SLOTS:
         // Render (expensive Poppler call)
         {
             QMutexLocker lock(&m_docMutex);
-            if (!m_doc || req.pageNumber < 0 || req.pageNumber >= m_doc->numPages())
+            if (req.generation != m_generation || !m_doc || req.pageNumber < 0 || req.pageNumber >= m_doc->numPages())
                 goto scheduleMore;
 
             {
@@ -69,6 +69,7 @@ public Q_SLOTS:
                 image.setDevicePixelRatio(req.dpr);
 
                 int gen = m_generation;
+                page.reset();
                 lock.unlock();
                 Q_EMIT finished(req.pageNumber, image, req.width, req.height, gen);
             }
@@ -91,6 +92,7 @@ private:
         int width = 0;
         int height = 0;
         qreal dpr = 1.0;
+        int generation = 0;
     };
 
     Poppler::Document *m_doc = nullptr;
@@ -124,15 +126,14 @@ RenderCache::~RenderCache()
 
 void RenderCache::setDocument(Poppler::Document *doc)
 {
-    invalidateAll();
     m_doc = doc;
-    ++m_generation;
-    m_worker->setDocument(doc, m_generation);
+    invalidateAll();
 }
 
 void RenderCache::requestPixmap(const Request &req)
 {
-    CacheKey key{req.pageNumber, req.width, req.height};
+    if (req.width <= 0 || req.height <= 0 || req.dpr <= 0) return;
+    CacheKey key{req.pageNumber, req.width, req.height, req.dpr};
 
     {
         QMutexLocker lock(&m_mutex);
@@ -141,14 +142,14 @@ void RenderCache::requestPixmap(const Request &req)
     }
 
     // Enqueue on worker — coalesces with any prior request for this page
-    m_worker->enqueue(req.pageNumber, req.width, req.height, req.dpr);
+    m_worker->enqueue(req.pageNumber, req.width, req.height, req.dpr, m_generation);
     QMetaObject::invokeMethod(m_worker, "processQueue", Qt::QueuedConnection);
 }
 
-QImage RenderCache::cachedPixmap(int page, int width, int height) const
+QImage RenderCache::cachedPixmap(int page, int width, int height, qreal dpr) const
 {
     QMutexLocker lock(&m_mutex);
-    CacheKey key{page, width, height};
+    CacheKey key{page, width, height, dpr};
     auto it = m_cache.find(key);
     if (it != m_cache.end()) {
         it->lastAccess = ++m_accessCounter;
@@ -159,7 +160,8 @@ QImage RenderCache::cachedPixmap(int page, int width, int height) const
 
 void RenderCache::invalidateAll()
 {
-    m_worker->clearQueue();
+    ++m_generation;
+    m_worker->setDocument(m_doc, m_generation);
     QMutexLocker lock(&m_mutex);
     m_cache.clear();
     m_currentMemory = 0;
@@ -174,7 +176,7 @@ void RenderCache::onRenderFinished(int pageNumber, QImage image, int width, int 
     if (generation != m_generation)
         return;
 
-    CacheKey key{pageNumber, width, height};
+    CacheKey key{pageNumber, width, height, image.devicePixelRatio()};
     CacheEntry entry;
     entry.image = image;
     entry.width = width;

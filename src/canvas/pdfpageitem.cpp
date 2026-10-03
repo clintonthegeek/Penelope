@@ -49,7 +49,8 @@ void PdfPageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     int renderWidth = qRound(m_pageSize.width() * m_zoom);
     int renderHeight = qRound(m_pageSize.height() * m_zoom);
 
-    QImage img = m_cache->cachedPixmap(m_pageNumber, renderWidth, renderHeight);
+    const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+    QImage img = m_cache->cachedPixmap(m_pageNumber, renderWidth, renderHeight, dpr);
     if (!img.isNull()) {
         painter->drawImage(pageRect, img);
     } else {
@@ -58,7 +59,7 @@ void PdfPageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
         req.pageNumber = m_pageNumber;
         req.width = renderWidth;
         req.height = renderHeight;
-        req.dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        req.dpr = dpr;
         m_cache->requestPixmap(req);
 
         // Placeholder

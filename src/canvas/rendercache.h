@@ -35,7 +35,7 @@ public:
 
     void setDocument(Poppler::Document *doc);
     void requestPixmap(const Request &req);
-    QImage cachedPixmap(int page, int width, int height) const;
+    QImage cachedPixmap(int page, int width, int height, qreal dpr = 1.0) const;
     void invalidateAll();
 
 Q_SIGNALS:
@@ -57,12 +57,13 @@ private:
         int page;
         int width;
         int height;
+        qreal dpr;
         bool operator==(const CacheKey &o) const {
-            return page == o.page && width == o.width && height == o.height;
+            return page == o.page && width == o.width && height == o.height && dpr == o.dpr;
         }
     };
     friend size_t qHash(const CacheKey &k, size_t seed) {
-        return qHash(k.page, seed) ^ qHash(k.width, seed) ^ qHash(k.height, seed);
+        return qHashMulti(seed, k.page, k.width, k.height, k.dpr);
     }
 
     void evictIfNeeded();

@@ -1,10 +1,14 @@
 #include "metadatastore.h"
+#include "penelopesettings.h"
+#include <QDateTime>
+#include <QFileInfo>
 
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QStandardPaths>
+#include <QSaveFile>
 
 MetadataStore::MetadataStore(QObject *parent)
     : QObject(parent)
@@ -34,7 +38,13 @@ QString MetadataStore::metadataFilePath(const QString &filePath) const
 
 QJsonObject MetadataStore::load(const QString &filePath) const
 {
+    if (!PenelopeSettings::self()->rememberPerFileSettings()) return {};
     QFile file(metadataFilePath(filePath));
+    const int expiry = PenelopeSettings::self()->metaInfoExpiryDays();
+    if (expiry > 0 && QFileInfo(file).lastModified().daysTo(QDateTime::currentDateTime()) >= expiry) {
+        file.remove();
+        return {};
+    }
     if (!file.open(QIODevice::ReadOnly))
         return {};
 
@@ -44,7 +54,8 @@ QJsonObject MetadataStore::load(const QString &filePath) const
 
 void MetadataStore::save(const QString &filePath, const QJsonObject &metadata)
 {
-    QFile file(metadataFilePath(filePath));
+    if (!PenelopeSettings::self()->rememberPerFileSettings()) return;
+    QSaveFile file(metadataFilePath(filePath));
     if (!file.open(QIODevice::WriteOnly))
         return;
 
@@ -52,7 +63,8 @@ void MetadataStore::save(const QString &filePath, const QJsonObject &metadata)
     QJsonObject obj = metadata;
     obj[QStringLiteral("_filePath")] = filePath;
 
-    file.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    const QByteArray data = QJsonDocument(obj).toJson(QJsonDocument::Indented);
+    if (file.write(data) == data.size()) file.commit();
 }
 
 void MetadataStore::setValue(const QString &filePath, const QString &key,

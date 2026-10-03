@@ -12,6 +12,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QSaveFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -110,11 +111,14 @@ public:
             id = base;
             QString path = m_userDir + QLatin1Char('/') + id + QLatin1String(".json");
             int suffix = 1;
-            while (QFile::exists(path)) {
+            while (QFile::exists(path) || availableIds().contains(id)) {
                 id = base + QLatin1Char('-') + QString::number(suffix++);
                 path = m_userDir + QLatin1Char('/') + id + QLatin1String(".json");
             }
         }
+
+        static const QRegularExpression safeId(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]*$"));
+        if (!safeId.match(id).hasMatch()) return {};
 
         // Check for existing entry
         bool found = false;
@@ -129,13 +133,15 @@ public:
 
         QString path = m_userDir + QLatin1Char('/') + id + QLatin1String(".json");
 
-        QFile file(path);
+        QSaveFile file(path);
         if (!file.open(QIODevice::WriteOnly))
             return {};
 
-        QJsonDocument doc(json);
-        file.write(doc.toJson(QJsonDocument::Indented));
-        file.close();
+        QJsonObject stored = json;
+        stored[QStringLiteral("id")] = id;
+        QJsonDocument doc(stored);
+        const QByteArray data = doc.toJson(QJsonDocument::Indented);
+        if (file.write(data) != data.size() || !file.commit()) return {};
 
         QString displayName = json.value(QLatin1String("name")).toString(id);
         if (!found) {
@@ -159,9 +165,11 @@ public:
             if (m_entries[i].id == id) {
                 if (m_entries[i].builtin)
                     return false;
-                if (!QFile::remove(m_entries[i].path))
+                if (!QFile::remove(m_entries[i].path)) {
                     qWarning("%s: failed to remove %s",
                              managerName, qPrintable(m_entries[i].path));
+                    return false;
+                }
                 m_entries.removeAt(i);
                 return true;
             }

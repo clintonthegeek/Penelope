@@ -215,7 +215,8 @@ struct FootnoteBox {
 struct FootnoteSectionBox {
     QList<FootnoteBox> footnotes;
     bool showSeparator = true;
-    qreal separatorLength = 0.33;
+    qreal separatorLength = 72.0;
+    qreal separatorWidth = 0.5;
     qreal x = 0;
     qreal y = 0;
     qreal width = 0;
@@ -287,6 +288,7 @@ public:
 
 private:
     // Block layout
+    QList<PageElement> layoutParagraphElements(const Content::Paragraph &para, qreal availWidth);
     BlockBox layoutParagraph(const Content::Paragraph &para, qreal availWidth);
     BlockBox layoutHeading(const Content::Heading &heading, qreal availWidth);
     BlockBox layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth);

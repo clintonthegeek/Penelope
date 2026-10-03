@@ -152,6 +152,7 @@ struct BlockQuote {
     int level = 1;
     QList<BlockNode> children;
     ParagraphFormat format;
+    SourceRange source;
 };
 
 struct ListItem {
@@ -218,7 +219,8 @@ struct Footnote {
 struct FootnoteSection {
     QList<Footnote> footnotes;
     bool showSeparator = true;
-    qreal separatorLength = 0.33; // fraction of page width
+    qreal separatorLength = 72.0; // points
+    qreal separatorWidth = 0.5;
 };
 
 // --- Document ---

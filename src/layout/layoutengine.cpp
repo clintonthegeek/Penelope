@@ -30,13 +30,7 @@ Engine::Engine(FontManager *fontManager, TextShaper *textShaper)
 LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &pageLayout)
 {
     LayoutResult result;
-    result.pageSize = QSizeF(
-        pageLayout.pageSizeId == QPageSize::Custom
-            ? 595.0  // A4 width fallback
-            : QPageSize(pageLayout.pageSizeId).sizePoints().width(),
-        pageLayout.pageSizeId == QPageSize::Custom
-            ? 842.0  // A4 height fallback
-            : QPageSize(pageLayout.pageSizeId).sizePoints().height());
+    result.pageSize = pageLayout.pageSizePoints();
 
     QSizeF contentSize = pageLayout.contentSizePoints();
     qreal availWidth = contentSize.width();
@@ -48,16 +42,7 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
         std::visit([&](const auto &b) {
             using T = std::decay_t<decltype(b)>;
             if constexpr (std::is_same_v<T, Content::Paragraph>) {
-                // Detect image-only paragraphs (single InlineImage inline)
-                if (b.inlines.size() == 1
-                    && std::holds_alternative<Content::InlineImage>(b.inlines.first())) {
-                    const auto &img = std::get<Content::InlineImage>(b.inlines.first());
-                    if (!img.resolvedImageData.isEmpty()) {
-                        elements.append(layoutImage(img, availWidth));
-                    }
-                } else {
-                    elements.append(layoutParagraph(b, availWidth));
-                }
+                elements.append(layoutParagraphElements(b, availWidth));
             } else if constexpr (std::is_same_v<T, Content::Heading>) {
                 elements.append(layoutHeading(b, availWidth));
             } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
@@ -146,16 +131,7 @@ ContinuousLayoutResult Engine::layoutContinuous(const Content::Document &doc, qr
         std::visit([&](const auto &b) {
             using T = std::decay_t<decltype(b)>;
             if constexpr (std::is_same_v<T, Content::Paragraph>) {
-                // Detect image-only paragraphs (single InlineImage inline)
-                if (b.inlines.size() == 1
-                    && std::holds_alternative<Content::InlineImage>(b.inlines.first())) {
-                    const auto &img = std::get<Content::InlineImage>(b.inlines.first());
-                    if (!img.resolvedImageData.isEmpty()) {
-                        elements.append(layoutImage(img, availWidth));
-                    }
-                } else {
-                    elements.append(layoutParagraph(b, availWidth));
-                }
+                elements.append(layoutParagraphElements(b, availWidth));
             } else if constexpr (std::is_same_v<T, Content::Heading>) {
                 elements.append(layoutHeading(b, availWidth));
             } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
@@ -1158,6 +1134,7 @@ TableBox Engine::layoutTable(const Content::Table &table, qreal availWidth)
     tbox.headerBottomBorderColor = table.headerBottomBorderColor;
     tbox.cellPadding = table.cellPadding;
     tbox.headerRowCount = table.headerRowCount;
+    tbox.source = table.source;
 
     if (table.rows.isEmpty())
         return tbox;
@@ -1278,7 +1255,7 @@ BlockBox Engine::layoutImage(const Content::InlineImage &img, qreal availWidth)
         imgW *= scale;
     }
 
-    box.image = qimg.convertToFormat(QImage::Format_RGB888);
+    box.image = qimg;
     box.imageWidth = imgW;
     box.imageHeight = imgH;
     box.height = imgH;
@@ -1301,12 +1278,15 @@ QList<PageElement> Engine::layoutBlockQuote(const Content::BlockQuote &bq, qreal
         std::visit([&](const auto &c) {
             using T = std::decay_t<decltype(c)>;
             if constexpr (std::is_same_v<T, Content::Paragraph>) {
-                auto box = layoutParagraph(c, innerWidth);
-                box.x += indent;
-                box.hasBlockQuoteBorder = true;
-                box.blockQuoteLevel = bq.level;
-                box.blockQuoteIndent = indent;
-                elements.append(box);
+                auto children = layoutParagraphElements(c, innerWidth);
+                for (auto &element : children) {
+                    auto &box = std::get<BlockBox>(element);
+                    box.x += indent;
+                    box.hasBlockQuoteBorder = true;
+                    box.blockQuoteLevel = bq.level;
+                    box.blockQuoteIndent = indent;
+                    elements.append(element);
+                }
             } else if constexpr (std::is_same_v<T, Content::Heading>) {
                 auto box = layoutHeading(c, innerWidth);
                 box.x += indent;
@@ -1432,7 +1412,9 @@ QList<PageElement> Engine::layoutList(const Content::List &list, qreal availWidt
                         para.format.leftMargin += indent + itemBulletWidth;
                     }
 
-                    auto box = layoutParagraph(para, availWidth);
+                    auto paragraphElements = layoutParagraphElements(para, availWidth);
+                    if (paragraphElements.isEmpty()) return;
+                    auto box = std::get<BlockBox>(paragraphElements.takeFirst());
                     box.isListItem = true;
 
                     // Mark bullet/number glyph boxes so justify skips them
@@ -1459,10 +1441,34 @@ QList<PageElement> Engine::layoutList(const Content::List &list, qreal availWidt
                     }
 
                     elements.append(box);
+                    for (auto &element : paragraphElements) {
+                        std::get<BlockBox>(element).isListItem = true;
+                        elements.append(element);
+                    }
                 } else if constexpr (std::is_same_v<T, Content::List>) {
                     // Nested list
                     auto nested = layoutList(c, availWidth, depth + 1);
                     elements.append(nested);
+                } else {
+                    QList<PageElement> children;
+                    const qreal offset = indent + itemBulletWidth;
+                    const qreal width = qMax(1.0, availWidth - offset);
+                    if constexpr (std::is_same_v<T, Content::CodeBlock>)
+                        children.append(layoutCodeBlock(c, width));
+                    else if constexpr (std::is_same_v<T, Content::Heading>)
+                        children.append(layoutHeading(c, width));
+                    else if constexpr (std::is_same_v<T, Content::Table>)
+                        children.append(layoutTable(c, width));
+                    else if constexpr (std::is_same_v<T, Content::BlockQuote>)
+                        children = layoutBlockQuote(c, width);
+                    else if constexpr (std::is_same_v<T, Content::HorizontalRule>)
+                        children.append(layoutHorizontalRule(c, width));
+                    else if constexpr (std::is_same_v<T, Content::FootnoteSection>)
+                        children.append(layoutFootnoteSection(c, width));
+                    for (auto &elem : children) {
+                        std::visit([offset](auto &box) { box.x += offset; }, elem);
+                        elements.append(elem);
+                    }
                 }
             }, child);
         }
@@ -1480,6 +1486,7 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
     sbox.width = availWidth;
     sbox.showSeparator = fs.showSeparator;
     sbox.separatorLength = fs.separatorLength;
+    sbox.separatorWidth = fs.separatorWidth;
 
     qreal y = fs.showSeparator ? 12.0 : 0; // space for separator
 
@@ -1493,7 +1500,9 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
         Content::ParagraphFormat fmt;
         fmt.leftMargin = 20.0;
         fmt.firstLineIndent = -20.0;
-        fbox.lines = breakIntoLines(fn.content, fn.textStyle, fmt, availWidth - 20.0);
+        QList<Content::InlineNode> note = fn.content;
+        note.prepend(Content::TextRun{fn.label + QStringLiteral(". "), fn.numberStyle});
+        fbox.lines = breakIntoLines(note, fn.textStyle, fmt, availWidth - 20.0);
 
         qreal h = 0;
         for (const auto &line : fbox.lines)
@@ -1527,8 +1536,9 @@ QList<TableBox> Engine::splitTable(const TableBox &table, qreal availHeight, qre
     qreal effectiveHeaderHeight = repeatHeaders ? headerHeight : 0;
 
     // Helper: create a new slice with table metadata and (optionally) header rows
-    auto newSlice = [&]() -> TableBox {
+    auto newSlice = [&](bool first) -> TableBox {
         TableBox slice;
+        slice.x = table.x;
         slice.width = table.width;
         slice.borderWidth = table.borderWidth;
         slice.borderColor = table.borderColor;
@@ -1538,12 +1548,13 @@ QList<TableBox> Engine::splitTable(const TableBox &table, qreal availHeight, qre
         slice.headerBottomBorderColor = table.headerBottomBorderColor;
         slice.cellPadding = table.cellPadding;
         slice.columnPositions = table.columnPositions;
-        slice.headerRowCount = effectiveHeaderCount;
+        const int sliceHeaders = first ? headerRowCount : effectiveHeaderCount;
+        slice.headerRowCount = sliceHeaders;
         slice.source = table.source;
 
         // Copy header rows with re-based y positions
         qreal hy = 0;
-        for (int i = 0; i < effectiveHeaderCount && i < table.rows.size(); ++i) {
+        for (int i = 0; i < sliceHeaders && i < table.rows.size(); ++i) {
             TableRowBox row = table.rows[i];
             row.y = hy;
             for (auto &cell : row.cells)
@@ -1554,8 +1565,8 @@ QList<TableBox> Engine::splitTable(const TableBox &table, qreal availHeight, qre
         return slice;
     };
 
-    TableBox currentSlice = newSlice();
-    qreal currentHeight = effectiveHeaderHeight;
+    TableBox currentSlice = newSlice(true);
+    qreal currentHeight = headerHeight;
     qreal currentAvail = availHeight;
     int bodyRowsInSlice = 0;
 
@@ -1567,7 +1578,7 @@ QList<TableBox> Engine::splitTable(const TableBox &table, qreal availHeight, qre
             currentSlice.height = currentHeight;
             slices.append(currentSlice);
 
-            currentSlice = newSlice();
+            currentSlice = newSlice(false);
             currentHeight = effectiveHeaderHeight;
             currentAvail = pageHeight;
             bodyRowsInSlice = 0;
@@ -1584,7 +1595,7 @@ QList<TableBox> Engine::splitTable(const TableBox &table, qreal availHeight, qre
     }
 
     // Finalize last slice
-    if (bodyRowsInSlice > 0) {
+    if (!currentSlice.rows.isEmpty()) {
         currentSlice.height = currentHeight;
         slices.append(currentSlice);
     }
@@ -1630,7 +1641,8 @@ splitBlockBox(const BlockBox &block, qreal availableHeight, int minLines)
         return std::nullopt;
 
     // Enforce widow minimum (fragment 2 must have >= minLines)
-    if (totalLines - splitAfter < minLines)
+    splitAfter = qMin(splitAfter, totalLines - minLines);
+    if (splitAfter < minLines)
         return std::nullopt;
 
     // Build fragment 1: lines [0..splitAfter)
@@ -1729,12 +1741,23 @@ void Engine::assignToPages(const QList<PageElement> &elements,
             const TableBox &table = *tablePtr;
             qreal remaining = pageHeight - y;
 
-            if (table.height <= remaining || currentPage.elements.isEmpty()) {
+            if (table.height <= remaining) {
                 TableBox positioned = table;
                 positioned.y = y;
                 currentPage.elements.append(positioned);
                 y += table.height;
             } else {
+                qreal firstRowsHeight = 0;
+                const int firstRows = qMin(int(table.rows.size()), table.headerRowCount + 1);
+                for (int i = 0; i < firstRows; ++i) firstRowsHeight += table.rows[i].height;
+                if (firstRowsHeight > remaining && !currentPage.elements.isEmpty()) {
+                    currentPage.contentHeight = y;
+                    result.pages.append(currentPage);
+                    currentPage = Page{};
+                    currentPage.pageNumber = result.pages.size();
+                    y = 0;
+                    remaining = pageHeight;
+                }
                 auto slices = splitTable(table, remaining, pageHeight);
                 for (int si = 0; si < slices.size(); ++si) {
                     if (si > 0) {
@@ -2146,3 +2169,32 @@ QList<qreal> Engine::distributeColumnsOptimal(const Content::Table &table,
 }
 
 } // namespace Layout
+
+QList<Layout::PageElement> Layout::Engine::layoutParagraphElements(
+    const Content::Paragraph &para, qreal availWidth)
+{
+    QList<PageElement> result;
+    Content::Paragraph text = para;
+    text.inlines.clear();
+    auto flush = [&]() {
+        if (!text.inlines.isEmpty()) result.append(layoutParagraph(text, availWidth));
+        text.inlines.clear();
+    };
+    for (const auto &node : para.inlines) {
+        if (const auto *image = std::get_if<Content::InlineImage>(&node)) {
+            flush();
+            if (!image->resolvedImageData.isEmpty()) {
+                auto box = layoutImage(*image, qMax(1.0, availWidth - para.format.leftMargin - para.format.rightMargin));
+                box.x = para.format.leftMargin;
+                box.source = para.source;
+                result.append(box);
+            } else {
+                Content::TextStyle style;
+                text.inlines.append(Content::TextRun{QStringLiteral("[Image: %1]").arg(
+                    image->altText.isEmpty() ? image->src : image->altText), style});
+            }
+        } else text.inlines.append(node);
+    }
+    flush();
+    return result;
+}

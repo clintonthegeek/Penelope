@@ -170,9 +170,9 @@ void BoxTreeRenderer::renderFootnoteSectionBox(const Layout::FootnoteSectionBox 
 
     // Separator line
     if (box.showSeparator) {
-        qreal sepWidth = box.width * box.separatorLength;
+        qreal sepWidth = qMin(box.width, box.separatorLength);
         drawLine(QPointF(box.x, sectionY), QPointF(box.x + sepWidth, sectionY),
-                 QColor(179, 179, 179), 0.5);
+                 QColor(179, 179, 179), box.separatorWidth);
     }
 
     for (const auto &fn : box.footnotes) {

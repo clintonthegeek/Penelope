@@ -99,8 +99,11 @@ private:
     QString m_linkHref;
 
     // Block routing: adds a completed block to the correct container
-    // (blockquote stack > list stack > doc.blocks)
+    // The innermost entered list/quote owns each completed block.
     void addBlock(Content::BlockNode block);
+    QList<Content::BlockNode> &currentBlocks();
+    void closeImplicitParagraph();
+    QStack<MD_BLOCKTYPE> m_containers;
 
     // Block tracking
     int m_blockQuoteLevel = 0;

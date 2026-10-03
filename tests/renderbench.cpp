@@ -1,26 +1,57 @@
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QLatin1Char>
+#include <QPlainTextEdit>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QTabWidget>
 #include <QTextStream>
 #include <QUrl>
 
+#include <KActionCollection>
+
 #include <poppler-qt6.h>
 
 #include "contentbuilder.h"
+#include "documenttab.h"
 #include "fontmanager.h"
 #include "layoutengine.h"
 #include "mainwindow.h"
-#include "penelopesettings.h"
 #include "pdfgenerator.h"
+#include "penelopesettings.h"
 #include "textshaper.h"
 
 namespace {
+
+// A PDF is not byte-reproducible: /CreationDate and the trailer /ID are both
+// derived from the current clock. Mask them so the remaining bytes can be
+// compared across builds when checking that an emission change is inert.
+void maskFrom(QByteArray &buf, const QByteArray &marker, const QByteArray &replacement,
+              char terminator)
+{
+    int at = 0;
+    while ((at = buf.indexOf(marker, at)) >= 0) {
+        const int start = at + marker.size() - 1;
+        int end = start;
+        while (end < buf.size() && buf.at(end) != terminator)
+            ++end;
+        buf.replace(start, end - start, replacement);
+        at = start + replacement.size();
+    }
+}
+
+QByteArray normalizePdf(const QByteArray &pdf)
+{
+    QByteArray out = pdf;
+    maskFrom(out, QByteArray("/CreationDate D:"), QByteArray("NORMALIZED"), 'Z');
+    maskFrom(out, QByteArray("/ID ["), QByteArray("NORMALIZED]"), ']');
+    return out;
+}
 
 struct StageTimes {
     qint64 parseNs = 0;
@@ -86,7 +117,8 @@ StageTimes measureOnce(const QString &markdown, bool hyphenate, bool measureCont
         Q_UNUSED(continuous);
     }
 
-    fonts.resetUsage();
+    // No resetUsage() here: the shaper marks glyphs during layout and
+    // generate() embeds the subset from that set, exactly as the reader does.
     PdfGenerator generator(&fonts);
     timer.start();
     QByteArray pdf = generator.generate(paginated, pl, QStringLiteral("bench"));
@@ -242,6 +274,72 @@ OpenResult measureOpen(const QString &path, bool webMode, qint64 windowNs)
     return r;
 }
 
+struct RebuildResult {
+    qint64 toFirstPaintNs = 0;
+    qint64 toSettledNs = 0;
+    qint64 maxBlockNs = 0;
+    int blockCount = 0;
+};
+
+// Measures what a keystroke actually costs: from inserting one character to
+// the reader going quiet again. Includes the rebuild debounce, so this is the
+// latency a user perceives while typing rather than a single pipeline pass.
+RebuildResult measureRebuild(const QString &path, bool webMode, qint64 windowNs)
+{
+    RebuildResult r;
+
+    PenelopeSettings::self()->setUsePdfRenderer(true);
+    PenelopeSettings::self()->setUseWebView(webMode);
+    PenelopeSettings::self()->setAutoReloadOnChange(false);
+
+    MainWindow window;
+    window.resize(1000, 800);
+    window.show();
+    QApplication::processEvents(QEventLoop::AllEvents, 50);
+    window.openFile(QUrl::fromLocalFile(path));
+
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.nsecsElapsed() < 1'500'000'000LL)
+        QApplication::processEvents(QEventLoop::AllEvents, 5);
+
+    auto *tab = window.findChild<DocumentTab *>();
+    if (!tab)
+        return r;
+
+    if (auto *action = window.actionCollection()->action(QStringLiteral("view_source_mode")))
+        action->trigger();
+    QApplication::processEvents(QEventLoop::AllEvents, 20);
+
+    QElapsedTimer timer;
+    timer.start();
+    tab->sourceEditor()->insertPlainText(QStringLiteral("x"));
+
+    qint64 lastBusy = 0;
+    bool painted = false;
+    while (timer.nsecsElapsed() < windowNs) {
+        const qint64 before = timer.nsecsElapsed();
+        QApplication::processEvents(QEventLoop::AllEvents, 5);
+        const qint64 gap = timer.nsecsElapsed() - before;
+
+        if (gap > 1'000'000) {
+            lastBusy = timer.nsecsElapsed();
+            if (!painted) {
+                r.toFirstPaintNs = timer.nsecsElapsed();
+                painted = true;
+            }
+            if (gap > 20'000'000) {
+                r.maxBlockNs = std::max(r.maxBlockNs, gap);
+                ++r.blockCount;
+            }
+        } else if (painted && timer.nsecsElapsed() - lastBusy > 400'000'000LL) {
+            break;
+        }
+    }
+    r.toSettledNs = lastBusy > 0 ? lastBusy : timer.nsecsElapsed();
+    return r;
+}
+
 QString pad(const QString &s, int width)
 {
     if (s.size() >= width)
@@ -296,6 +394,8 @@ int main(int argc, char **argv)
     bool raster = false;
     bool hyphenate = false;
     bool openMode = false;
+    bool rebuildMode = false;
+    bool hashMode = false;
     qreal zoom = 1.0;
     qint64 windowMs = 3000;
 
@@ -318,6 +418,10 @@ int main(int argc, char **argv)
             hyphenate = true;
         } else if (a == QStringLiteral("--open")) {
             openMode = true;
+        } else if (a == QStringLiteral("--rebuild")) {
+            rebuildMode = true;
+        } else if (a == QStringLiteral("--hash")) {
+            hashMode = true;
         } else if (a == QStringLiteral("--window-ms") && i + 1 < args.size()) {
             windowMs = args.at(++i).toLongLong();
         } else if (a == QStringLiteral("--zoom") && i + 1 < args.size()) {
@@ -326,6 +430,75 @@ int main(int argc, char **argv)
     }
     if (iterations < 1)
         iterations = 1;
+
+    if (rebuildMode) {
+        if (file.isEmpty()) {
+            QTextStream(stderr) << QStringLiteral("--rebuild requires --file\n") << Qt::endl;
+            return 1;
+        }
+        QTextStream out(stdout);
+        out << QStringLiteral("mode=rebuild  one keystroke, including the rebuild debounce\n")
+            << Qt::endl;
+        out << pad(QStringLiteral("view"), 8) << pad(QStringLiteral("firstPaint"), 11)
+            << pad(QStringLiteral("settled"), 10) << pad(QStringLiteral("maxStall"), 10)
+            << pad(QStringLiteral("stalls"), 8) << Qt::endl;
+        for (bool web : {false, true}) {
+            RebuildResult r = measureRebuild(file, web, windowMs * 1'000'000LL);
+            out << pad(web ? QStringLiteral("web") : QStringLiteral("page"), 8)
+                << pad(ms(r.toFirstPaintNs), 11) << pad(ms(r.toSettledNs), 10)
+                << pad(ms(r.maxBlockNs), 10) << pad(QString::number(r.blockCount), 8)
+                << Qt::endl;
+        }
+        return 0;
+    }
+
+    if (hashMode) {
+        QTextStream out(stdout);
+        QStringList sources;
+        if (!file.isEmpty()) {
+            sources << file;
+        } else {
+            for (int n : std::as_const(sizes))
+                sources << QStringLiteral("synthetic:%1").arg(n);
+        }
+        for (const QString &src : std::as_const(sources)) {
+            QString md;
+            QString label = src;
+            if (src.startsWith(QLatin1String("synthetic:"))) {
+                md = syntheticDoc(src.mid(10).toInt());
+            } else {
+                QFile f(src);
+                if (!f.open(QIODevice::ReadOnly)) {
+                    QTextStream(stderr) << QStringLiteral("cannot read %1\n").arg(src) << Qt::endl;
+                    return 1;
+                }
+                md = QString::fromUtf8(f.readAll());
+                label = QFileInfo(src).fileName();
+            }
+            FontManager fonts;
+            ContentBuilder builder;
+            builder.setFootnoteStyle(FootnoteStyle());
+            Content::Document doc = builder.build(md);
+            TextShaper shaper(&fonts);
+            Layout::Engine engine(&fonts, &shaper);
+            PageLayout pl;
+            fonts.resetUsage();
+            Layout::LayoutResult laid = engine.layout(doc, pl);
+            PdfGenerator gen(&fonts);
+            const QByteArray pdf = gen.generate(laid, pl, QStringLiteral("bench"));
+            const QByteArray digest =
+                QCryptographicHash::hash(normalizePdf(pdf), QCryptographicHash::Sha256).toHex();
+            out << pad(label, 28) << pad(QString::number(pdf.size()), 10)
+                << QString::fromLatin1(digest) << Qt::endl;
+            const QString dumpTag = qEnvironmentVariable("BENCH_DUMP_PDF");
+            if (!dumpTag.isEmpty() && src == QLatin1String("synthetic:100")) {
+                QFile outFile(QStringLiteral("/tmp/opencode/dump-%1.pdf").arg(dumpTag));
+                outFile.open(QIODevice::WriteOnly);
+                outFile.write(pdf);
+            }
+        }
+        return 0;
+    }
 
     if (openMode) {
         if (file.isEmpty()) {

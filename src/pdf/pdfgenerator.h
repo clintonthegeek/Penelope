@@ -42,6 +42,11 @@ public:
 
     void setDocumentInfo(const QString &filename, const QString &title);
     void setMaxJustifyGap(qreal gap) { m_maxJustifyGap = gap; }
+    /// zlib level for embedded streams. The reader preview should pass 1: the
+    /// PDF is rasterized straight from memory, so the extra size buys nothing,
+    /// while level 1 deflates several times faster than the default. Export and
+    /// print keep the default.
+    void setCompressionLevel(int level) { m_compressionLevel = level; }
     void setExportOptions(const PdfExportOptions &opts) { m_exportOptions = opts; }
 
 private:
@@ -136,6 +141,7 @@ private:
     QString m_title;
     qreal m_maxJustifyGap = 14.0;
     PdfExportOptions m_exportOptions;
+    int m_compressionLevel = -1;
     bool m_hasHersheyGlyphs = false;
     Pdf::Writer *m_writer = nullptr;           // set during generate(), null otherwise
     Pdf::ResourceDict *m_resources = nullptr;  // set during generate(), null otherwise

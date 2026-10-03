@@ -1681,6 +1681,9 @@ void MainWindow::rebuildCurrentDocument()
             PdfGenerator pdfGen(m_fontManager);
             pdfGen.setDocumentInfo(fi.fileName(), fi.baseName());
             pdfGen.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
+            // This PDF only ever rasterizes from memory in the reader, so spend
+            // speed rather than size on it. Export and print keep the default.
+            pdfGen.setCompressionLevel(1);
             QByteArray pdf = pdfGen.generate(layoutResult, pl, fi.baseName());
 
             // Clear legacy document if switching pipelines

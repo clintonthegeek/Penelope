@@ -84,6 +84,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
 
     QByteArray output;
     Pdf::Writer writer;
+    writer.setCompressionLevel(m_compressionLevel);
     if (!writer.openBuffer(&output))
         return {};
 

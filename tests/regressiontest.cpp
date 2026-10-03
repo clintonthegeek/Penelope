@@ -345,6 +345,53 @@ private Q_SLOTS:
         dialog.setOptions(options);
         QVERIFY(dialog.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->isEnabled());
     }
+    void previewCompressionLevelKeepsTextAndPages() {
+        QString markdown = QStringLiteral("# Compression\n\nA paragraph with *emphasis*, "
+                                          "`code` and a [link](https://example.org).\n\n"
+                                          "| Column | Value |\n| --- | --- |\n"
+                                          "| alpha | 12345 |\n| beta | 67890 |\n\n"
+                                          "## Second heading\n\nMore prose to lay out across a "
+                                          "page boundary so pagination is exercised.\n");
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        PageLayout pl;
+
+        auto render = [&](int level) {
+            FontManager fonts;
+            TextShaper shaper(&fonts);
+            Layout::Engine engine(&fonts, &shaper);
+            fonts.resetUsage();
+            auto laid = engine.layout(doc, pl);
+            PdfGenerator gen(&fonts);
+            gen.setCompressionLevel(level);
+            return gen.generate(laid, pl, QStringLiteral("Compression"));
+        };
+
+        const QByteArray deflated = render(-1);
+        const QByteArray fast = render(1);
+        QVERIFY(!deflated.isEmpty());
+        QVERIFY(!fast.isEmpty());
+
+        // The preview trades file size for speed, so the bytes are expected to
+        // differ; what must not differ is what a viewer sees.
+        auto inspect = [](const QByteArray &pdf, int *pages, QString *text) {
+            auto doc = Poppler::Document::loadFromData(pdf);
+            QVERIFY(doc);
+            *pages = doc->numPages();
+            for (int i = 0; i < doc->numPages(); ++i)
+                *text += doc->page(i)->text(QRectF());
+        };
+
+        int defaultPages = 0, fastPages = 0;
+        QString defaultText, fastText;
+        inspect(deflated, &defaultPages, &defaultText);
+        inspect(fast, &fastPages, &fastText);
+
+        QCOMPARE(fastPages, defaultPages);
+        QCOMPARE(fastText, defaultText);
+        QVERIFY(defaultText.contains(QStringLiteral("Compression")));
+        QVERIFY(fast.size() > deflated.size());
+    }
     void legacyPrintKeepsReaderLayout() {
         QTemporaryDir dir;
         QTextDocument doc; DocumentBuilder builder(&doc); builder.build("# Printable\n\nBody.\n");

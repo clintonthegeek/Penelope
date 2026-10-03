@@ -87,6 +87,10 @@ public:
     void endObjectWithStream(ObjId id, const QByteArray &streamContent,
                              bool compress = true);
 
+    /// zlib level for stream objects, 0-9. Callers producing a throwaway
+    /// preview can trade file size for speed; -1 restores the library default.
+    void setCompressionLevel(int level) { m_compressionLevel = level; }
+
     // Well-known object IDs (assigned during writeHeader)
     ObjId catalogObj() const { return m_catalogObj; }
     ObjId infoObj() const { return m_infoObj; }
@@ -95,6 +99,9 @@ public:
 private:
     ObjId m_objCounter = 0;
     ObjId m_currentObj = 0;
+
+    // zlib level for stream objects; -1 selects the library default.
+    int m_compressionLevel = -1;
 
     // Output: either file or buffer
     QFile m_file;

@@ -354,9 +354,10 @@ void Writer::endObjectWithStream(ObjId id, const QByteArray &streamContent, bool
         // zlib compress
         uLongf destLen = compressBound(streamContent.size());
         data.resize(static_cast<int>(destLen));
+        const int level = m_compressionLevel >= 0 ? m_compressionLevel : Z_DEFAULT_COMPRESSION;
         int zret = ::compress2(reinterpret_cast<Bytef *>(data.data()), &destLen,
                                reinterpret_cast<const Bytef *>(streamContent.data()),
-                               streamContent.size(), Z_DEFAULT_COMPRESSION);
+                               streamContent.size(), level);
         if (zret == Z_OK) {
             data.resize(static_cast<int>(destLen));
             compressed = true;

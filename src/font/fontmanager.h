@@ -61,6 +61,13 @@ public:
     qreal lineHeight(FontFace *face, qreal sizePoints) const;
     qreal glyphWidth(FontFace *face, uint glyphId, qreal sizePoints) const;
 
+    /// The width a PDF viewer will advance by for this glyph, in 1/1000 em:
+    /// exactly the value writeCidFont puts in the /W array. Returns -1 when the
+    /// glyph has no /W entry, in which case a viewer falls back to /DW and the
+    /// value cannot be predicted. Run-length text operators must not be used
+    /// for such a glyph.
+    int pdfGlyphWidth(FontFace *face, uint glyphId) const;
+
     // Font info
     qreal unitsPerEm(FontFace *face) const;
     QByteArray rawFontData(FontFace *face) const;

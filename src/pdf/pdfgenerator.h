@@ -47,6 +47,10 @@ public:
     /// while level 1 deflates several times faster than the default. Export and
     /// print keep the default.
     void setCompressionLevel(int level) { m_compressionLevel = level; }
+    /// Emit one text object per run (TJ) rather than a text matrix per glyph.
+    /// On by default: it roughly halves the generated document for no rendering
+    /// cost. Set false to fall back to absolute per-glyph positioning.
+    void setRunTextOperators(bool on) { m_runText = on; }
     void setExportOptions(const PdfExportOptions &opts) { m_exportOptions = opts; }
 
 private:
@@ -142,6 +146,10 @@ private:
     qreal m_maxJustifyGap = 14.0;
     PdfExportOptions m_exportOptions;
     int m_compressionLevel = -1;
+    bool m_runText = true;
+    // Glyph advance in 1/1000 em, keyed by face then glyph. Resolving one
+    // costs a FreeType glyph load, which is far too slow to repeat per glyph.
+    QHash<const void *, QHash<uint, int>> m_glyphWidthCache;
     bool m_hasHersheyGlyphs = false;
     Pdf::Writer *m_writer = nullptr;           // set during generate(), null otherwise
     Pdf::ResourceDict *m_resources = nullptr;  // set during generate(), null otherwise

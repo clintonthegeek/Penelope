@@ -392,6 +392,90 @@ private Q_SLOTS:
         QVERIFY(defaultText.contains(QStringLiteral("Compression")));
         QVERIFY(fast.size() > deflated.size());
     }
+    void runTextOperatorsMatchPerGlyphPositioning() {
+        QString markdown = QStringLiteral("# Metrics\n\n"
+            "Typography measures advances, kerning pairs like AV, To, Wa and "
+            " LY, and a justification test that stretches the line so extra "
+            "word space has to appear between every word on the page.\n\n"
+            "Second paragraph: AVATAR To Wa Ty. Mixed 0123456789 punctuation, "
+            "commas, semicolons, and a hyphen-ated word.\n\n"
+            "| Column | Value |\n| --- | --- |\n| AV | 12345 |\n| To | 67890 |\n\n"
+            "> A quotation with AV kerning and a dash - inside.\n\n"
+            "- list item one with To\n- list item two with Wa\n\n"
+            "* item\n  * nested AV\n\n"
+            "1. numbered AV\n2. numbered To\n\n"
+            "Unicode: \u00e9\u00e8\u00ea accents, \u2014 em dash, \u201cquotes\u201d, "
+            "\u65e5\u672c\u8a9e CJK, \u05e9\u05dc\u05d5\u05dd Hebrew.\n\n"
+            "```\nfenced_code(AV, To);\n```\n");
+
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        PageLayout pl;
+
+        auto render = [&](bool runText) {
+            FontManager fonts;
+            TextShaper shaper(&fonts);
+            Layout::Engine engine(&fonts, &shaper);
+            engine.setHyphenateJustifiedText(true);
+            fonts.resetUsage();
+            auto laid = engine.layout(doc, pl);
+            PdfGenerator gen(&fonts);
+            gen.setRunTextOperators(runText);
+            return gen.generate(laid, pl, QStringLiteral("Metrics"));
+        };
+
+        const QByteArray perGlyph = render(false);
+        const QByteArray runOps = render(true);
+        QVERIFY(!perGlyph.isEmpty());
+        QVERIFY(!runOps.isEmpty());
+        QVERIFY2(runOps.size() < perGlyph.size(),
+                 qPrintable(QStringLiteral("run operators should be smaller: %1 vs %2")
+                                .arg(runOps.size()).arg(perGlyph.size())));
+
+        // Collect what a viewer sees: every character's text and box, per page.
+        auto charBoxes = [](const QByteArray &pdf) {
+            QList<QPair<QString, QRectF>> out;
+            auto d = Poppler::Document::loadFromData(pdf);
+            if (!d)
+                return out;
+            for (int p = 0; p < d->numPages(); ++p) {
+                std::unique_ptr<Poppler::Page> page(d->page(p));
+                if (!page)
+                    continue;
+                const std::vector<std::unique_ptr<Poppler::TextBox>> words = page->textList();
+                for (const std::unique_ptr<Poppler::TextBox> &w : words) {
+                    for (int i = 0; i < w->text().size(); ++i) {
+                        const QRectF box = w->charBoundingBox(i);
+                        // Quantise to a tenth of a point: sub-0.1pt differences
+                        // come from the adjustment numbers, not from placement.
+                        out.append({w->text().mid(i, 1),
+                                    QRectF(qRound(box.left() * 10) / 10.0,
+                                           qRound(box.top() * 10) / 10.0,
+                                           qRound(box.width() * 10) / 10.0,
+                                           qRound(box.height() * 10) / 10.0)});
+                    }
+                }
+            }
+            return out;
+        };
+
+        const auto a = charBoxes(perGlyph);
+        const auto b = charBoxes(runOps);
+        QVERIFY2(!a.isEmpty(), "no characters extracted from the per-glyph PDF");
+        QCOMPARE(b.size(), a.size());
+
+        int worst = 0;
+        for (int i = 0; i < a.size(); ++i) {
+            QCOMPARE(b[i].first, a[i].first);
+            const qreal dx = qAbs(b[i].second.left() - a[i].second.left());
+            worst = int(qMax(dx, qreal(worst)));
+            QVERIFY2(dx <= 0.15,
+                     qPrintable(QStringLiteral("char %1 '%2' moved %3pt (page-run %4 vs per-glyph %5)")
+                                    .arg(i).arg(a[i].first).arg(dx)
+                                    .arg(b[i].second.left()).arg(a[i].second.left())));
+        }
+        QVERIFY2(worst <= 0.15, qPrintable(QStringLiteral("worst drift %1pt").arg(worst)));
+    }
     void legacyPrintKeepsReaderLayout() {
         QTemporaryDir dir;
         QTextDocument doc; DocumentBuilder builder(&doc); builder.build("# Printable\n\nBody.\n");

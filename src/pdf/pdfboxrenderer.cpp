@@ -5,6 +5,8 @@
 
 #include "pdfboxrenderer.h"
 
+#include <cstdio>
+
 #include "fontmanager.h"
 #include "hersheyfont.h"
 #include "pdfwriter.h"
@@ -337,7 +339,62 @@ void PdfBoxRenderer::drawGlyphsCIDFont(FontFace *face, qreal fontSize,
     m_stream->append(" Tf\n");
     appendColorOperator(*m_stream, foreground, true);
 
-    for (int i = 0; i < info.glyphIds.size(); ++i) {
+    const int count = info.glyphIds.size();
+
+    // Prefer one TJ array for the whole run. The viewer advances by the /W
+    // width after each glyph, so an adjustment restores the position the
+    // layout asked for. Adjustments are computed against the very /W values
+    // the viewer uses, which is why HarfBuzz and FreeType disagreeing on
+    // advances does not matter: the quantisation cancels.
+    bool useRun = m_runText && m_glyphWidthCb && count > 1 && fontSize > 0;
+    QList<int> widths(count, -1);
+    if (useRun) {
+        for (int i = 0; i < count; ++i) {
+            widths[i] = m_glyphWidthCb(face, info.glyphIds[i]);
+            if (widths[i] < 0) {
+                // No /W entry: the viewer would substitute /DW and the advance
+                // would be unpredictable, so fall back for the whole run.
+                useRun = false;
+                break;
+            }
+        }
+    }
+
+    if (useRun) {
+        const qreal runX = x + info.positions[0].x();
+        const qreal runY = pdfBaseY - info.positions[0].y();
+        m_stream->append("1 0 0 1 ");
+        appendCoord(*m_stream, runX);
+        m_stream->append(' ');
+        appendCoord(*m_stream, runY);
+        m_stream->append(" Tm[");
+
+        for (int i = 0; i < count; ++i) {
+            if (i > 0) {
+                // Natural pen after glyph i-1 versus where glyph i belongs.
+                const qreal natural = info.positions[i - 1].x()
+                                    + widths[i - 1] * fontSize / 1000.0;
+                const qreal shift = info.positions[i].x() - natural;
+                if (qAbs(shift) > 1e-9) {
+                    char buf[32];
+                    const int n = std::snprintf(buf, sizeof(buf), "%.2f",
+                                                -1000.0 * shift / fontSize);
+                    if (n > 0)
+                        m_stream->append(buf, n);
+                }
+            }
+            appendHex16(*m_stream, static_cast<quint16>(info.glyphIds[i]));
+        }
+        m_stream->append("] TJ\n");
+
+        if (m_markGlyphUsedCb)
+            for (int i = 0; i < count; ++i)
+                m_markGlyphUsedCb(face, info.glyphIds[i]);
+        *m_stream += "ET\n";
+        return;
+    }
+
+    for (int i = 0; i < count; ++i) {
         qreal gx = x + info.positions[i].x();
         qreal gy = pdfBaseY - info.positions[i].y(); // layout yOffset is top-down
 

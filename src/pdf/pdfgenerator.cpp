@@ -78,6 +78,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
     m_imageIndex.clear();
     m_pageAnnotations.clear();
     m_glyphForms.clear();
+    m_glyphWidthCache.clear();
     m_nextGlyphFormIdx = 0;
     if (m_title.isEmpty())
         m_title = title;
@@ -419,6 +420,16 @@ QByteArray PdfGenerator::renderPage(const Layout::Page &page,
     renderer.setMarkGlyphUsedCallback([this](FontFace *f, uint g) {
         m_fontManager->markGlyphUsed(f, g);
     });
+    renderer.setGlyphWidthCallback([this](FontFace *f, uint g) {
+        auto &byGlyph = m_glyphWidthCache[f];
+        auto it = byGlyph.constFind(g);
+        if (it != byGlyph.cend())
+            return it.value();
+        const int w = m_fontManager->pdfGlyphWidth(f, g);
+        byGlyph.insert(g, w);
+        return w;
+    });
+    renderer.setRunTextOperators(m_runText);
     renderer.setImageNameCallback([this](const QString &imageId) -> QByteArray {
         auto it = m_imageIndex.find(imageId);
         if (it != m_imageIndex.end())

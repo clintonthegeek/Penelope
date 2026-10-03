@@ -86,6 +86,14 @@ public:
     void setMarkGlyphUsedCallback(std::function<void(FontFace *, uint)> cb) {
         m_markGlyphUsedCb = std::move(cb);
     }
+    /// Width a viewer will advance by for a glyph, in 1/1000 em, or -1 if the
+    /// PDF carries no /W entry for it.
+    void setGlyphWidthCallback(std::function<int(FontFace *, uint)> cb) {
+        m_glyphWidthCb = std::move(cb);
+    }
+    /// Emit one text object per run using TJ adjustments instead of a text
+    /// matrix per glyph. Much smaller output; requires predictable advances.
+    void setRunTextOperators(bool on) { m_runText = on; }
 
     /// Reference to the embedded font list (for ActualText invisible text).
     void setEmbeddedFontsRef(const QList<EmbeddedFont> *fonts) {
@@ -200,6 +208,8 @@ private:
     std::function<QByteArray(FontFace *)> m_pdfFontNameCb;
     std::function<GlyphFormEntry(const HersheyFont *, FontFace *, uint, bool)> m_glyphFormCb;
     std::function<void(FontFace *, uint)> m_markGlyphUsedCb;
+    std::function<int(FontFace *, uint)> m_glyphWidthCb;
+    bool m_runText = false;
     std::function<QByteArray(const QString &)> m_imageNameCb;
     const QList<EmbeddedFont> *m_embeddedFonts = nullptr;
 

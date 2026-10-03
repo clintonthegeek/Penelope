@@ -83,7 +83,7 @@ Stats summarize(QList<qint64> samples)
 QString ms(qint64 ns) { return QString::number(double(ns) / 1e6, 'f', 1); }
 
 StageTimes measureOnce(const QString &markdown, bool hyphenate, bool measureContinuous,
-                       bool measureRaster, qreal zoom, int compressLevel)
+                       bool measureRaster, qreal zoom, int compressLevel, int runTextMode)
 {
     StageTimes t;
     FontManager fonts;
@@ -121,6 +121,8 @@ StageTimes measureOnce(const QString &markdown, bool hyphenate, bool measureCont
     // generate() embeds the subset from that set, exactly as the reader does.
     PdfGenerator generator(&fonts);
     generator.setCompressionLevel(compressLevel);
+    if (runTextMode >= 0)
+        generator.setRunTextOperators(runTextMode == 1);
     timer.start();
     QByteArray pdf = generator.generate(paginated, pl, QStringLiteral("bench"));
     t.pdfNs = timer.nsecsElapsed();
@@ -196,9 +198,9 @@ struct Row {
 };
 
 Row runRow(const QString &label, const QString &markdown, int iterations, bool hyphenate,
-           bool measureContinuous, bool measureRaster, qreal zoom, int compressLevel)
+           bool measureContinuous, bool measureRaster, qreal zoom, int compressLevel, int runTextMode)
 {
-    measureOnce(markdown, hyphenate, measureContinuous, measureRaster, zoom, compressLevel);
+    measureOnce(markdown, hyphenate, measureContinuous, measureRaster, zoom, compressLevel, runTextMode);
 
     QList<qint64> parse, layout, continuous, pdf, raster, open;
     Row row;
@@ -206,7 +208,7 @@ Row runRow(const QString &label, const QString &markdown, int iterations, bool h
     row.bytes = markdown.toUtf8().size();
 
     for (int i = 0; i < iterations; ++i) {
-        StageTimes t = measureOnce(markdown, hyphenate, measureContinuous, measureRaster, zoom, compressLevel);
+        StageTimes t = measureOnce(markdown, hyphenate, measureContinuous, measureRaster, zoom, compressLevel, runTextMode);
         parse.append(t.parseNs);
         layout.append(t.layoutNs);
         continuous.append(t.continuousNs);
@@ -399,6 +401,7 @@ int main(int argc, char **argv)
     bool hashMode = false;
     qreal zoom = 1.0;
     int compressLevel = -1;
+    int runTextMode = -1;
     qint64 windowMs = 3000;
 
     for (int i = 1; i < args.size(); ++i) {
@@ -430,6 +433,10 @@ int main(int argc, char **argv)
             zoom = args.at(++i).toDouble();
         } else if (a == QStringLiteral("--compress-level") && i + 1 < args.size()) {
             compressLevel = args.at(++i).toInt();
+        } else if (a == QStringLiteral("--run-text")) {
+            runTextMode = 1;
+        } else if (a == QStringLiteral("--no-run-text")) {
+            runTextMode = 0;
         }
     }
     if (iterations < 1)
@@ -490,6 +497,8 @@ int main(int argc, char **argv)
             Layout::LayoutResult laid = engine.layout(doc, pl);
             PdfGenerator gen(&fonts);
             gen.setCompressionLevel(compressLevel);
+            if (runTextMode >= 0)
+                gen.setRunTextOperators(runTextMode == 1);
             const QByteArray pdf = gen.generate(laid, pl, QStringLiteral("bench"));
             const QByteArray digest =
                 QCryptographicHash::hash(normalizePdf(pdf), QCryptographicHash::Sha256).toHex();
@@ -546,12 +555,12 @@ int main(int argc, char **argv)
         }
         const QString md = QString::fromUtf8(f.readAll());
         rows.append(runRow(QFileInfo(file).fileName(), md, iterations, hyphenate, continuous,
-                           raster, zoom, compressLevel));
+                           raster, zoom, compressLevel, runTextMode));
     } else {
         for (int n : std::as_const(sizes)) {
             const QString md = syntheticDoc(n);
             rows.append(runRow(QStringLiteral("synthetic-%1p").arg(n), md, iterations, hyphenate,
-                               continuous, raster, zoom, compressLevel));
+                               continuous, raster, zoom, compressLevel, runTextMode));
         }
     }
 

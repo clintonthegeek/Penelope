@@ -271,6 +271,23 @@ qreal FontManager::glyphWidth(FontFace *face, uint glyphId, qreal sizePoints) co
     return face->ftFace->glyph->advance.x / 64.0;
 }
 
+int FontManager::pdfGlyphWidth(FontFace *face, uint glyphId) const
+{
+    if (!face || face->isHershey)
+        return -1;
+    // Must mirror writeCidFont exactly: it only emits /W entries for glyphs in
+    // usedGlyphs, and a viewer substitutes /DW for anything absent.
+    if (!face->usedGlyphs.contains(glyphId))
+        return -1;
+    const qreal upem = unitsPerEm(face);
+    if (upem <= 0)
+        return -1;
+    const qreal w = glyphWidth(face, glyphId, upem);
+    if (w <= 0)
+        return -1;
+    return int(w * 1000.0 / upem);
+}
+
 qreal FontManager::unitsPerEm(FontFace *face) const
 {
     if (!face || !face->ftFace) return 1000;

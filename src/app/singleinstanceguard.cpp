@@ -46,10 +46,13 @@ void SingleInstanceGuard::onNewConnection()
 {
     while (QLocalSocket *conn = m_server->nextPendingConnection()) {
         connect(conn, &QLocalSocket::readyRead, this, [this, conn]() {
-            QByteArray data = conn->readAll();
-            QDataStream in(data);
+            // QLocalSocket is a byte stream: a QStringList may arrive across
+            // multiple readyRead signals. Transactions retain partial input.
+            QDataStream in(conn);
+            in.startTransaction();
             QStringList paths;
             in >> paths;
+            if (!in.commitTransaction()) return;
             if (!paths.isEmpty())
                 m_window->activateWithFiles(paths);
             else {

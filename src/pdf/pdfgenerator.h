@@ -55,11 +55,7 @@ private:
     int m_currentPageIndex = 0;
 
     // Font embedding
-    struct EmbeddedFont {
-        Pdf::ObjId fontObjId = 0;
-        QByteArray pdfName; // e.g. "F0", "F1"
-        FontFace *face = nullptr;
-    };
+    using EmbeddedFont = ::EmbeddedFont;
     QList<EmbeddedFont> m_embeddedFonts;
     QHash<FontFace *, int> m_fontIndex; // face -> index in m_embeddedFonts
 

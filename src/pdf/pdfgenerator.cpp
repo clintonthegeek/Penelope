@@ -11,6 +11,7 @@
 
 #include <QColor>
 #include <QDateTime>
+#include <QSaveFile>
 #include <zlib.h>
 #include FT_OUTLINE_H
 
@@ -357,11 +358,10 @@ bool PdfGenerator::generateToFile(const Layout::LayoutResult &layout,
     QByteArray data = generate(layout, pageLayout, title);
     if (data.isEmpty())
         return false;
-    QFile f(filePath);
+    QSaveFile f(filePath);
     if (!f.open(QIODevice::WriteOnly))
         return false;
-    f.write(data);
-    return true;
+    return f.write(data) == data.size() && f.commit();
 }
 
 
@@ -374,7 +374,7 @@ QByteArray PdfGenerator::renderPage(const Layout::Page &page,
     Q_UNUSED(resources);
     QByteArray stream;
 
-    QSizeF pageSize = QPageSize(pageLayout.pageSizeId).sizePoints();
+    QSizeF pageSize = pageLayout.pageSizePoints();
     qreal pageWidth = pageSize.width();
     qreal pageHeight = pageSize.height();
 
@@ -397,7 +397,7 @@ QByteArray PdfGenerator::renderPage(const Layout::Page &page,
 
     // Render header/footer
     renderHeaderFooter(stream, pageLayout, page.pageNumber,
-                       0 /* filled later */, pageWidth, pageHeight);
+                       m_pageAnnotations.size(), pageWidth, pageHeight);
 
     // Set up PdfBoxRenderer to render page elements
     PdfBoxRenderer renderer(m_fontManager);
@@ -425,13 +425,7 @@ QByteArray PdfGenerator::renderPage(const Layout::Page &page,
         return QByteArray();
     });
 
-    // Bridge embedded fonts list for ActualText invisible text.
-    // PdfBoxRenderer's EmbeddedFont and PdfGenerator's EmbeddedFont are
-    // structurally identical (binary-compatible), so reinterpret_cast is safe.
-    static_assert(sizeof(EmbeddedFont) == sizeof(::EmbeddedFont),
-                  "EmbeddedFont layout mismatch");
-    renderer.setEmbeddedFontsRef(
-        reinterpret_cast<const QList<::EmbeddedFont> *>(&m_embeddedFonts));
+    renderer.setEmbeddedFontsRef(&m_embeddedFonts);
 
     // Translate to content origin: the layout engine produces x-coordinates
     // relative to the content area (starting at 0). The CTM translation
@@ -761,11 +755,27 @@ void PdfGenerator::embedImages(Pdf::Writer &writer)
             rawData.append(reinterpret_cast<const char *>(line), rgb.width() * 3);
         }
 
+        Pdf::ObjId alphaObj = 0;
+        if (ei.image.hasAlphaChannel()) {
+            const QImage rgba = ei.image.convertToFormat(QImage::Format_RGBA8888);
+            QByteArray alpha;
+            alpha.reserve(rgba.width() * rgba.height());
+            for (int y = 0; y < rgba.height(); ++y) {
+                const uchar *line = rgba.constScanLine(y);
+                for (int x = 0; x < rgba.width(); ++x) alpha.append(char(line[x * 4 + 3]));
+            }
+            alphaObj = writer.startObj();
+            writer.write("<<\n/Type /XObject\n/Subtype /Image\n");
+            writer.write("/Width " + Pdf::toPdf(ei.width) + "\n/Height " + Pdf::toPdf(ei.height) + "\n");
+            writer.write("/ColorSpace /DeviceGray\n/BitsPerComponent 8\n");
+            writer.endObjectWithStream(alphaObj, alpha);
+        }
         Pdf::ObjId imgObj = writer.startObj();
         writer.write("<<\n/Type /XObject\n/Subtype /Image\n");
         writer.write("/Width " + Pdf::toPdf(ei.width) + "\n");
         writer.write("/Height " + Pdf::toPdf(ei.height) + "\n");
         writer.write("/ColorSpace /DeviceRGB\n");
+        if (alphaObj) writer.write("/SMask " + Pdf::toObjRef(alphaObj) + "\n");
         writer.write("/BitsPerComponent 8\n");
         writer.endObjectWithStream(imgObj, rawData);
         ei.objId = imgObj;
@@ -785,7 +795,7 @@ Pdf::ObjId PdfGenerator::writeOutlines(Pdf::Writer &writer,
     // 1. Collect headings from layout pages
     QList<OutlineEntry> entries;
 
-    QSizeF pageSize = QPageSize(pageLayout.pageSizeId).sizePoints();
+    QSizeF pageSize = pageLayout.pageSizePoints();
     qreal pageHeight = pageSize.height();
     qreal marginTop = pageLayout.margins.top() * 72.0 / 25.4;
     qreal contentTop = pageHeight - marginTop;
@@ -795,7 +805,7 @@ Pdf::ObjId PdfGenerator::writeOutlines(Pdf::Writer &writer,
     for (int pi = 0; pi < layout.pages.size(); ++pi) {
         for (const auto &elem : layout.pages[pi].elements) {
             if (auto *bb = std::get_if<Layout::BlockBox>(&elem)) {
-                if (bb->headingLevel > 0 && bb->headingLevel <= m_exportOptions.bookmarkMaxDepth
+                if (bb->isFragmentStart && bb->headingLevel > 0 && bb->headingLevel <= m_exportOptions.bookmarkMaxDepth
                     && !bb->headingText.isEmpty()) {
                     OutlineEntry entry;
                     entry.title = bb->headingText;
@@ -1040,8 +1050,10 @@ QByteArray PdfGenerator::buildToUnicodeCMap(FontFace *face)
         cmap += Pdf::toPdf(batchSize) + " beginbfchar\n";
         for (int i = 0; i < batchSize; ++i) {
             auto [gid, unicode] = mappings[pos + i];
+            const char32_t cp = unicode;
+            const QByteArray encoded = Pdf::toUTF16(QString::fromUcs4(&cp, 1)).mid(2).toHex().toUpper();
             cmap += "<" + QByteArray::number(gid, 16).toUpper().rightJustified(4, '0') + "> "
-                  + "<" + QByteArray::number(unicode, 16).toUpper().rightJustified(4, '0') + ">\n";
+                  + "<" + encoded + ">\n";
         }
         cmap += "endbfchar\n";
         pos += batchSize;

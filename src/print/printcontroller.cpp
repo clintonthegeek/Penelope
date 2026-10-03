@@ -90,9 +90,13 @@ void PrintController::exportPdf(const QString &filePath, QWidget *parentWidget)
 
 void PrintController::renderDocument(QPrinter *printer)
 {
+    if (!m_document) return;
+    // Clone so printer pagination never changes the reader's screen layout.
+    std::unique_ptr<QTextDocument> printDocument(m_document->clone());
+    QTextDocument *screenDocument = m_document;
+    m_document = printDocument.get();
     QPainter painter(printer);
-    if (!painter.isActive())
-        return;
+    if (!painter.isActive()) { m_document = screenDocument; return; }
 
     // Conversion factor from points to device pixels
     qreal dpiScale = printer->resolution() / 72.0;
@@ -121,15 +125,18 @@ void PrintController::renderDocument(QPrinter *printer)
     m_document->setPageSize(bodyRect.size());
     int totalPages = m_document->pageCount();
 
-    for (int page = 0; page < totalPages; ++page) {
+    const int first = qBound(0, printer->fromPage() > 0 ? printer->fromPage() - 1 : 0, totalPages - 1);
+    const int last = qBound(first, printer->toPage() > 0 ? printer->toPage() - 1 : totalPages - 1, totalPages - 1);
+    for (int page = first; page <= last; ++page) {
         renderPage(&painter, page, totalPages,
                    headerRect, bodyRect, footerRect, dpiScale);
 
-        if (page < totalPages - 1)
+        if (page < last)
             printer->newPage();
     }
 
     painter.end();
+    m_document = screenDocument;
 }
 
 void PrintController::renderDocumentFromPdf(QPrinter *printer)

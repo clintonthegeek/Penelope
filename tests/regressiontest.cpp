@@ -188,6 +188,31 @@ private Q_SLOTS:
         QVERIFY(cache.cachedPixmap(0,200,300).isNull());
         cache.setDocument(nullptr);
     }
+    void sourceEditSignalIgnoresPresentationChanges() {
+        DocumentTab tab;
+        tab.setSourceText(QStringLiteral("# Title\n\nBody text.\n"));
+        auto *editor = tab.sourceEditor();
+        QVERIFY(editor);
+
+        QSignalSpy userEdits(&tab, &DocumentTab::sourceChanged);
+
+        QPalette pal = editor->palette();
+        pal.setColor(QPalette::Base, QColor(10, 20, 30));
+        pal.setColor(QPalette::Text, QColor(200, 210, 220));
+        editor->setPalette(pal);
+        QCOMPARE(userEdits.count(), 0);
+
+        editor->setFont(QFont(editor->font().family(), editor->font().pointSize() + 2));
+        QCOMPARE(userEdits.count(), 0);
+
+        editor->insertPlainText(QStringLiteral("added "));
+        QCOMPARE(userEdits.count(), 1);
+
+        tab.setSourceText(QStringLiteral("replaced"));
+        QCOMPARE(userEdits.count(), 1);
+        QCOMPARE(tab.sourceText(), QStringLiteral("replaced"));
+        QVERIFY(!tab.isModified());
+    }
     void windowModeSwitchAndTabLifetime() {
         QTemporaryDir dir;
         const QString a = dir.filePath("a.md"), b = dir.filePath("b.md");

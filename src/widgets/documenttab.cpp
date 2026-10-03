@@ -42,10 +42,19 @@ DocumentTab::DocumentTab(QWidget *parent)
     // Editors often replace the file atomically, removing the file watch.
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() { m_reloadTimer.start(); });
     connect(&m_reloadTimer, &QTimer::timeout, this, &DocumentTab::reloadFromDisk);
+    // Only genuine text edits schedule a rebuild. QPlainTextEdit also emits
+    // textChanged for presentation-only changes such as setPalette(), which
+    // rebuildCurrentDocument() applies on every pass; treating those as edits
+    // makes each rebuild schedule the next one.
     connect(m_sourceEditor, &QPlainTextEdit::textChanged, this, [this]() {
+        const QString current = m_sourceEditor->toPlainText();
+        if (current == m_knownText)
+            return;
+        m_knownText = current;
         m_compositionGeneration = 0;
         Q_EMIT sourceChanged();
     });
+    m_knownText = m_sourceEditor->toPlainText();
 }
 
 void DocumentTab::setSourceMode(bool source)
@@ -63,8 +72,16 @@ QString DocumentTab::sourceText() const
 
 void DocumentTab::setSourceText(const QString &text)
 {
-    m_sourceEditor->setPlainText(text);
+    replaceSourceText(text);
     m_sourceEditor->document()->setModified(false);
+}
+
+// Replaces the buffer without reporting a user edit; callers that change the
+// source on the user's behalf emit sourceChanged() themselves.
+void DocumentTab::replaceSourceText(const QString &text)
+{
+    m_knownText = text;
+    m_sourceEditor->setPlainText(text);
 }
 
 void DocumentTab::setTocData(const Content::Document &doc, const QList<Layout::SourceMapEntry> &sourceMap)
@@ -121,8 +138,10 @@ void DocumentTab::reloadFromDisk()
     m_diskContents = data;
     m_externalChanges = false;
     const int scroll = m_sourceEditor->verticalScrollBar()->value();
-    setSourceText(QString::fromUtf8(data));
+    replaceSourceText(QString::fromUtf8(data));
     m_sourceEditor->verticalScrollBar()->setValue(scroll);
+    m_compositionGeneration = 0;
+    Q_EMIT sourceChanged();
 }
 
 bool DocumentTab::hasExternalChanges() const

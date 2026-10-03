@@ -54,10 +54,12 @@ Q_SIGNALS:
     void externalChangeDetected();
 
 private:
+    void replaceSourceText(const QString &text);
     void reloadFromDisk();
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer;
     QByteArray m_diskContents;
+    QString m_knownText;
     bool m_externalChanges = false;
     QStackedWidget *m_stack = nullptr;
     DocumentView *m_documentView = nullptr;

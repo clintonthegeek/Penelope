@@ -6,6 +6,7 @@
 #include "webviewitem.h"
 
 #include <QPainter>
+#include <QApplication>
 #include <QStyleOptionGraphicsItem>
 
 WebViewItem::WebViewItem(FontManager *fontManager)
@@ -73,6 +74,9 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
 
         m_renderer.renderElement(element);
     }
+    QColor color = QApplication::palette().color(QPalette::Highlight);
+    color.setAlpha(80);
+    for (const auto &rect : m_selectionRects) painter->fillRect(rect, color);
 }
 
 QString WebViewItem::linkAt(const QPointF &pos) const

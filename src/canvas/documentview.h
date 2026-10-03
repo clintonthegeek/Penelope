@@ -163,11 +163,13 @@ private:
 
     // B2: Text selection helpers
     void updateTextSelection();
+    QPair<int, int> selectedSourceLines() const;
     QString extractSelectedText() const;
+    QString selectedPlainText() const;
     QString extractSelectedTextFromPdf() const; // Poppler fallback
     QList<Content::BlockNode> extractSelectedBlocks(int minLine, int maxLine) const;
     // Code block hit-test
-    int codeBlockIndexAtScenePos(const QPointF &scenePos) const;
+    const Content::CodeBlock *codeBlockAtScenePos(const QPointF &scenePos) const;
 
     // A7: Link hover helpers
     void checkLinkHover(const QPointF &scenePos);

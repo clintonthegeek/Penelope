@@ -29,6 +29,7 @@ public:
     void setPageBackground(const QColor &color) { m_pageBackground = color; update(); }
 
     const QList<LinkHitRect> &linkHitRects() const { return m_renderer.linkHitRects(); }
+    void setSelectionRects(const QList<QRectF> &rects) { m_selectionRects = rects; update(); }
     QString linkAt(const QPointF &pos) const;
 
 private:
@@ -36,6 +37,7 @@ private:
 
     Layout::ContinuousLayoutResult m_result;
     QtBoxRenderer m_renderer;
+    QList<QRectF> m_selectionRects;
     QColor m_pageBackground = Qt::white;
 };
 

@@ -2,6 +2,8 @@
 #define PENELOPE_DOCUMENTTAB_H
 
 #include <QWidget>
+#include <QFileSystemWatcher>
+#include <QTimer>
 
 #include "contentmodel.h"
 #include "layoutengine.h"
@@ -22,7 +24,10 @@ public:
     QPlainTextEdit *sourceEditor() const { return m_sourceEditor; }
     MarkdownHighlighter *markdownHighlighter() const { return m_highlighter; }
 
-    void setFilePath(const QString &path) { m_filePath = path; }
+    void setFilePath(const QString &path);
+    bool isModified() const;
+    bool saveSource(QString *error = nullptr);
+    bool hasExternalChanges() const;
     QString filePath() const { return m_filePath; }
 
     bool isSourceMode() const { return m_sourceMode; }
@@ -37,13 +42,23 @@ public:
     void setTocData(const Content::Document &doc, const QList<Layout::SourceMapEntry> &sourceMap);
     const Content::Document &cachedContentDoc() const { return m_contentDoc; }
     const QList<Layout::SourceMapEntry> &cachedSourceMap() const { return m_sourceMap; }
+    void clearTocData() { m_hasTocData = false; m_contentDoc = {}; m_sourceMap.clear(); }
     bool hasTocData() const { return m_hasTocData; }
 
     // Composition generation tracking for stale-tab detection
     void setCompositionGeneration(quint64 gen) { m_compositionGeneration = gen; }
     quint64 compositionGeneration() const { return m_compositionGeneration; }
 
+Q_SIGNALS:
+    void sourceChanged();
+    void externalChangeDetected();
+
 private:
+    void reloadFromDisk();
+    QFileSystemWatcher m_watcher;
+    QTimer m_reloadTimer;
+    QByteArray m_diskContents;
+    bool m_externalChanges = false;
     QStackedWidget *m_stack = nullptr;
     DocumentView *m_documentView = nullptr;
     QPlainTextEdit *m_sourceEditor = nullptr;

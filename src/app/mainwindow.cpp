@@ -23,6 +23,7 @@
 #include "markdownhighlighter.h"
 #include "metadatastore.h"
 #include "rtfexporter.h"
+#include "contentrtfexporter.h"
 #include "shortwords.h"
 #include "tocwidget.h"
 #include "printcontroller.h"
@@ -64,6 +65,8 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QMenuBar>
+#include <QMessageBox>
+#include <QSaveFile>
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QScrollBar>
@@ -78,6 +81,7 @@
 #include <QVBoxLayout>
 
 #include <functional>
+#include <memory>
 
 MainWindow::MainWindow(QWidget *parent)
     : KXmlGuiWindow(parent)
@@ -134,6 +138,25 @@ MainWindow::MainWindow(QWidget *parent)
                 m_printViewAction->setChecked(true);
         }
 
+        const bool printControls = tab && !tab->isSourceMode()
+            && !PenelopeSettings::self()->useWebView();
+        if (m_fitWidthAction) m_fitWidthAction->setEnabled(printControls);
+        if (m_pageArrangementMenu) m_pageArrangementMenu->setEnabled(printControls);
+
+        if (view) {
+            const QStringList arrangements = {QStringLiteral("view_continuous"), QStringLiteral("view_single_page"),
+                QStringLiteral("view_facing_pages"), QStringLiteral("view_facing_first_alone"),
+                QStringLiteral("view_continuous_facing"), QStringLiteral("view_continuous_facing_first_alone")};
+            for (int i = 0; i < arrangements.size(); ++i)
+                if (auto *action = actionCollection()->action(arrangements[i])) action->setChecked(i == view->viewMode());
+            if (auto *hand = actionCollection()->action(QStringLiteral("tool_hand")))
+                hand->setChecked(view->cursorMode() == DocumentView::HandTool);
+            if (auto *select = actionCollection()->action(QStringLiteral("tool_selection")))
+                select->setChecked(view->cursorMode() == DocumentView::SelectionTool);
+            if (auto *copy = actionCollection()->action(QStringLiteral("edit_copy")))
+                copy->setEnabled(tab->isSourceMode() || view->cursorMode() == DocumentView::SelectionTool);
+        }
+
         // Rebuild stale tabs (composition changed since last render)
         if (tab && tab->compositionGeneration() < m_compositionGeneration) {
             rebuildCurrentDocument();
@@ -143,6 +166,8 @@ MainWindow::MainWindow(QWidget *parent)
         } else if (tab && tab->documentView()->document()) {
             // Legacy path — rebuild TOC from QTextDocument
             m_tocWidget->buildFromDocument(tab->documentView()->document());
+        } else if (!tab) {
+            m_tocWidget->buildFromContentModel({}, {});
         }
     });
 
@@ -258,10 +283,15 @@ MainWindow::MainWindow(QWidget *parent)
         onCompositionApplied();
     }
 
+    PageLayout defaults = m_pageDockWidget->currentPageLayout();
+    defaults.pageSizeId = PageLayout::fromJson(
+        {{QStringLiteral("pageSize"), settings->defaultPageSizeName()}}, {}).pageSizeId;
+    m_pageDockWidget->setPageLayout(defaults);
     restoreSession();
 
     // A1: Fresh launch = TOC open by default (saved session state takes priority)
-    if (m_leftSidebar->isCollapsed())
+    if (!KConfigGroup(KSharedConfig::openConfig(), QStringLiteral("Session"))
+             .hasKey("LeftSidebarCollapsed"))
         m_leftSidebar->showPanel(m_tocTabId);
 }
 
@@ -275,6 +305,10 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        auto *tab = qobject_cast<DocumentTab *>(m_tabWidget->widget(i));
+        if (!confirmClose(tab)) { event->ignore(); return; }
+    }
     saveSession();
 
     KConfigGroup recentGroup(KSharedConfig::openConfig(),
@@ -288,7 +322,11 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 void MainWindow::onTabCloseRequested(int index)
 {
+    auto *tab = qobject_cast<DocumentTab *>(m_tabWidget->widget(index));
+    if (!tab || !confirmClose(tab)) return;
+    saveTabViewState(tab);
     m_tabWidget->removeTab(index);
+    delete tab;
 
     if (m_tabWidget->count() == 0) {
         // Last tab closed — quit (closeEvent will save session)
@@ -485,6 +523,8 @@ void MainWindow::setupActions()
     auto *printAction = KStandardAction::print(this, &MainWindow::onFilePrint, ac);
     printAction->setPriority(QAction::LowPriority);
 
+    KStandardAction::save(this, &MainWindow::onFileSave, ac);
+
     // File > Close
     auto *closeAction = KStandardAction::close(this, &MainWindow::onFileClose, ac);
     Q_UNUSED(closeAction);
@@ -557,6 +597,7 @@ void MainWindow::setupActions()
             m_fitWidthAction->setEnabled(false);
         if (m_pageArrangementMenu)
             m_pageArrangementMenu->setEnabled(false);
+        if (auto *copy = actionCollection()->action(QStringLiteral("edit_copy"))) copy->setEnabled(true);
         statusBar()->showMessage(i18n("Source view"), 2000);
     });
 
@@ -781,11 +822,12 @@ void MainWindow::setupActions()
 
     // B2: Copy action (Ctrl+C) — disabled when hand tool is active
     auto *copyAction = KStandardAction::copy(this, [this]() {
-        auto *view = currentDocumentView();
-        if (view) view->copySelection();
+        auto *tab = currentDocumentTab();
+        if (tab && tab->isSourceMode()) tab->sourceEditor()->copy();
+        else if (auto *view = currentDocumentView()) view->copySelection();
     }, ac);
     copyAction->setPriority(QAction::LowPriority);
-    copyAction->setEnabled(false); // hand tool is default
+    copyAction->setEnabled(true); // Copy also applies to source-editor selection.
 
     connect(selectTool, &QAction::triggered, copyAction, [copyAction]() {
         copyAction->setEnabled(true);
@@ -855,29 +897,23 @@ void MainWindow::onFileExportPdf()
         return;
     }
 
-    if (view->isPdfMode()) {
+    if (PenelopeSettings::self()->usePdfRenderer() || PenelopeSettings::self()->useWebView()) {
         auto *tab = currentDocumentTab();
         if (!tab)
             return;
 
         QString filePath = tab->filePath();
-        QString markdown;
-        if (tab->isSourceMode()) {
-            markdown = tab->sourceText();
-        } else {
-            QFile file(filePath);
-            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-                return;
-            markdown = QString::fromUtf8(file.readAll());
-            file.close();
-        }
+        const QString markdown = tab->sourceText();
 
         StyleManager *editingSm = m_typeDockWidget->currentStyleManager();
+        std::unique_ptr<StyleManager> ownedStyle;
         StyleManager *styleManager;
         if (editingSm) {
-            styleManager = editingSm->clone(this);
+            ownedStyle.reset(editingSm->clone());
+            styleManager = ownedStyle.get();
         } else {
-            styleManager = new StyleManager(this);
+            ownedStyle = std::make_unique<StyleManager>();
+            styleManager = ownedStyle.get();
             m_themeComposer->compose(styleManager);
         }
 
@@ -1072,6 +1108,7 @@ void MainWindow::onFileExportPdf()
 
         // Generate PDF with options
         PdfGenerator pdfGen(m_fontManager);
+        pdfGen.setDocumentInfo(fi.fileName(), fi.baseName());
         pdfGen.setMaxJustifyGap(settings->maxJustifyGap());
         pdfGen.setExportOptions(opts);
         if (pdfGen.generateToFile(layoutResult, pl, fi.baseName(), path)) {
@@ -1097,8 +1134,9 @@ void MainWindow::onFileExportPdf()
 
 void MainWindow::onFileExportRtf()
 {
+    rebuildCurrentDocument();
     auto *view = currentDocumentView();
-    if (!view || !view->document()) {
+    if (!view) {
         statusBar()->showMessage(i18n("No document to export."), 3000);
         return;
     }
@@ -1109,8 +1147,18 @@ void MainWindow::onFileExportRtf()
     if (path.isEmpty())
         return;
 
-    RtfExporter exporter;
-    if (exporter.exportToFile(view->document(), path)) {
+    auto *tab = currentDocumentTab();
+    bool success = false;
+    if (tab && tab->hasTocData()) {
+        ContentRtfExporter exporter;
+        const QByteArray data = exporter.exportBlocks(tab->cachedContentDoc().blocks);
+        QSaveFile file(path);
+        success = file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit();
+    } else if (view->document()) {
+        RtfExporter exporter;
+        success = exporter.exportToFile(view->document(), path);
+    }
+    if (success) {
         statusBar()->showMessage(i18n("Exported to %1", path), 3000);
     } else {
         statusBar()->showMessage(i18n("Failed to export RTF."), 3000);
@@ -1119,17 +1167,27 @@ void MainWindow::onFileExportRtf()
 
 void MainWindow::onFilePrint()
 {
+    rebuildCurrentDocument();
     auto *view = currentDocumentView();
     if (!view) {
         statusBar()->showMessage(i18n("No document to print."), 3000);
         return;
     }
 
-    if (view->isPdfMode()) {
+    if (currentDocumentTab()->hasTocData()) {
+        auto *tab = currentDocumentTab();
+        PageLayout pl = m_pageDockWidget->currentPageLayout();
+        m_fontManager->resetUsage();
+        Layout::Engine engine(m_fontManager, m_textShaper);
+        engine.setHyphenateJustifiedText(PenelopeSettings::self()->hyphenateJustifiedText());
+        auto layout = engine.layout(tab->cachedContentDoc(), pl);
+        PdfGenerator generator(m_fontManager);
+        QFileInfo fi(tab->filePath());
+        generator.setDocumentInfo(fi.fileName(), fi.baseName());
+        generator.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
         // New pipeline: use PrintController with Poppler-based printing
         auto *controller = new PrintController(nullptr, this);
-        controller->setPdfData(view->pdfData());
-        PageLayout pl = m_pageDockWidget->currentPageLayout();
+        controller->setPdfData(generator.generate(layout, pl, fi.baseName()));
         controller->setPageLayout(pl);
         QString title = m_tabWidget->tabText(m_tabWidget->currentIndex());
         controller->setFileName(title);
@@ -1155,7 +1213,7 @@ void MainWindow::onFileClose()
 {
     int index = m_tabWidget->currentIndex();
     if (index >= 0) {
-        m_tabWidget->removeTab(index);
+        onTabCloseRequested(index);
     }
 }
 
@@ -1281,6 +1339,7 @@ void MainWindow::onSettingsChanged()
     if (settings->shortWordsEnabled())
         m_shortWords->setLanguage(settings->hyphenationLanguage());
 
+    ++m_compositionGeneration;
     rebuildCurrentDocument();
 }
 
@@ -1303,6 +1362,7 @@ void MainWindow::onRenderModeChanged()
     if (view)
         view->setRenderMode(webMode ? DocumentView::WebMode : DocumentView::PrintMode);
 
+    ++m_compositionGeneration;
     rebuildCurrentDocument();
 }
 
@@ -1343,6 +1403,7 @@ void MainWindow::saveSession()
         auto *tab = qobject_cast<DocumentTab *>(m_tabWidget->widget(i));
         if (!tab || tab->filePath().isEmpty())
             continue;
+        saveTabViewState(tab);
         openFiles << tab->filePath();
         ViewState vs = tab->documentView()->saveViewState();
         zoomLevels << vs.zoomPercent;
@@ -1391,23 +1452,28 @@ void MainWindow::restoreOpenFiles()
 
     // Restore active tab
     int activeTab = group.readEntry("ActiveTab", 0);
-    if (activeTab >= 0 && activeTab < m_tabWidget->count())
-        m_tabWidget->setCurrentIndex(activeTab);
+    const QString activePath = openFiles.value(activeTab);
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        auto *tab = qobject_cast<DocumentTab *>(m_tabWidget->widget(i));
+        if (tab && tab->filePath() == activePath) m_tabWidget->setCurrentIndex(i);
+    }
 
     // Defer view state restoration until layouts are computed
     QList<int> zoomLevels = group.readEntry("ZoomLevels", QList<int>());
     QList<int> scrollPages = group.readEntry("ScrollPages", QList<int>());
     QStringList fracStrings = group.readEntry("ScrollFractions", QStringList());
 
-    QTimer::singleShot(0, this, [this, zoomLevels, scrollPages, fracStrings]() {
+    QTimer::singleShot(0, this, [this, openFiles, zoomLevels, scrollPages, fracStrings]() {
         for (int i = 0; i < m_tabWidget->count() && i < zoomLevels.size(); ++i) {
             auto *tab = qobject_cast<DocumentTab *>(m_tabWidget->widget(i));
             if (!tab)
                 continue;
+            int savedIndex = openFiles.indexOf(tab->filePath());
+            if (savedIndex < 0) continue;
             ViewState vs;
-            vs.zoomPercent = zoomLevels.value(i, 100);
-            vs.currentPage = scrollPages.value(i, 0);
-            vs.scrollFraction = (i < fracStrings.size()) ? fracStrings[i].toDouble() : 0.0;
+            vs.zoomPercent = zoomLevels.value(savedIndex, 100);
+            vs.currentPage = scrollPages.value(savedIndex, 0);
+            vs.scrollFraction = fracStrings.value(savedIndex).toDouble();
             vs.valid = true;
             tab->documentView()->restoreViewState(vs);
         }
@@ -1517,25 +1583,18 @@ void MainWindow::rebuildCurrentDocument()
     if (filePath.isEmpty())
         return;
 
-    // Use source text from editor if in source mode, otherwise read from file
-    QString markdown;
-    if (tab->isSourceMode()) {
-        markdown = tab->sourceText();
-    } else {
-        QFile file(filePath);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            return;
-        markdown = QString::fromUtf8(file.readAll());
-        file.close();
-    }
+    const QString markdown = tab->sourceText();
 
     // Use the editing copy from the style dock, or load fresh if none
     StyleManager *editingSm = m_typeDockWidget->currentStyleManager();
+    std::unique_ptr<StyleManager> ownedStyle;
     StyleManager *styleManager;
     if (editingSm) {
-        styleManager = editingSm->clone(this);
+        ownedStyle.reset(editingSm->clone());
+        styleManager = ownedStyle.get();
     } else {
-        styleManager = new StyleManager(this);
+        ownedStyle = std::make_unique<StyleManager>();
+        styleManager = ownedStyle.get();
         m_themeComposer->compose(styleManager);
     }
 
@@ -1546,8 +1605,9 @@ void MainWindow::rebuildCurrentDocument()
     ViewState state = view->saveViewState();
     PageLayout pl = m_pageDockWidget->currentPageLayout();
     QFileInfo fi(filePath);
+    view->setPageLayout(pl);
 
-    if (PenelopeSettings::self()->usePdfRenderer()) {
+    if (PenelopeSettings::self()->usePdfRenderer() || PenelopeSettings::self()->useWebView()) {
         // --- New rendering pipeline (shared content building) ---
         ContentBuilder contentBuilder;
         contentBuilder.setBasePath(fi.absolutePath());
@@ -1613,19 +1673,13 @@ void MainWindow::rebuildCurrentDocument()
             view->setRenderMode(DocumentView::WebMode);
             view->restoreViewState(state);
             view->setDocumentInfo(fi.fileName(), fi.baseName());
-            connect(view, &DocumentView::currentHeadingChanged,
-                    m_tocWidget, &TocWidget::highlightHeading,
-                    Qt::UniqueConnection);
 
-            // Wire debounced relayout
-            connect(view, &DocumentView::webRelayoutRequested,
-                    this, &MainWindow::rebuildCurrentDocument,
-                    Qt::UniqueConnection);
         } else {
             // --- PDF rendering pipeline ---
             Layout::LayoutResult layoutResult = layoutEngine.layout(contentDoc, pl);
 
             PdfGenerator pdfGen(m_fontManager);
+            pdfGen.setDocumentInfo(fi.fileName(), fi.baseName());
             pdfGen.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
             QByteArray pdf = pdfGen.generate(layoutResult, pl, fi.baseName());
 
@@ -1669,15 +1723,13 @@ void MainWindow::rebuildCurrentDocument()
                     headingPositions.append(hp);
                 }
                 view->setHeadingPositions(headingPositions);
-                connect(view, &DocumentView::currentHeadingChanged,
-                        m_tocWidget, &TocWidget::highlightHeading,
-                        Qt::UniqueConnection);
             }
         }
     } else {
         // --- Legacy QTextDocument pipeline ---
-        auto *doc = new QTextDocument(this);
-        auto *builder = new DocumentBuilder(doc, this);
+        auto *doc = new QTextDocument(tab);
+        DocumentBuilder scopedBuilder(doc);
+        auto *builder = &scopedBuilder;
         builder->setBasePath(fi.absolutePath());
         builder->setStyleManager(styleManager);
         if (PenelopeSettings::self()->hyphenationEnabled()
@@ -1697,6 +1749,8 @@ void MainWindow::rebuildCurrentDocument()
         view->restoreViewState(state);
         view->setDocumentInfo(fi.fileName(), fi.baseName());
 
+        tab->clearTocData();
+        view->setRenderMode(DocumentView::PrintMode);
         m_tocWidget->buildFromDocument(doc);
     }
 
@@ -1709,7 +1763,9 @@ void MainWindow::openFile(const QUrl &url)
     if (!url.isLocalFile())
         return;
 
-    const QString filePath = url.toLocalFile();
+    const QFileInfo requestedFile(url.toLocalFile());
+    const QString filePath = requestedFile.canonicalFilePath().isEmpty()
+        ? requestedFile.absoluteFilePath() : requestedFile.canonicalFilePath();
 
     // Check if already open
     for (int i = 0; i < m_tabWidget->count(); ++i) {
@@ -1728,16 +1784,6 @@ void MainWindow::openFile(const QUrl &url)
     }
     const QString markdown = QString::fromUtf8(file.readAll());
     file.close();
-
-    // Build document with style manager (use editing copy if available)
-    StyleManager *editingSm = m_typeDockWidget->currentStyleManager();
-    StyleManager *styleManager;
-    if (editingSm) {
-        styleManager = editingSm->clone(this);
-    } else {
-        styleManager = new StyleManager(this);
-        m_themeComposer->compose(styleManager);
-    }
 
     auto *tab = new DocumentTab(this);
     tab->setFilePath(filePath);
@@ -1761,89 +1807,6 @@ void MainWindow::openFile(const QUrl &url)
         tab->documentView()->setCodeBlockLanguageOverrides(overrides);
     }
 
-    if (webMode) {
-        // Web mode: defer to rebuildCurrentDocument() after tab is current
-    } else if (PenelopeSettings::self()->usePdfRenderer()) {
-        // --- New PDF rendering pipeline ---
-        ContentBuilder contentBuilder;
-        contentBuilder.setBasePath(fi.absolutePath());
-        contentBuilder.setStyleManager(styleManager);
-        if (PenelopeSettings::self()->hyphenationEnabled()
-            || PenelopeSettings::self()->hyphenateJustifiedText())
-            contentBuilder.setHyphenator(m_hyphenator);
-        if (PenelopeSettings::self()->shortWordsEnabled())
-            contentBuilder.setShortWords(m_shortWords);
-        contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
-        Content::Document contentDoc = contentBuilder.build(markdown);
-
-        tab->documentView()->applyLanguageOverrides(contentDoc);
-
-        m_fontManager->resetUsage();
-
-        Layout::Engine layoutEngine(m_fontManager, m_textShaper);
-        layoutEngine.setHyphenateJustifiedText(
-            PenelopeSettings::self()->hyphenateJustifiedText());
-        Layout::LayoutResult layoutResult = layoutEngine.layout(contentDoc, openPl);
-
-        PdfGenerator pdfGen(m_fontManager);
-        pdfGen.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
-        QByteArray pdf = pdfGen.generate(layoutResult, openPl, fi.baseName());
-
-        tab->documentView()->setPdfData(pdf);
-        tab->documentView()->setSourceData(
-            contentBuilder.processedMarkdown(), layoutResult.sourceMap, contentDoc,
-            layoutResult.codeBlockRegions);
-
-        // Build TOC from content model (PDF mode)
-        m_tocWidget->buildFromContentModel(contentDoc, layoutResult.sourceMap);
-        tab->setTocData(contentDoc, layoutResult.sourceMap);
-
-        // Pass heading positions to view for scroll-sync
-        {
-            QList<HeadingPosition> headingPositions;
-            for (const auto &block : contentDoc.blocks) {
-                const auto *heading = std::get_if<Content::Heading>(&block);
-                if (!heading || heading->level < 1 || heading->level > 6)
-                    continue;
-                HeadingPosition hp;
-                hp.sourceLine = heading->source.startLine;
-                if (heading->source.startLine > 0) {
-                    for (const auto &entry : layoutResult.sourceMap) {
-                        if (entry.startLine == heading->source.startLine
-                            && entry.endLine == heading->source.endLine) {
-                            hp.page = entry.pageNumber;
-                            hp.yOffset = entry.rect.top();
-                            break;
-                        }
-                    }
-                }
-                headingPositions.append(hp);
-            }
-            tab->documentView()->setHeadingPositions(headingPositions);
-            connect(tab->documentView(), &DocumentView::currentHeadingChanged,
-                    m_tocWidget, &TocWidget::highlightHeading,
-                    Qt::UniqueConnection);
-        }
-    } else {
-        // --- Legacy QTextDocument pipeline ---
-        auto *doc = new QTextDocument(this);
-        auto *builder = new DocumentBuilder(doc, this);
-        builder->setBasePath(fi.absolutePath());
-        builder->setStyleManager(styleManager);
-        if (PenelopeSettings::self()->hyphenationEnabled()
-            || PenelopeSettings::self()->hyphenateJustifiedText())
-            builder->setHyphenator(m_hyphenator);
-        if (PenelopeSettings::self()->shortWordsEnabled())
-            builder->setShortWords(m_shortWords);
-        builder->setFootnoteStyle(styleManager->footnoteStyle());
-        builder->build(markdown);
-
-        CodeBlockHighlighter highlighter;
-        highlighter.highlight(doc);
-
-        tab->documentView()->setDocument(doc);
-    }
-
     tab->documentView()->setDocumentInfo(fi.fileName(), fi.baseName());
 
     // Apply saved view mode from settings
@@ -1861,7 +1824,8 @@ void MainWindow::openFile(const QUrl &url)
 
     // Connect zoom signal to status bar controls
     connect(tab->documentView(), &DocumentView::zoomChanged,
-            this, [this](int percent) {
+            this, [this, tab](int percent) {
+        if (currentDocumentTab() != tab) return;
         if (m_zoomSpinBox) {
             const QSignalBlocker blocker(m_zoomSpinBox);
             m_zoomSpinBox->setValue(percent);
@@ -1874,7 +1838,8 @@ void MainWindow::openFile(const QUrl &url)
 
     // A7: Connect hover hint signal to status bar
     connect(tab->documentView(), &DocumentView::statusHintChanged,
-            this, [this](const QString &hint) {
+            this, [this, tab](const QString &hint) {
+        if (currentDocumentTab() != tab) return;
         if (hint.isEmpty())
             statusBar()->clearMessage();
         else
@@ -1883,8 +1848,8 @@ void MainWindow::openFile(const QUrl &url)
 
     // Code block language override: persist + rebuild
     connect(tab->documentView(), &DocumentView::codeBlockLanguageChanged,
-            this, [this, filePath]() {
-        auto *view = currentDocumentView();
+            this, [this, filePath, tab]() {
+        auto *view = tab->documentView();
         if (!view)
             return;
         // Persist overrides to MetadataStore as JSON
@@ -1893,7 +1858,8 @@ void MainWindow::openFile(const QUrl &url)
         for (auto it = overrides.cbegin(); it != overrides.cend(); ++it)
             langObj.insert(it.key(), it.value());
         m_metadataStore->setValue(filePath, QStringLiteral("codeBlockLanguages"), langObj);
-        rebuildCurrentDocument();
+        tab->setCompositionGeneration(0);
+        if (currentDocumentTab() == tab) rebuildCurrentDocument();
     });
 
     // Language picker dialog (decoupled from DocumentView → widgets)
@@ -1955,18 +1921,47 @@ void MainWindow::openFile(const QUrl &url)
             m_tocWidget->highlightHeading(bestSourceLine);
     });
 
+    connect(tab->documentView(), &DocumentView::currentHeadingChanged, this, [this, tab](int line) {
+        if (currentDocumentTab() == tab) m_tocWidget->highlightHeading(line);
+    });
+    auto *sourceTimer = new QTimer(tab);
+    sourceTimer->setSingleShot(true);
+    sourceTimer->setInterval(300);
+    connect(tab, &DocumentTab::sourceChanged, tab, [sourceTimer]() { sourceTimer->start(); });
+    connect(sourceTimer, &QTimer::timeout, this, [this, tab]() {
+        if (currentDocumentTab() == tab) rebuildCurrentDocument();
+    });
+    connect(tab->sourceEditor()->document(), &QTextDocument::modificationChanged,
+            this, [this, tab, fi](bool modified) {
+        int index = m_tabWidget->indexOf(tab);
+        if (index >= 0) m_tabWidget->setTabText(index, fi.fileName() + (modified ? QStringLiteral(" *") : QString()));
+    });
+    connect(tab, &DocumentTab::externalChangeDetected, this, [this, tab]() {
+        statusBar()->showMessage(i18n("%1 changed on disk; your unsaved edits have been kept.", tab->filePath()), 8000);
+    });
+    connect(tab->documentView(), &DocumentView::webRelayoutRequested, this, [this, tab]() {
+        if (currentDocumentTab() == tab && PenelopeSettings::self()->useWebView()) rebuildCurrentDocument();
+        else tab->setCompositionGeneration(0);
+    });
+
     int index = m_tabWidget->addTab(tab, fi.fileName());
     m_tabWidget->setTabToolTip(index, filePath);
     m_tabWidget->setCurrentIndex(index);
 
-    // In web mode, build now that the tab is current (needs viewport width)
-    if (webMode)
-        rebuildCurrentDocument();
 
-    m_recentFilesAction->addUrl(url);
+    QJsonObject savedView = m_metadataStore->value(filePath, QStringLiteral("viewState")).toObject();
+    {
+        ViewState vs;
+        vs.valid = true;
+        vs.zoomPercent = savedView.value(QStringLiteral("zoom")).toInt(qRound(PenelopeSettings::self()->defaultZoom() * 100));
+        vs.currentPage = savedView.value(QStringLiteral("page")).toInt();
+        vs.scrollFraction = savedView.value(QStringLiteral("scroll")).toDouble();
+        tab->documentView()->restoreViewState(vs);
+    }
+    m_recentFilesAction->addUrl(QUrl::fromLocalFile(filePath));
 
     // Update TOC
-    if (!tab->documentView()->isPdfMode()) {
+    if (!tab->hasTocData() && tab->documentView()->document()) {
         m_tocWidget->buildFromDocument(tab->documentView()->document());
     }
 
@@ -1978,4 +1973,45 @@ void MainWindow::openFile(const QUrl &url)
         m_filePathLabel->setText(filePath);
 
     statusBar()->showMessage(i18n("Opened %1", fi.fileName()), 3000);
+}
+
+void MainWindow::saveTabViewState(DocumentTab *tab)
+{
+    if (!tab) return;
+    ViewState state = tab->documentView()->saveViewState();
+    QJsonObject obj;
+    obj[QStringLiteral("zoom")] = state.zoomPercent;
+    obj[QStringLiteral("page")] = state.currentPage;
+    obj[QStringLiteral("scroll")] = state.scrollFraction;
+    m_metadataStore->setValue(tab->filePath(), QStringLiteral("viewState"), obj);
+}
+
+bool MainWindow::saveTab(DocumentTab *tab)
+{
+    if (!tab) return false;
+    if (tab->hasExternalChanges() && QMessageBox::question(this, i18n("File Changed"),
+            i18n("%1 changed on disk. Replace it with your edits?", tab->filePath()),
+            QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Save)
+        return false;
+    QString error;
+    if (!tab->saveSource(&error)) {
+        QMessageBox::warning(this, i18n("Save Failed"), error);
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::onFileSave()
+{
+    saveTab(currentDocumentTab());
+}
+
+bool MainWindow::confirmClose(DocumentTab *tab)
+{
+    if (!tab || !tab->isModified()) return true;
+    auto answer = QMessageBox::warning(this, i18n("Unsaved Changes"),
+        i18n("Save changes to %1?", tab->filePath()),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    if (answer == QMessageBox::Cancel) return false;
+    return answer == QMessageBox::Discard || saveTab(tab);
 }

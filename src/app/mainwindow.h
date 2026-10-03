@@ -48,6 +48,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private Q_SLOTS:
+    void onFileSave();
     void onFileOpen();
     void onFileOpenRecent(const QUrl &url);
     void onFileExportPdf();
@@ -68,6 +69,9 @@ private Q_SLOTS:
     void onRenderModeChanged();
 
 private:
+    bool saveTab(DocumentTab *tab);
+    bool confirmClose(DocumentTab *tab);
+    void saveTabViewState(DocumentTab *tab);
     void setupActions();
     void setupSidebars();
     void rebuildCurrentDocument();

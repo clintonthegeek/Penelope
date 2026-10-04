@@ -10,6 +10,7 @@
 
 #ifndef PENELOPE_HERSHEYFONT_H
 #define PENELOPE_HERSHEYFONT_H
+#include <mutex>
 
 #include <QHash>
 #include <QPointF>
@@ -116,7 +117,7 @@ private:
         QString boldItalic;
     };
 
-    bool m_loaded = false;
+    std::once_flag m_loadOnce;
     QHash<QString, HersheyFont *> m_fonts;           // name → font
     QHash<QString, FamilyEntry> m_families;           // family → entry
 };

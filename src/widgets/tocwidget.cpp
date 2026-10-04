@@ -1,8 +1,6 @@
 #include "tocwidget.h"
 
 #include <QHeaderView>
-#include <QTextBlock>
-#include <QTextDocument>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -20,55 +18,6 @@ TocWidget::TocWidget(QWidget *parent)
 
     connect(m_treeWidget, &QTreeWidget::itemClicked,
             this, &TocWidget::onItemClicked);
-}
-
-void TocWidget::buildFromDocument(QTextDocument *document)
-{
-    m_treeWidget->clear();
-    m_headingsByLine.clear();
-    if (!document)
-        return;
-
-    // Stack of parent items for nesting headings
-    // Index 0 = invisible root, index 1-6 = last item at that heading level
-    QTreeWidgetItem *parents[7] = {};
-
-    for (QTextBlock block = document->begin();
-         block != document->end(); block = block.next()) {
-        int level = block.blockFormat().headingLevel();
-        if (level < 1 || level > 6)
-            continue;
-
-        QString text = block.text().trimmed();
-        if (text.isEmpty())
-            continue;
-
-        auto *item = new QTreeWidgetItem();
-        item->setText(0, text);
-        item->setData(0, Qt::UserRole, block.blockNumber());
-
-        // Find the appropriate parent
-        QTreeWidgetItem *parent = nullptr;
-        for (int i = level - 1; i >= 1; --i) {
-            if (parents[i]) {
-                parent = parents[i];
-                break;
-            }
-        }
-
-        if (parent) {
-            parent->addChild(item);
-        } else {
-            m_treeWidget->addTopLevelItem(item);
-        }
-
-        parents[level] = item;
-        // Clear deeper level parents
-        for (int i = level + 1; i <= 6; ++i)
-            parents[i] = nullptr;
-    }
-
-    m_treeWidget->expandAll();
 }
 
 void TocWidget::buildFromContentModel(const Content::Document &doc,
@@ -161,25 +110,12 @@ void TocWidget::onItemClicked(QTreeWidgetItem *item, int column)
 {
     Q_UNUSED(column);
 
-    // Check if this item has y-offset data (content model path)
-    QVariant yVar = item->data(0, Qt::UserRole + 1);
-    if (yVar.isValid()) {
-        int page = item->data(0, Qt::UserRole).toInt();
-        qreal yOffset = yVar.toDouble();
-        Q_EMIT headingNavigate(page, yOffset);
+    const QVariant yOffset = item->data(0, Qt::UserRole + 1);
+    if (!yOffset.isValid()) return;
+    Q_EMIT headingNavigate(item->data(0, Qt::UserRole).toInt(), yOffset.toDouble());
+    const QVariant sourceLine = item->data(0, Qt::UserRole + 2);
+    if (sourceLine.isValid()) Q_EMIT headingSourceNavigate(sourceLine.toInt());
 
-        // Also emit source line for source view navigation
-        QVariant lineVar = item->data(0, Qt::UserRole + 2);
-        if (lineVar.isValid())
-            Q_EMIT headingSourceNavigate(lineVar.toInt());
-        return;
-    }
-
-    // Legacy path: block number
-    bool ok;
-    int blockNumber = item->data(0, Qt::UserRole).toInt(&ok);
-    if (ok)
-        Q_EMIT headingClicked(blockNumber);
 }
 
 void TocWidget::highlightHeading(int sourceLine)

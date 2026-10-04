@@ -388,6 +388,12 @@ void PdfBoxRenderer::drawGlyphsCIDFont(FontFace *face, qreal fontSize,
     QList<int> widths(count, -1);
     if (useRun) {
         for (int i = 0; i < count; ++i) {
+            // TJ adjusts horizontal advances only. Shaped marks may have
+            // distinct vertical offsets; preserve those with absolute Tm.
+            if (info.positions[i].y() != info.positions[0].y()) {
+                useRun = false;
+                break;
+            }
             widths[i] = m_glyphWidthCb(face, info.glyphIds[i]);
             if (widths[i] < 0) {
                 // No /W entry: the viewer would substitute /DW and the advance

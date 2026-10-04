@@ -97,6 +97,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
     // Detect Hershey mode
     m_hasHersheyGlyphs = false;
     for (const auto &page : layout.pages) {
+        if (m_cancelled && m_cancelled()) return {};
         for (const auto &elem : page.elements) {
             std::visit([&](const auto &e) {
                 using T = std::decay_t<decltype(e)>;
@@ -131,6 +132,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
 
     // First pass: register fonts by scanning all glyph boxes
     for (const auto &page : layout.pages) {
+        if (m_cancelled && m_cancelled()) return {};
         for (const auto &elem : page.elements) {
             std::visit([&](const auto &e) {
                 using T = std::decay_t<decltype(e)>;
@@ -159,6 +161,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
 
     // Also scan for images
     for (const auto &page : layout.pages) {
+        if (m_cancelled && m_cancelled()) return {};
         for (const auto &elem : page.elements) {
             if (auto *bb = std::get_if<Layout::BlockBox>(&elem)) {
                 if (bb->type == Layout::BlockBox::ImageBlock && !bb->image.isNull())
@@ -184,6 +187,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
         };
 
         for (int pi = 0; pi < layout.pages.size(); ++pi) {
+        if (m_cancelled && m_cancelled()) return {};
             PageLayout resolved = pageLayout.resolvedForPage(pi);
             if (resolved.headerEnabled) {
                 markGlyphs(resolved.headerLeft, pi);
@@ -231,6 +235,7 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
     // Write pages
     QList<Pdf::ObjId> pageObjIds;
     for (int pi = 0; pi < layout.pages.size(); ++pi) {
+        if (m_cancelled && m_cancelled()) return {};
         m_currentPageIndex = pi;
         QByteArray contentStream = renderPage(layout.pages[pi], pageLayout, resources);
 
@@ -815,6 +820,7 @@ Pdf::ObjId PdfGenerator::writeOutlines(Pdf::Writer &writer,
         contentTop -= (PageLayout::kHeaderHeight + PageLayout::kSeparatorGap);
 
     for (int pi = 0; pi < layout.pages.size(); ++pi) {
+        if (m_cancelled && m_cancelled()) return {};
         for (const auto &elem : layout.pages[pi].elements) {
             if (auto *bb = std::get_if<Layout::BlockBox>(&elem)) {
                 if (bb->isFragmentStart && bb->headingLevel > 0 && bb->headingLevel <= m_exportOptions.bookmarkMaxDepth

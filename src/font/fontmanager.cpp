@@ -37,8 +37,7 @@ FontFace::~FontFace()
     }
 }
 
-FontManager::FontManager(QObject *parent)
-    : QObject(parent)
+FontManager::FontManager()
 {
     FT_Error err = FT_Init_FreeType(&m_ftLibrary);
     if (err) {

@@ -38,18 +38,23 @@ public:
     };
 
     CodeSpanCollector()
+        : CodeSpanCollector(PenelopeSettings::self()->codeHighlightTheme(),
+                            PenelopeSettings::self()->syntaxHighlightingEnabled()) {}
+
+    CodeSpanCollector(const QString &themeName, bool enabled) : m_enabled(enabled)
     {
-        static KSyntaxHighlighting::Repository repo;
+        // The repository and its definitions stay on the calling thread.
+        static thread_local KSyntaxHighlighting::Repository repo;
         m_repo = &repo;
         auto defaultTheme = repo.defaultTheme(KSyntaxHighlighting::Repository::LightTheme);
-        auto chosen = repo.theme(PenelopeSettings::self()->codeHighlightTheme());
+        auto chosen = repo.theme(themeName);
         setTheme(chosen.isValid() ? chosen : defaultTheme);
     }
 
     QList<Span> highlight(const QString &code, const QString &language)
     {
         m_spans.clear();
-        if (!PenelopeSettings::self()->syntaxHighlightingEnabled()) return {};
+        if (!m_enabled) return {};
         m_lineOffset = 0;
 
         auto def = m_repo->definitionForName(language);
@@ -90,6 +95,7 @@ protected:
     }
 
 private:
+    bool m_enabled = true;
     KSyntaxHighlighting::Repository *m_repo = nullptr;
     QList<Span> m_spans;
     int m_lineOffset = 0;

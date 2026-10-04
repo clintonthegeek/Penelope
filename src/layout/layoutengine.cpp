@@ -39,6 +39,7 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
     QList<PageElement> elements;
 
     for (const auto &block : doc.blocks) {
+        if (m_cancelled && m_cancelled()) return {};
         std::visit([&](const auto &b) {
             using T = std::decay_t<decltype(b)>;
             if constexpr (std::is_same_v<T, Content::Paragraph>) {
@@ -128,6 +129,7 @@ ContinuousLayoutResult Engine::layoutContinuous(const Content::Document &doc, qr
     QList<PageElement> elements;
 
     for (const auto &block : doc.blocks) {
+        if (m_cancelled && m_cancelled()) return {};
         std::visit([&](const auto &b) {
             using T = std::decay_t<decltype(b)>;
             if constexpr (std::is_same_v<T, Content::Paragraph>) {
@@ -1041,7 +1043,9 @@ BlockBox Engine::layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth)
 
     // Try syntax highlighting if language is known
     if (!cb.language.isEmpty()) {
-        CodeSpanCollector collector;
+        CodeSpanCollector collector(
+            m_codeHighlighting ? m_codeTheme : PenelopeSettings::self()->codeHighlightTheme(),
+            m_codeHighlighting ? *m_codeHighlighting : PenelopeSettings::self()->syntaxHighlightingEnabled());
         auto spans = collector.highlight(cb.code, cb.language);
 
         if (!spans.isEmpty()) {
@@ -1102,7 +1106,7 @@ BlockBox Engine::layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth)
     for (const auto &line : box.lines)
         h += line.height;
     box.height = h;
-    box.x = 12.0; // match DocumentBuilder margins
+    box.x = 12.0; // inset quoted content
     box.source = cb.source;
 
     return box;
@@ -1145,12 +1149,16 @@ TableBox Engine::layoutTable(const Content::Table &table, qreal availWidth)
 
     // Content-aware column width distribution
     auto metrics = measureColumnMetrics(table);
+    if (m_cancelled && m_cancelled()) return {};
 
     QList<qreal> colWidths;
-    if (PenelopeSettings::self()->tableLayoutAlgorithm() == PenelopeSettings::EnumTableLayoutAlgorithm::Optimal)
+    if ((m_optimalTableLayout ? *m_optimalTableLayout :
+        PenelopeSettings::self()->tableLayoutAlgorithm() == PenelopeSettings::EnumTableLayoutAlgorithm::Optimal))
         colWidths = distributeColumnsOptimal(table, metrics, availWidth);
     else
         colWidths = distributeColumnsAuto(metrics, availWidth);
+
+    if (m_cancelled && m_cancelled()) return {};
 
     // Store column positions for grid drawing
     tbox.columnPositions.append(0);
@@ -1160,6 +1168,7 @@ TableBox Engine::layoutTable(const Content::Table &table, qreal availWidth)
     qreal y = 0;
     int rowIdx = 0;
     for (const auto &row : table.rows) {
+        if (m_cancelled && m_cancelled()) return {};
         TableRowBox rbox;
         rbox.y = y;
 
@@ -1275,6 +1284,7 @@ QList<PageElement> Engine::layoutBlockQuote(const Content::BlockQuote &bq, qreal
     qreal innerWidth = availWidth - indent;
 
     for (const auto &child : bq.children) {
+        if (m_cancelled && m_cancelled()) return {};
         std::visit([&](const auto &c) {
             using T = std::decay_t<decltype(c)>;
             if constexpr (std::is_same_v<T, Content::Paragraph>) {
@@ -1346,6 +1356,7 @@ QList<PageElement> Engine::layoutList(const Content::List &list, qreal availWidt
         qreal itemBulletWidth = 0; // track for subsequent paragraphs
 
         for (const auto &child : item.children) {
+            if (m_cancelled && m_cancelled()) return {};
             std::visit([&](const auto &c) {
                 using T = std::decay_t<decltype(c)>;
                 if constexpr (std::is_same_v<T, Content::Paragraph>) {
@@ -1491,6 +1502,7 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
     qreal y = fs.showSeparator ? 12.0 : 0; // space for separator
 
     for (const auto &fn : fs.footnotes) {
+        if (m_cancelled && m_cancelled()) return {};
         FootnoteBox fbox;
         fbox.label = fn.label;
         fbox.numberStyle = fn.numberStyle;
@@ -1734,6 +1746,7 @@ void Engine::assignToPages(const QList<PageElement> &elements,
     QList<PageElement> queue = elements;
 
     for (int idx = 0; idx < queue.size(); ++idx) {
+        if (m_cancelled && m_cancelled()) return;
         const auto &element = queue[idx];
 
         // Handle tables separately for page-splitting
@@ -2005,6 +2018,7 @@ QList<Engine::ColumnMetrics> Engine::measureColumnMetrics(const Content::Table &
     const qreal pad2 = table.cellPadding * 2;
 
     for (const auto &row : table.rows) {
+        if (m_cancelled && m_cancelled()) return {};
         for (int ci = 0; ci < row.cells.size(); ++ci) {
             const auto &cell = row.cells[ci];
             Content::TextStyle cellStyle = cell.style;
@@ -2089,6 +2103,7 @@ QList<qreal> Engine::distributeColumnsOptimal(const Content::Table &table,
             innerWidth = 1;
 
         for (const auto &row : table.rows) {
+            if (m_cancelled && m_cancelled()) return {};
             if (col >= row.cells.size())
                 continue;
             const auto &cell = row.cells[col];

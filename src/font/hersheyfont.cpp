@@ -205,9 +205,7 @@ HersheyFontRegistry &HersheyFontRegistry::instance()
 
 void HersheyFontRegistry::ensureLoaded()
 {
-    if (m_loaded)
-        return;
-    m_loaded = true;
+    std::call_once(m_loadOnce, [this] {
 
     // Load all .jhf files from the Qt resource bundle
     QDirIterator it(QStringLiteral(":/hershey"), {QStringLiteral("*.jhf")},
@@ -280,12 +278,14 @@ void HersheyFontRegistry::ensureLoaded()
               QStringLiteral("cyrillic"),
               QStringLiteral("cyrilc_1"),
               QString(), QString());
+    });
 }
 
 HersheyFontResult HersheyFontRegistry::resolve(const QString &family,
                                                  int weight,
                                                  bool italic) const
 {
+    const_cast<HersheyFontRegistry *>(this)->ensureLoaded();
     HersheyFontResult result;
 
     auto famIt = m_families.constFind(family);
@@ -350,6 +350,7 @@ HersheyFontResult HersheyFontRegistry::resolve(const QString &family,
 
 QStringList HersheyFontRegistry::familyNames() const
 {
+    const_cast<HersheyFontRegistry *>(this)->ensureLoaded();
     QStringList names = m_families.keys();
     names.sort();
     return names;

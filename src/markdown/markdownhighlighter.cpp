@@ -129,6 +129,10 @@ void MarkdownHighlighter::setPaletteColors(const QColor &headingColor,
                                             const QColor &inlineCodeBg,
                                             const QColor &tableColor)
 {
+    if (m_headingColor == headingColor && m_codeTextColor == codeText
+        && m_codeBgColor == codeBg && m_inlineCodeBgColor == inlineCodeBg
+        && m_tableColor == tableColor)
+        return;
     m_headingColor = headingColor;
     m_codeTextColor = codeText;
     m_codeBgColor = codeBg;

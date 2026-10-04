@@ -2,6 +2,10 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QMimeData>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
 #include <QMouseEvent>
 #include <QLineEdit>
 #include <QPushButton>
@@ -16,9 +20,13 @@
 #include <QTabWidget>
 #include <QToolButton>
 #include <KActionCollection>
+#include <KConfigGroup>
+#include <KSharedConfig>
+#include "pdfpageitem.h"
 #include <KLocalizedString>
 #include <poppler-qt6.h>
 #include "contentbuilder.h"
+#include "contentplaintext.h"
 #include "contentfilter.h"
 #include "contentrtfexporter.h"
 #include "documenttab.h"
@@ -31,15 +39,15 @@
 #include "pagerangeparser.h"
 #include "pdfgenerator.h"
 #include "pdfexportdialog.h"
-#include "printcontroller.h"
 #include "codespancollector.h"
-#include "documentbuilder.h"
 #include "penelopesettings.h"
 #include "rendercache.h"
 #include "stylepropertieseditor.h"
 #include "resourcestore.h"
 #include "characterstyle.h"
 #include "textshaper.h"
+#include "webviewitem.h"
+#include "compositioncontroller.h"
 
 class RegressionTest : public QObject {
     Q_OBJECT
@@ -214,26 +222,28 @@ private Q_SLOTS:
         QVERIFY(!tab.isModified());
     }
     void windowModeSwitchAndTabLifetime() {
+        // A stale preference from older releases cannot re-enable the removed renderer.
+        KConfigGroup rendering(KSharedConfig::openConfig(), QStringLiteral("Rendering"));
+        rendering.writeEntry("UsePdfRenderer", false);
+        rendering.sync();
         QTemporaryDir dir;
         const QString a = dir.filePath("a.md"), b = dir.filePath("b.md");
         QVERIFY(writeFile(a,"# Alpha\n\nText")); QVERIFY(writeFile(b,"# Beta\n\nText"));
-        PenelopeSettings::self()->setUsePdfRenderer(true);
         PenelopeSettings::self()->setUseWebView(false);
         MainWindow window;
         window.openFile(QUrl::fromLocalFile(a));
         auto *tabs = window.findChild<QTabWidget *>(); QVERIFY(tabs);
         auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget()); QVERIFY(tab);
-        QVERIFY(tab->documentView()->isPdfMode());
-        QVERIFY(tab->hasTocData());
+        QTRY_VERIFY_WITH_TIMEOUT(tab->documentView()->isPdfMode() && tab->hasTocData(), 10000);
         window.actionCollection()->action("view_source_mode")->trigger();
         tab->sourceEditor()->insertPlainText("new ");
         window.actionCollection()->action("view_web_mode")->trigger();
-        QVERIFY(!tab->documentView()->isPdfMode());
+        QTRY_VERIFY_WITH_TIMEOUT(!tab->documentView()->isPdfMode() && tab->compositionGeneration() > 0, 10000);
         QVERIFY(tab->documentView()->pdfData().isEmpty());
         auto rtf = ContentRtfExporter().exportBlocks(tab->cachedContentDoc().blocks);
         QVERIFY(rtf.contains("new"));
         window.actionCollection()->action("view_print_mode")->trigger();
-        QVERIFY(tab->documentView()->isPdfMode());
+        QTRY_VERIFY_WITH_TIMEOUT(tab->documentView()->isPdfMode(), 10000);
         QVERIFY(tab->saveSource());
         window.openFile(QUrl::fromLocalFile(b));
         QCOMPARE(tabs->count(),2);
@@ -244,6 +254,8 @@ private Q_SLOTS:
         // Canonical paths prevent aliases from opening duplicate tabs.
         window.openFile(QUrl::fromLocalFile(dir.path() + "/./a.md"));
         QCOMPARE(tabs->count(),1);
+        rendering.deleteEntry("UsePdfRenderer");
+        rendering.sync();
     }
     void webSelectionCopiesMarkdownAndRtf() {
         FontManager fonts; TextShaper shaper(&fonts); Layout::Engine engine(&fonts, &shaper);
@@ -464,11 +476,16 @@ private Q_SLOTS:
         QVERIFY2(!a.isEmpty(), "no characters extracted from the per-glyph PDF");
         QCOMPARE(b.size(), a.size());
 
-        int worst = 0;
+        qreal worst = 0;
         for (int i = 0; i < a.size(); ++i) {
             QCOMPARE(b[i].first, a[i].first);
             const qreal dx = qAbs(b[i].second.left() - a[i].second.left());
-            worst = int(qMax(dx, qreal(worst)));
+            const qreal dy = qAbs(b[i].second.top() - a[i].second.top());
+            const qreal dw = qAbs(b[i].second.width() - a[i].second.width());
+            const qreal dh = qAbs(b[i].second.height() - a[i].second.height());
+            worst = qMax(worst, qMax(qMax(dx, dy), qMax(dw, dh)));
+            QVERIFY2(dy <= 0.15 && dw <= 0.15 && dh <= 0.15,
+                     "character's vertical position or dimensions changed");
             QVERIFY2(dx <= 0.15,
                      qPrintable(QStringLiteral("char %1 '%2' moved %3pt (page-run %4 vs per-glyph %5)")
                                     .arg(i).arg(a[i].first).arg(dx)
@@ -476,15 +493,288 @@ private Q_SLOTS:
         }
         QVERIFY2(worst <= 0.15, qPrintable(QStringLiteral("worst drift %1pt").arg(worst)));
     }
-    void legacyPrintKeepsReaderLayout() {
+    void runTextOperatorsPreserveVerticalOffsets() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral("AVATAR Typography\n"));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        fonts.resetUsage();
+        auto laid = engine.layout(doc, pl);
+        bool changed = false;
+        for (auto &page : laid.pages) {
+            for (auto &element : page.elements) {
+                auto *block = std::get_if<Layout::BlockBox>(&element);
+                if (!block) continue;
+                for (auto &line : block->lines) {
+                    for (auto &run : line.glyphs) {
+                        if (run.glyphs.size() < 2) continue;
+                        // Exercise the positioning contract independently of
+                        // the installed font's mark-positioning tables.
+                        run.glyphs[1].yOffset = 4.0;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        QVERIFY(changed);
+        auto raster = [&](bool useRuns) {
+            PdfGenerator gen(&fonts);
+            gen.setRunTextOperators(useRuns);
+            auto pdf = Poppler::Document::loadFromData(gen.generate(laid, pl, "Offsets"));
+            if (!pdf) return QImage();
+            std::unique_ptr<Poppler::Page> page(pdf->page(0));
+            return page ? page->renderToImage(144, 144) : QImage();
+        };
+        const QImage absolute = raster(false);
+        QVERIFY(!absolute.isNull());
+        QCOMPARE(raster(true), absolute);
+    }
+    void continuousReaderCullsOutsideViewport() {
+        class ObservedItem : public WebViewItem {
+        public:
+            using WebViewItem::WebViewItem;
+            QRectF exposed;
+            void paint(QPainter *p, const QStyleOptionGraphicsItem *o, QWidget *w) override {
+                exposed = o->exposedRect;
+                WebViewItem::paint(p, o, w);
+            }
+        };
+        QString markdown;
+        for (int i = 0; i < 200; ++i)
+            markdown += QStringLiteral("[Link %1](https://example.org/%1) text.\n\n").arg(i);
+        ContentBuilder builder;
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto result = engine.layoutContinuous(builder.build(markdown), 500);
+        const qreal height = result.totalHeight;
+        QGraphicsScene scene;
+        auto *item = new ObservedItem(&fonts);
+        item->setLayoutResult(std::move(result));
+        scene.addItem(item);
+        QGraphicsView view(&scene);
+        view.resize(550, 350);
+        view.show();
+        view.ensureVisible(QRectF(0, 0, 1, 1), 0, 0);
+        QApplication::processEvents();
+        QImage image(view.viewport()->size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        view.viewport()->render(&painter);
+        painter.end();
+        QVERIFY(!item->exposed.isEmpty());
+        QVERIFY2(item->exposed.height() < height / 4,
+                 "Qt supplied the whole document as exposedRect; viewport culling is inactive");
+        QVERIFY(!item->linkHitRects().isEmpty());
+        QVERIFY(item->linkHitRects().size() < 50);
+        const auto oldLink = item->linkHitRects().first();
+        QCOMPARE(item->linkAt(oldLink.rect.center()), oldLink.href);
+        // Simulate a narrow dirty region elsewhere. Existing visible links
+        // must remain clickable even though they are not repainted.
+        QStyleOptionGraphicsItem partial;
+        partial.exposedRect = QRectF(0, height - 100, 500, 100);
+        QPainter stripePainter(&image);
+        item->paint(&stripePainter, &partial, nullptr);
+        stripePainter.end();
+        QCOMPARE(item->linkAt(oldLink.rect.center()), oldLink.href);
+
+    }
+    void shapingCacheReplaysUsageAndBoundsMemory() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        StyleRun style;
+        style.length = 6; style.fontFamily = "Noto Serif";
+        const auto first = shaper.shape("AVATAR", {style});
+        QVERIFY(!first.isEmpty());
+        const auto misses = shaper.cacheMisses();
+        fonts.resetUsage();
+        const auto repeated = shaper.shape("AVATAR", {style});
+        QCOMPARE(shaper.cacheMisses(), misses);
+        QCOMPARE(shaper.cacheHits(), quint64(1));
+        QCOMPARE(repeated.first().glyphs.size(), first.first().glyphs.size());
+        for (const auto &run : repeated)
+            for (const auto &glyph : run.glyphs) QVERIFY(run.font->usedGlyphs.contains(glyph.glyphId));
+        style.fontSize += 1;
+        shaper.shape("AVATAR", {style});
+        QCOMPARE(shaper.cacheMisses(), misses + 1);
+        style.fontFeatures = {"-kern"};
+        shaper.shape("AVATAR", {style});
+        QCOMPARE(shaper.cacheMisses(), misses + 2);
+        shaper.setCacheLimit(256);
+        QVERIFY(shaper.cacheCost() <= 256);
+        shaper.setCacheLimit(0);
+        QCOMPARE(shaper.cacheCost(), 0);
+    }
+    void asynchronousCompositionCoalescesAndReusesContent() {
+        CompositionController controller;
+        QSignalSpy ready(&controller, &CompositionController::ready);
+        QSignalSpy failed(&controller, &CompositionController::failed);
+        QSignalSpy started(&controller, &CompositionController::started);
+        CompositionRequest request;
+        request.continuous = true;
+        request.hyphenateJustified = false;
+        request.semanticRevision = 1;
+        request.markdown = "# Old\n\n";
+        for (int i = 0; i < 1000; ++i) request.markdown += "A paragraph to shape.\n\n";
+        controller.submit(request);
+        for (int i = 0; i < 20; ++i) {
+            request.markdown = QStringLiteral("# Latest %1\n\nAVATAR shaped text.\n").arg(i);
+            controller.submit(request);
+            QVERIFY(controller.pendingCount() <= 1);
+        }
+        QCOMPARE(ready.size(), 0); // no synchronous reader composition
+        QCOMPARE(started.size(), 1); // pending work did not spawn more threads/jobs
+        QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 10000);
+        QCOMPARE(started.size(), 2);
+        QCOMPARE(failed.size(), 0);
+        auto result = qvariant_cast<CompositionResultPtr>(ready.takeFirst().at(1));
+        QCOMPARE(result->request.markdown, request.markdown);
+        QVERIFY(!result->reusedContent);
+        QVERIFY(!result->continuousLayout.elements.isEmpty());
+        request.width += 80;
+        controller.submit(request);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 10000);
+        auto resized = qvariant_cast<CompositionResultPtr>(ready.takeFirst().at(1));
+        QVERIFY(resized->reusedContent);
+        QVERIFY(resized->shapeHits > 0);
+        QCOMPARE(resized->shapeMisses, quint64(0));
+        // Replay with resetUsage also produces a valid PDF and embedded text.
+        request.continuous = false;
+        controller.submit(request);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 10000);
+        auto pdfResult = qvariant_cast<CompositionResultPtr>(ready.takeFirst().at(1));
+        QVERIFY(pdfResult->reusedContent);
+        auto pdf = Poppler::Document::loadFromData(pdfResult->pdf);
+        QVERIFY(pdf);
+        std::unique_ptr<Poppler::Page> page(pdf->page(0));
+        QVERIFY(page->text(QRectF()).contains("AVATAR"));
+        // An explicit cancellation delivers neither a stale result nor error.
+        controller.submit(request);
+        controller.cancel();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+        QCOMPARE(ready.size(), 0);
+        QCOMPARE(failed.size(), 0);
+    }
+    void asynchronousReaderDefersSourceAndSurvivesClosing() {
         QTemporaryDir dir;
-        QTextDocument doc; DocumentBuilder builder(&doc); builder.build("# Printable\n\nBody.\n");
-        doc.setPageSize(QSizeF(400,500));
-        PrintController controller(&doc);
-        controller.exportPdf(dir.filePath("print.pdf"),nullptr);
-        QCOMPARE(doc.pageSize(),QSizeF(400,500));
-        auto poppler = Poppler::Document::loadFromData(readFile(dir.filePath("print.pdf")));
-        QVERIFY(poppler);
+        const auto file = dir.filePath("async.md");
+        QVERIFY(writeFile(file, "# Initial\n\nBody.\n"));
+        PenelopeSettings::self()->setUseWebView(true);
+        MainWindow window;
+        QSignalSpy rendered(&window, &MainWindow::documentRendered);
+        auto *controller = window.findChild<CompositionController *>(); QVERIFY(controller);
+        QSignalSpy started(controller, &CompositionController::started);
+        window.openFile(QUrl::fromLocalFile(file));
+        auto *tabs = window.findChild<QTabWidget *>(); QVERIFY(tabs);
+        auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget()); QVERIFY(tab);
+        QTRY_VERIFY_WITH_TIMEOUT(tab->hasTocData(), 10000);
+        window.actionCollection()->action("view_source_mode")->trigger();
+        const int count = started.size();
+        tab->sourceEditor()->insertPlainText("Fresh ");
+        QTest::qWait(400);
+        QCOMPARE(started.size(), count);
+        QCOMPARE(tab->compositionGeneration(), quint64(0));
+        window.actionCollection()->action("view_web_mode")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(tab->compositionGeneration() > 0, 10000);
+        QVERIFY(ContentRtfExporter().exportBlocks(tab->cachedContentDoc().blocks).contains("Fresh"));
+        QVERIFY(tab->saveSource());
+        // Superseded results may not install after switching to source.
+        window.actionCollection()->action("view_print_mode")->trigger();
+        window.actionCollection()->action("view_source_mode")->trigger();
+        const int renderedCount = rendered.size();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller->isBusy(), 10000);
+        QCOMPARE(rendered.size(), renderedCount);
+        // Pending target destruction must not dereference the tab.
+        window.actionCollection()->action("view_print_mode")->trigger();
+        QPointer<DocumentTab> closed(tab);
+        window.actionCollection()->action("file_close")->trigger();
+        QVERIFY(closed.isNull());
+        QTRY_VERIFY_WITH_TIMEOUT(!controller->isBusy(), 10000);
+    }
+    void asynchronousOpenRestoresSavedPage() {
+        QTemporaryDir dir;
+        const auto file = dir.filePath("saved-page.md");
+        QByteArray source("# Saved page\n\n");
+        for (int i = 0; i < 100; ++i) source += "A paragraph with enough text to produce several pages.\n\n";
+        QVERIFY(writeFile(file, source));
+        auto *settings = PenelopeSettings::self();
+        settings->setUseWebView(false);
+        settings->setViewMode(PenelopeSettings::SinglePage);
+        settings->setRememberPerFileSettings(true);
+        MetadataStore metadata;
+        metadata.setValue(file, "viewState", QJsonObject{{"page", 2}, {"zoom", 130}, {"scroll", 0.5}});
+        MainWindow window;
+        window.openFile(QUrl::fromLocalFile(file));
+        auto *tabs = window.findChild<QTabWidget *>(); QVERIFY(tabs);
+        auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget()); QVERIFY(tab);
+        QTRY_VERIFY_WITH_TIMEOUT(tab->compositionGeneration() > 0, 10000);
+        QCOMPARE(tab->documentView()->zoomPercent(), 130);
+        QTRY_COMPARE_WITH_TIMEOUT(tab->documentView()->saveViewState().currentPage, 2, 10000);
+        auto *view = tab->documentView();
+        for (auto mode : {DocumentView::SinglePage, DocumentView::FacingPages,
+                          DocumentView::FacingPagesFirstAlone}) {
+            view->setViewMode(mode);
+            view->goToPage(0);
+            view->goToPage(2);
+            bool hasTargetPage = false;
+            for (auto *item : view->scene()->items()) {
+                if (auto *page = dynamic_cast<PdfPageItem *>(item))
+                    hasTargetPage |= page->pageNumber() == 2;
+            }
+            QVERIFY(hasTargetPage);
+            QCOMPARE(view->currentPage(), 2);
+        }
+        settings->setViewMode(PenelopeSettings::Continuous);
+    }
+    void continuousSnapshotOutlivesController() {
+        CompositionResultPtr result;
+        {
+            CompositionController controller;
+            QSignalSpy ready(&controller, &CompositionController::ready);
+            CompositionRequest request;
+            request.markdown = "# Lifetime\n\nAVATAR.\n";
+            request.continuous = true;
+            controller.submit(request);
+            QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 10000);
+            result = qvariant_cast<CompositionResultPtr>(ready.takeFirst().at(1));
+        }
+        DocumentView view;
+        view.resize(600, 400);
+        view.setWebFontOwner(result->fonts);
+        view.setSourceData(result->processedMarkdown, result->continuousLayout.sourceMap,
+                           result->document, result->continuousLayout.codeBlockRegions);
+        view.setWebContent(std::move(result->continuousLayout));
+        result.reset();
+        view.setRenderMode(DocumentView::WebMode);
+        view.show();
+        QApplication::processEvents();
+        const QImage image = view.viewport()->grab().toImage();
+        QVERIFY(!image.isNull());
+    }
+    void contentPlainTextPreservesVisibleContent() {
+        ContentBuilder builder;
+        builder.setRenderImages(false);
+        const auto doc = builder.build(QStringLiteral(
+            "# Heading\n\nA **bold** [link](https://example.com) &amp; `code`.\n\n"
+            "> Quoted\n\n- Item\n  - Nested\n\n"
+            "| Name | Value |\n| --- | --- |\n| First | Second |\n\n"
+            "```cpp\nx < y;\n```\n\n![Image description](missing.png)\n\n"
+            "Note[^a].\n\n[^a]: Footnote text.\n"));
+        const auto text = Content::toPlainText(doc);
+        QVERIFY(text.startsWith(QStringLiteral("Heading\nA bold link & code.")));
+        QVERIFY(text.contains(QStringLiteral("Quoted\nItem\nNested")));
+        QVERIFY(text.contains(QStringLiteral("Name\tValue\nFirst\tSecond")));
+        QVERIFY(text.contains(QStringLiteral("x < y;\nImage description")));
+        QVERIFY(text.contains(QStringLiteral("Footnote text.")));
+        QVERIFY(!text.contains(QStringLiteral("https://example.com")));
+        QVERIFY(!text.contains(QStringLiteral("[^a]")));
+        Content::Document typography;
+        Content::Paragraph paragraph;
+        paragraph.inlines.append(Content::TextRun{QStringLiteral("soft\u00adhyphen non\u00a0breaking"), {}});
+        typography.blocks.append(paragraph);
+        QCOMPARE(Content::toPlainText(typography), QStringLiteral("softhyphen non breaking"));
     }
     void numericEntityUnicode() {
         const char32_t cp = 0x1F600;

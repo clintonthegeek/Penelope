@@ -132,15 +132,6 @@ PenelopeConfigDialog::PenelopeConfigDialog(QWidget *parent)
     imagesGroupLayout->addWidget(renderImagesCheck);
     renderLayout->addWidget(imagesGroup);
 
-    auto *engineGroup = new QGroupBox(i18n("Rendering Engine"));
-    auto *engineGroupLayout = new QVBoxLayout(engineGroup);
-    auto *pdfRendererCheck = new QCheckBox(i18n("Use PDF renderer (HarfBuzz + Poppler)"));
-    pdfRendererCheck->setObjectName(QStringLiteral("kcfg_UsePdfRenderer"));
-    pdfRendererCheck->setToolTip(i18n("When enabled, uses a custom rendering pipeline with HarfBuzz text shaping and Poppler display. "
-                                       "Provides proper OpenType features (old-style numerals, ligatures, etc.) and true WYSIWYG."));
-    engineGroupLayout->addWidget(pdfRendererCheck);
-    renderLayout->addWidget(engineGroup);
-
     renderLayout->addStretch();
 
     addPage(renderPage, i18n("Rendering"), QStringLiteral("preferences-desktop-theme"));

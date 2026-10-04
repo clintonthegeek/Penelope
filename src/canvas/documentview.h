@@ -2,11 +2,10 @@
 #define PENELOPE_DOCUMENTVIEW_H
 
 #include <QGraphicsView>
+#include <memory>
 #include <QHash>
-#include <QMarginsF>
 #include <QSet>
 #include <QString>
-#include <QTextDocument>
 #include <QTimer>
 
 #include "layoutengine.h"
@@ -14,7 +13,6 @@
 #include "rtffilteroptions.h"
 
 class FontManager;
-class PageItem;
 class PdfPageItem;
 class RenderCache;
 class WebViewItem;
@@ -49,16 +47,10 @@ public:
     explicit DocumentView(QWidget *parent = nullptr);
     ~DocumentView() override;
 
-    // Legacy QTextDocument path
-    void setDocument(QTextDocument *doc);
-    QTextDocument *document() const { return m_document; }
-
-    // New PDF path
+    // Paginated PDF reader
     void setPdfData(const QByteArray &pdf);
 
     void setPageLayout(const PageLayout &layout);
-
-    void setDocumentInfo(const QString &fileName, const QString &title);
 
     ViewState saveViewState() const;
     void restoreViewState(const ViewState &state);
@@ -123,7 +115,10 @@ public:
     void setRenderMode(RenderMode mode);
     RenderMode renderMode() const { return m_renderMode; }
     void setWebContent(Layout::ContinuousLayoutResult &&result);
-    void setWebFontManager(FontManager *fm) { m_webFontManager = fm; }
+    void setWebFontManager(FontManager *fm) { m_webFontManager = fm; m_webFontOwner.reset(); }
+    void setWebFontOwner(std::shared_ptr<FontManager> owner) {
+        m_webFontManager = owner.get(); m_webFontOwner = std::move(owner);
+    }
 
     bool isPdfMode() const { return m_pdfMode; }
     QByteArray pdfData() const { return m_pdfData; }
@@ -176,13 +171,8 @@ private:
     void ensureLinkCacheForPage(int pageNum);
 
     QGraphicsScene *m_scene = nullptr;
-    QTextDocument *m_document = nullptr;
-    QList<PageItem *> m_pageItems;
     QSizeF m_pageSize;
     PageLayout m_pageLayout;
-    QMarginsF m_marginsPoints;
-    QString m_fileName;
-    QString m_title;
     int m_pageCount = 0;
     int m_currentPage = 0;
     int m_currentZoom = 100;
@@ -200,6 +190,7 @@ private:
     RenderMode m_renderMode = PrintMode;
     WebViewItem *m_webViewItem = nullptr;
     QTimer m_relayoutTimer;
+    std::shared_ptr<FontManager> m_webFontOwner;
     FontManager *m_webFontManager = nullptr;
 
     // Middle-mouse smooth zoom (Okular pattern)

@@ -53,10 +53,6 @@
     <entry name="RenderImages" type="Bool">
       <default>true</default>
     </entry>
-    <entry name="UsePdfRenderer" type="Bool">
-      <label>Use custom PDF rendering pipeline (HarfBuzz + Poppler) instead of QTextDocument.</label>
-      <default>true</default>
-    </entry>
     <entry name="UseWebView" type="Bool">
       <label>Use continuous web view instead of paginated print view.</label>
       <default>true</default>

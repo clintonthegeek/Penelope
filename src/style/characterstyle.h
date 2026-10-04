@@ -4,7 +4,6 @@
 #include <QColor>
 #include <QFont>
 #include <QString>
-#include <QTextCharFormat>
 
 #include "fontfeatures.h"
 
@@ -56,9 +55,6 @@ public:
     bool hasBackground() const { return m_hasBackground; }
     bool hasLetterSpacing() const { return m_hasLetterSpacing; }
     bool hasFontFeatures() const { return m_hasFontFeatures; }
-
-    // Apply to QTextCharFormat (merge -- does not reset existing properties)
-    void applyFormat(QTextCharFormat &cf) const;
 
     // Inherit unset properties from parent
     void inheritFrom(const CharacterStyle &parent);

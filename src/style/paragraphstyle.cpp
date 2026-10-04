@@ -1,63 +1,9 @@
 #include "paragraphstyle.h"
-#include "fontdegradationmap.h"
 #include "fontfeatures.h"
 
 ParagraphStyle::ParagraphStyle(const QString &name)
     : m_name(name)
 {
-}
-
-void ParagraphStyle::applyBlockFormat(QTextBlockFormat &bf) const
-{
-    if (m_hasAlignment)
-        bf.setAlignment(m_alignment);
-    if (m_hasSpaceBefore)
-        bf.setTopMargin(m_spaceBefore);
-    if (m_hasSpaceAfter)
-        bf.setBottomMargin(m_spaceAfter);
-    if (m_hasLeftMargin)
-        bf.setLeftMargin(m_leftMargin);
-    if (m_hasRightMargin)
-        bf.setRightMargin(m_rightMargin);
-    if (m_hasLineHeight)
-        bf.setLineHeight(m_lineHeightPct, QTextBlockFormat::ProportionalHeight);
-    if (m_hasBackground)
-        bf.setBackground(m_background);
-    if (m_headingLevel > 0)
-        bf.setHeadingLevel(m_headingLevel);
-    if (m_hasFirstLineIndent)
-        bf.setTextIndent(m_firstLineIndent);
-}
-
-void ParagraphStyle::applyCharFormat(QTextCharFormat &cf) const
-{
-    if (m_hasFontFamily) {
-        QFont font(m_fontFamily);
-        font.setStyleHint(FontDegradationMap::guessStyleHint(m_fontFamily));
-        if (m_hasFontSize)
-            font.setPointSizeF(m_fontSize);
-        if (m_hasFontWeight)
-            font.setWeight(m_fontWeight);
-        if (m_hasFontItalic)
-            font.setItalic(m_fontItalic);
-        cf.setFont(font);
-    } else {
-        if (m_hasFontSize)
-            cf.setFontPointSize(m_fontSize);
-        if (m_hasFontWeight)
-            cf.setFontWeight(m_fontWeight);
-        if (m_hasFontItalic)
-            cf.setFontItalic(m_fontItalic);
-    }
-    if (m_hasForeground)
-        cf.setForeground(m_foreground);
-    if (m_hasWordSpacing) {
-        QFont f = cf.font();
-        f.setWordSpacing(m_wordSpacing);
-        cf.setFont(f);
-    }
-    if (m_hasFontFeatures)
-        FontFeatures::applyToCharFormat(cf, m_fontFeatures);
 }
 
 void ParagraphStyle::inheritFrom(const ParagraphStyle &parent)

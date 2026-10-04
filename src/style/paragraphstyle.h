@@ -1,10 +1,9 @@
 #ifndef PENELOPE_PARAGRAPHSTYLE_H
 #define PENELOPE_PARAGRAPHSTYLE_H
 
+#include <QColor>
 #include <QFont>
 #include <QString>
-#include <QTextBlockFormat>
-#include <QTextCharFormat>
 
 #include "fontfeatures.h"
 
@@ -85,10 +84,6 @@ public:
     bool hasFontWeight() const { return m_hasFontWeight; }
     bool hasFontItalic() const { return m_hasFontItalic; }
     bool hasForeground() const { return m_hasForeground; }
-
-    // Apply to QTextBlockFormat + QTextCharFormat
-    void applyBlockFormat(QTextBlockFormat &bf) const;
-    void applyCharFormat(QTextCharFormat &cf) const;
 
     // Inherit unset properties from parent
     void inheritFrom(const ParagraphStyle &parent);

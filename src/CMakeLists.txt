@@ -7,17 +7,11 @@ add_library(PenelopeCore STATIC
     app/mainwindow.h
     app/metadatastore.cpp
     app/metadatastore.h
-    markdown/documentbuilder.cpp
-    markdown/documentbuilder.h
-    markdown/codeblockhighlighter.cpp
-    markdown/codeblockhighlighter.h
     markdown/codespancollector.h
     markdown/markdownhighlighter.cpp
     markdown/markdownhighlighter.h
     markdown/footnoteparser.cpp
     markdown/footnoteparser.h
-    canvas/pageitem.cpp
-    canvas/pageitem.h
     canvas/documentview.cpp
     canvas/documentview.h
     canvas/pdfpageitem.cpp
@@ -71,8 +65,6 @@ add_library(PenelopeCore STATIC
     typography/hyphenator.h
     typography/shortwords.cpp
     typography/shortwords.h
-    export/rtfexporter.cpp
-    export/rtfexporter.h
     export/contentrtfexporter.cpp
     export/contentrtfexporter.h
     export/rtffilteroptions.h
@@ -81,6 +73,8 @@ add_library(PenelopeCore STATIC
     model/contentbuilder.cpp
     model/contentbuilder.h
     model/contentmodel.h
+    model/contentplaintext.cpp
+    model/contentplaintext.h
     model/pdfexportoptions.h
     model/pagerangeparser.cpp
     model/pagerangeparser.h
@@ -105,6 +99,8 @@ add_library(PenelopeCore STATIC
     pdf/pdfboxrenderer.cpp
     pdf/pdfboxrenderer.h
     # Rendering base class
+    render/compositioncontroller.cpp
+    render/compositioncontroller.h
     render/boxtreerenderer.cpp
     render/boxtreerenderer.h
     # Widgets

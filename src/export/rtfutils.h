@@ -2,7 +2,7 @@
  * rtfutils.h — Shared RTF utility functions
  *
  * Provides escapeText(), toTwips(), and toHalfPoints() used by both
- * RtfExporter (QTextDocument-based) and ContentRtfExporter (Content model).
+ * ContentRtfExporter (Content model).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */

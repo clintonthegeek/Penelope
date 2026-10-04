@@ -9,9 +9,10 @@
 #include <QApplication>
 #include <QStyleOptionGraphicsItem>
 
-WebViewItem::WebViewItem(FontManager *fontManager)
-    : m_renderer(fontManager)
+WebViewItem::WebViewItem(FontManager *fontManager, std::shared_ptr<FontManager> owner)
+    : m_fontOwner(std::move(owner)), m_renderer(fontManager)
 {
+    setFlag(QGraphicsItem::ItemUsesExtendedStyleOption);
 }
 
 void WebViewItem::setLayoutResult(Layout::ContinuousLayoutResult &&result)
@@ -19,6 +20,8 @@ void WebViewItem::setLayoutResult(Layout::ContinuousLayoutResult &&result)
     prepareGeometryChange();
     m_result = std::move(result);
     m_renderer.clearLinkHitRects();
+    m_linksByElement.clear();
+    m_paintedLinks.clear();
     update();
 }
 
@@ -55,7 +58,7 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     // Page background
     painter->fillRect(exposed, m_pageBackground);
 
-    m_renderer.clearLinkHitRects();
+    m_paintedLinks.clear();
     m_renderer.setPainter(painter);
 
     int startIdx = firstVisibleElement(exposed.top());
@@ -72,7 +75,10 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
         if (elemY > exposed.bottom())
             break;
 
+        m_renderer.clearLinkHitRects();
         m_renderer.renderElement(element);
+        m_linksByElement.insert(i, m_renderer.linkHitRects());
+        m_paintedLinks.append(m_renderer.linkHitRects());
     }
     QColor color = QApplication::palette().color(QPalette::Highlight);
     color.setAlpha(80);
@@ -81,9 +87,15 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
 
 QString WebViewItem::linkAt(const QPointF &pos) const
 {
-    for (const auto &link : m_renderer.linkHitRects()) {
-        if (link.rect.contains(pos))
-            return link.href;
+    for (int i = firstVisibleElement(pos.y()); i < m_result.elements.size(); ++i) {
+        qreal top = 0;
+        std::visit([&](const auto &e) { top = e.y; }, m_result.elements[i]);
+        if (top > pos.y()) break;
+        const auto links = m_linksByElement.constFind(i);
+        if (links == m_linksByElement.cend()) continue;
+        for (const auto &link : links.value()) {
+            if (link.rect.contains(pos)) return link.href;
+        }
     }
     return {};
 }

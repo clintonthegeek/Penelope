@@ -298,6 +298,7 @@ int ContentBuilder::sText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, v
 
 int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
 {
+    if (m_cancelled && m_cancelled()) return 1;
     if (type == MD_BLOCK_UL || type == MD_BLOCK_OL || type == MD_BLOCK_QUOTE
         || type == MD_BLOCK_CODE || type == MD_BLOCK_TABLE || type == MD_BLOCK_H || type == MD_BLOCK_HR)
         closeImplicitParagraph();
@@ -520,6 +521,7 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
 
 int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
 {
+    if (m_cancelled && m_cancelled()) return 1;
     switch (type) {
     case MD_BLOCK_P: {
         if (!m_inlineStack.isEmpty())
@@ -731,6 +733,7 @@ int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
 
 int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
 {
+    if (m_cancelled && m_cancelled()) return 1;
     switch (type) {
     case MD_SPAN_EM:
         m_styleStack.push(m_currentStyle);
@@ -798,6 +801,7 @@ int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
 
 int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
 {
+    if (m_cancelled && m_cancelled()) return 1;
     switch (type) {
     case MD_SPAN_IMG: {
         m_collectingAltText = false;
@@ -811,7 +815,7 @@ int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
         Content::InlineImage img;
         img.src = src;
         img.altText = m_altText;
-        if (!PenelopeSettings::self()->renderImages()) {
+        if (!(m_renderImages ? *m_renderImages : PenelopeSettings::self()->renderImages())) {
             appendInlineNode(Content::TextRun{m_altText, m_currentStyle});
             m_imageSrc.clear(); m_imageTitle.clear(); m_altText.clear();
             break;
@@ -855,6 +859,7 @@ int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
 
 int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
 {
+    if (m_cancelled && m_cancelled()) return 1;
     // Update all active block trackers with source position
     if (m_bufferStart) {
         int offset = static_cast<int>(text - m_bufferStart);

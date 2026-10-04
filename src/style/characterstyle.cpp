@@ -1,43 +1,8 @@
 #include "characterstyle.h"
-#include "fontdegradationmap.h"
 
 CharacterStyle::CharacterStyle(const QString &name)
     : m_name(name)
 {
-}
-
-void CharacterStyle::applyFormat(QTextCharFormat &cf) const
-{
-    if (m_hasFontFamily) {
-        QFont font(m_fontFamily);
-        font.setStyleHint(FontDegradationMap::guessStyleHint(m_fontFamily));
-        if (m_hasFontSize)
-            font.setPointSizeF(m_fontSize);
-        if (m_hasFontWeight)
-            font.setWeight(m_fontWeight);
-        if (m_hasFontItalic)
-            font.setItalic(m_fontItalic);
-        cf.setFont(font);
-    } else {
-        if (m_hasFontSize)
-            cf.setFontPointSize(m_fontSize);
-        if (m_hasFontWeight)
-            cf.setFontWeight(m_fontWeight);
-        if (m_hasFontItalic)
-            cf.setFontItalic(m_fontItalic);
-    }
-    if (m_hasFontUnderline)
-        cf.setFontUnderline(m_fontUnderline);
-    if (m_hasFontStrikeOut)
-        cf.setFontStrikeOut(m_fontStrikeOut);
-    if (m_hasForeground)
-        cf.setForeground(m_foreground);
-    if (m_hasBackground)
-        cf.setBackground(m_background);
-    if (m_hasLetterSpacing)
-        cf.setFontLetterSpacing(m_letterSpacing);
-    if (m_hasFontFeatures)
-        FontFeatures::applyToCharFormat(cf, m_fontFeatures);
 }
 
 void CharacterStyle::inheritFrom(const CharacterStyle &parent)

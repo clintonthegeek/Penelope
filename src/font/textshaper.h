@@ -9,6 +9,7 @@
 #define PENELOPE_TEXTSHAPER_H
 
 #include <QList>
+#include <QCache>
 #include <QString>
 #include <QStringList>
 
@@ -51,9 +52,18 @@ public:
 
     QList<ShapedRun> shape(const QString &text, const QList<StyleRun> &styles);
 
-    void setFallbackFont(FontFace *face) { m_fallbackFont = face; }
+    void setFallbackFont(FontFace *face) { m_fallbackFont = face; m_cache.clear(); }
+    void setCacheLimit(int bytes) { m_cache.setMaxCost(qMax(0, bytes)); }
+    quint64 cacheHits() const { return m_cacheHits; }
+    quint64 cacheMisses() const { return m_cacheMisses; }
+    int cacheCost() const { return m_cache.totalCost(); }
 
 private:
+    struct CachedShape { QList<ShapedRun> runs; };
+    QCache<QByteArray, CachedShape> m_cache{8 * 1024 * 1024};
+    quint64 m_cacheHits = 0;
+    quint64 m_cacheMisses = 0;
+    QList<ShapedRun> shapeUncached(const QString &text, const QList<StyleRun> &styles);
     struct InternalRun {
         int start;
         int length;

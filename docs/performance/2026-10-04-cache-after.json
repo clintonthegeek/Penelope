@@ -1,0 +1,84 @@
+{
+  "compression_level": 1,
+  "continuous": false,
+  "documents": [
+    {
+      "blocks": 417,
+      "bytes": 94166,
+      "label": "synthetic-400p",
+      "pages": 84,
+      "samples": [
+        {
+          "continuous_cpu_ns": 0,
+          "continuous_wall_ns": 0,
+          "layout_cpu_ns": 37918000,
+          "layout_wall_ns": 38597025,
+          "parse_cpu_ns": 2508000,
+          "parse_wall_ns": 2558030,
+          "pdf_bytes": 381351,
+          "pdf_cpu_ns": 104707000,
+          "pdf_wall_ns": 106107467,
+          "raster_cpu_ns": 0,
+          "raster_wall_ns": 0
+        },
+        {
+          "continuous_cpu_ns": 0,
+          "continuous_wall_ns": 0,
+          "layout_cpu_ns": 38300000,
+          "layout_wall_ns": 38930721,
+          "parse_cpu_ns": 2749000,
+          "parse_wall_ns": 2808104,
+          "pdf_bytes": 381351,
+          "pdf_cpu_ns": 99433000,
+          "pdf_wall_ns": 101722857,
+          "raster_cpu_ns": 0,
+          "raster_wall_ns": 0
+        },
+        {
+          "continuous_cpu_ns": 0,
+          "continuous_wall_ns": 0,
+          "layout_cpu_ns": 32443000,
+          "layout_wall_ns": 33305700,
+          "parse_cpu_ns": 2430000,
+          "parse_wall_ns": 2442949,
+          "pdf_bytes": 381351,
+          "pdf_cpu_ns": 96160000,
+          "pdf_wall_ns": 97364089,
+          "raster_cpu_ns": 0,
+          "raster_wall_ns": 0
+        },
+        {
+          "continuous_cpu_ns": 0,
+          "continuous_wall_ns": 0,
+          "layout_cpu_ns": 35754000,
+          "layout_wall_ns": 35939816,
+          "parse_cpu_ns": 1725000,
+          "parse_wall_ns": 1726773,
+          "pdf_bytes": 381351,
+          "pdf_cpu_ns": 101740000,
+          "pdf_wall_ns": 102506060,
+          "raster_cpu_ns": 0,
+          "raster_wall_ns": 0
+        },
+        {
+          "continuous_cpu_ns": 0,
+          "continuous_wall_ns": 0,
+          "layout_cpu_ns": 38926000,
+          "layout_wall_ns": 39117261,
+          "parse_cpu_ns": 2762000,
+          "parse_wall_ns": 2771330,
+          "pdf_bytes": 381351,
+          "pdf_cpu_ns": 108419000,
+          "pdf_wall_ns": 110970357,
+          "raster_cpu_ns": 0,
+          "raster_wall_ns": 0
+        }
+      ]
+    }
+  ],
+  "hyphenate": false,
+  "raster": false,
+  "run_text": true,
+  "warm_fonts": true,
+  "note": "Post-implementation shaping-cache smoke measurements, optimized build, 2026-10-04. Historical measurements in 2026-10-04-results.json are not a matched A/B baseline for this run."
+}

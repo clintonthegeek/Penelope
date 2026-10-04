@@ -11,6 +11,9 @@
 #ifndef PENELOPE_LAYOUTENGINE_H
 #define PENELOPE_LAYOUTENGINE_H
 
+#include <optional>
+#include <functional>
+
 #include <QColor>
 #include <QImage>
 #include <QList>
@@ -283,6 +286,11 @@ public:
     LayoutResult layout(const Content::Document &doc, const PageLayout &pageLayout);
     ContinuousLayoutResult layoutContinuous(const Content::Document &doc, qreal availWidth);
 
+    void setOptimalTableLayout(bool enabled) { m_optimalTableLayout = enabled; }
+    void setCodeHighlighting(const QString &theme, bool enabled) {
+        m_codeTheme = theme; m_codeHighlighting = enabled;
+    }
+    void setCancellationCheck(std::function<bool()> check) { m_cancelled = std::move(check); }
     void setHyphenateJustifiedText(bool enabled) { m_hyphenateJustifiedText = enabled; }
     void setMarkdownDecorations(bool enabled) { m_markdownDecorations = enabled; }
 
@@ -341,6 +349,10 @@ private:
                                           const QList<ColumnMetrics> &metrics,
                                           qreal availWidth);
 
+    std::optional<bool> m_optimalTableLayout;
+    std::optional<bool> m_codeHighlighting;
+    QString m_codeTheme;
+    std::function<bool()> m_cancelled;
     FontManager *m_fontManager;
     TextShaper *m_textShaper;
     bool m_hyphenateJustifiedText = true;

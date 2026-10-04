@@ -6,6 +6,8 @@
 #include <QTimer>
 
 #include "contentmodel.h"
+#include "documentview.h"
+#include <optional>
 #include "layoutengine.h"
 
 class QPlainTextEdit;
@@ -38,6 +40,11 @@ public:
     // Set source text (into editor)
     void setSourceText(const QString &text);
 
+    void setInitialViewState(const ViewState &state) { m_initialViewState = state; }
+    std::optional<ViewState> takeInitialViewState() {
+        auto state = m_initialViewState; m_initialViewState.reset(); return state;
+    }
+
     // Cached TOC data for instant rebuild on tab switch
     void setTocData(const Content::Document &doc, const QList<Layout::SourceMapEntry> &sourceMap);
     const Content::Document &cachedContentDoc() const { return m_contentDoc; }
@@ -47,6 +54,7 @@ public:
 
     // Composition generation tracking for stale-tab detection
     void setCompositionGeneration(quint64 gen) { m_compositionGeneration = gen; }
+    quint64 sourceRevision() const { return m_sourceRevision; }
     quint64 compositionGeneration() const { return m_compositionGeneration; }
 
 Q_SIGNALS:
@@ -68,12 +76,14 @@ private:
     QString m_filePath;
     bool m_sourceMode = false;
 
+    std::optional<ViewState> m_initialViewState;
     // Cached TOC data
     Content::Document m_contentDoc;
     QList<Layout::SourceMapEntry> m_sourceMap;
     bool m_hasTocData = false;
 
     // Composition generation (0 = never built)
+    quint64 m_sourceRevision = 0;
     quint64 m_compositionGeneration = 0;
 };
 

@@ -14,15 +14,12 @@
 #include "pagedockwidget.h"
 #include "sidebar.h"
 #include "toolview.h"
-#include "codeblockhighlighter.h"
-#include "documentbuilder.h"
 #include "documenttab.h"
 #include "documentview.h"
 #include "filebrowserdock.h"
 #include "hyphenator.h"
 #include "markdownhighlighter.h"
 #include "metadatastore.h"
-#include "rtfexporter.h"
 #include "contentrtfexporter.h"
 #include "shortwords.h"
 #include "tocwidget.h"
@@ -70,7 +67,6 @@
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QScrollBar>
-#include <QAbstractTextDocumentLayout>
 #include <QSlider>
 #include <QSplitter>
 #include <QSpinBox>
@@ -100,6 +96,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onTabCloseRequested);
     connect(m_tabWidget, &QTabWidget::currentChanged,
             this, [this]() {
+        if (m_compositionController) m_compositionController->cancel();
+        m_renderTarget.clear();
         auto *view = currentDocumentView();
         if (view) {
             int zoom = view->zoomPercent();
@@ -163,9 +161,6 @@ MainWindow::MainWindow(QWidget *parent)
         } else if (tab && tab->hasTocData()) {
             // Tab is current — just rebuild TOC from cached data
             m_tocWidget->buildFromContentModel(tab->cachedContentDoc(), tab->cachedSourceMap());
-        } else if (tab && tab->documentView()->document()) {
-            // Legacy path — rebuild TOC from QTextDocument
-            m_tocWidget->buildFromDocument(tab->documentView()->document());
         } else if (!tab) {
             m_tocWidget->buildFromContentModel({}, {});
         }
@@ -190,6 +185,15 @@ MainWindow::MainWindow(QWidget *parent)
     FontFace *fallback = m_fontManager->loadFontFromPath(
         QStringLiteral(":/fonts/PrettySymbolsFallback.ttf"));
     m_textShaper->setFallbackFont(fallback);
+
+    m_compositionController = new CompositionController(this);
+    connect(m_compositionController, &CompositionController::ready,
+            this, &MainWindow::installComposition);
+    connect(m_compositionController, &CompositionController::failed, this,
+            [this](quint64 id, const QString &error) {
+        if (id == m_renderRequest && m_renderTarget == currentDocumentTab())
+            statusBar()->showMessage(i18n("Rendering failed: %1", error), 8000);
+    });
 
     // Apply settings
     auto *settings = PenelopeSettings::self();
@@ -297,6 +301,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    delete m_compositionController;
+    m_compositionController = nullptr;
     delete m_hyphenator;
     delete m_shortWords;
     delete m_textShaper;
@@ -325,6 +331,7 @@ void MainWindow::onTabCloseRequested(int index)
     auto *tab = qobject_cast<DocumentTab *>(m_tabWidget->widget(index));
     if (!tab || !confirmClose(tab)) return;
     saveTabViewState(tab);
+    if (m_renderTarget == tab) { m_compositionController->cancel(); m_renderTarget.clear(); }
     m_tabWidget->removeTab(index);
     delete tab;
 
@@ -352,23 +359,6 @@ void MainWindow::setupSidebars()
     auto *tocView = new ToolView(i18n("Contents"), m_tocWidget);
     m_tocTabId = m_leftSidebar->addPanel(
         tocView, QIcon::fromTheme(QStringLiteral("format-list-ordered")), i18n("Contents"));
-
-    connect(m_tocWidget, &TocWidget::headingClicked,
-            this, [this](int blockNumber) {
-        auto *view = currentDocumentView();
-        if (!view || !view->document())
-            return;
-        QTextBlock block = view->document()->findBlockByNumber(blockNumber);
-        if (block.isValid()) {
-            QSizeF pageSize = view->document()->pageSize();
-            if (pageSize.height() > 0) {
-                auto *layout = view->document()->documentLayout();
-                QRectF blockRect = layout->blockBoundingRect(block);
-                int page = static_cast<int>(blockRect.top() / pageSize.height());
-                view->goToPage(page);
-            }
-        }
-    });
 
     connect(m_tocWidget, &TocWidget::headingNavigate,
             this, [this](int page, qreal yOffset) {
@@ -592,6 +582,8 @@ void MainWindow::setupActions()
         if (!tab)
             return;
         tab->setSourceMode(true);
+        m_compositionController->cancel();
+        m_renderTarget.clear();
         // Fit Width and Page Arrangement only apply to Print view
         if (m_fitWidthAction)
             m_fitWidthAction->setEnabled(false);
@@ -897,244 +889,229 @@ void MainWindow::onFileExportPdf()
         return;
     }
 
-    if (PenelopeSettings::self()->usePdfRenderer() || PenelopeSettings::self()->useWebView()) {
-        auto *tab = currentDocumentTab();
-        if (!tab)
-            return;
+    auto *tab = currentDocumentTab();
+    if (!tab)
+        return;
 
-        QString filePath = tab->filePath();
-        const QString markdown = tab->sourceText();
+    QString filePath = tab->filePath();
+    const QString markdown = tab->sourceText();
 
-        StyleManager *editingSm = m_typeDockWidget->currentStyleManager();
-        std::unique_ptr<StyleManager> ownedStyle;
-        StyleManager *styleManager;
-        if (editingSm) {
-            ownedStyle.reset(editingSm->clone());
-            styleManager = ownedStyle.get();
-        } else {
-            ownedStyle = std::make_unique<StyleManager>();
-            styleManager = ownedStyle.get();
-            m_themeComposer->compose(styleManager);
-        }
-
-        QFileInfo fi(filePath);
-        PageLayout pl = m_pageDockWidget->currentPageLayout();
-
-        // Build content (needed for heading tree + page count)
-        ContentBuilder contentBuilder;
-        contentBuilder.setBasePath(fi.absolutePath());
-        contentBuilder.setStyleManager(styleManager);
-        if (PenelopeSettings::self()->hyphenationEnabled()
-            || PenelopeSettings::self()->hyphenateJustifiedText())
-            contentBuilder.setHyphenator(m_hyphenator);
-        if (PenelopeSettings::self()->shortWordsEnabled())
-            contentBuilder.setShortWords(m_shortWords);
-        contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
-        Content::Document contentDoc = contentBuilder.build(markdown);
-        view->applyLanguageOverrides(contentDoc);
-
-        // Pre-layout to get page count for dialog
-        m_fontManager->resetUsage();
-        Layout::Engine preLayoutEngine(m_fontManager, m_textShaper);
-        preLayoutEngine.setHyphenateJustifiedText(
-            PenelopeSettings::self()->hyphenateJustifiedText());
-        Layout::LayoutResult preLayout = preLayoutEngine.layout(contentDoc, pl);
-        int pageCount = preLayout.pages.size();
-
-        // Load saved options from KConfig
-        PdfExportOptions opts;
-        auto *settings = PenelopeSettings::self();
-        opts.author = settings->pdfAuthor();
-        opts.markdownCopy = settings->pdfMarkdownCopy();
-        opts.unwrapParagraphs = settings->pdfUnwrapParagraphs();
-        opts.includeBookmarks = settings->pdfIncludeBookmarks();
-        opts.bookmarkMaxDepth = settings->pdfBookmarkMaxDepth();
-        opts.initialView = static_cast<PdfExportOptions::InitialView>(
-            settings->pdfInitialView());
-        opts.pageLayout = static_cast<PdfExportOptions::PageLayout>(
-            settings->pdfPageLayout());
-
-        // Overlay per-document options from MetadataStore
-        QJsonObject perDoc = m_metadataStore->load(filePath);
-        if (perDoc.contains(QStringLiteral("pdfExportOptions"))) {
-            QJsonObject saved = perDoc[QStringLiteral("pdfExportOptions")].toObject();
-            if (saved.contains(QStringLiteral("title")))
-                opts.title = saved[QStringLiteral("title")].toString();
-            if (saved.contains(QStringLiteral("author")))
-                opts.author = saved[QStringLiteral("author")].toString();
-            if (saved.contains(QStringLiteral("subject")))
-                opts.subject = saved[QStringLiteral("subject")].toString();
-            if (saved.contains(QStringLiteral("keywords")))
-                opts.keywords = saved[QStringLiteral("keywords")].toString();
-            if (saved.contains(QStringLiteral("pageRangeExpr")))
-                opts.pageRangeExpr = saved[QStringLiteral("pageRangeExpr")].toString();
-            if (saved.contains(QStringLiteral("excludedHeadingIndices"))) {
-                QJsonArray arr = saved[QStringLiteral("excludedHeadingIndices")].toArray();
-                for (const auto &v : arr)
-                    opts.excludedHeadingIndices.insert(v.toInt());
-            }
-        }
-
-        // Show export dialog
-        PdfExportDialog dlg(contentDoc, pageCount, fi.baseName(), this);
-        dlg.setOptions(opts);
-        dlg.setHasNonWhiteBackgrounds(m_themeComposer->currentPalette().hasNonWhiteBackgrounds());
-        if (dlg.exec() != QDialog::Accepted)
-            return;
-
-        opts = dlg.options();
-
-        // Save global defaults to KConfig
-        settings->setPdfAuthor(opts.author);
-        settings->setPdfMarkdownCopy(opts.markdownCopy);
-        settings->setPdfUnwrapParagraphs(opts.unwrapParagraphs);
-        settings->setPdfIncludeBookmarks(opts.includeBookmarks);
-        settings->setPdfBookmarkMaxDepth(opts.bookmarkMaxDepth);
-        settings->setPdfInitialView(static_cast<int>(opts.initialView));
-        settings->setPdfPageLayout(static_cast<int>(opts.pageLayout));
-        settings->save();
-
-        // Save per-document options to MetadataStore
-        QJsonObject docOpts;
-        docOpts[QStringLiteral("title")] = opts.title;
-        docOpts[QStringLiteral("author")] = opts.author;
-        docOpts[QStringLiteral("subject")] = opts.subject;
-        docOpts[QStringLiteral("keywords")] = opts.keywords;
-        docOpts[QStringLiteral("pageRangeExpr")] = opts.pageRangeExpr;
-        QJsonArray excludedArr;
-        for (int idx : opts.excludedHeadingIndices)
-            excludedArr.append(idx);
-        docOpts[QStringLiteral("excludedHeadingIndices")] = excludedArr;
-        m_metadataStore->setValue(filePath, QStringLiteral("pdfExportOptions"), docOpts);
-
-        // File save dialog
-        QString path = QFileDialog::getSaveFileName(
-            this, i18n("Export as PDF"),
-            QString(), i18n("PDF Files (*.pdf)"));
-        if (path.isEmpty())
-            return;
-
-        // Filter content by excluded sections
-        Content::Document filteredDoc = contentDoc;
-        if (opts.sectionsModified && !opts.excludedHeadingIndices.isEmpty())
-            filteredDoc = ContentFilter::filterSections(contentDoc, opts.excludedHeadingIndices);
-
-        // Substitute TTF font families with Hershey equivalents before layout
-        if (opts.useHersheyFonts) {
-            const TypeSet &typeSet = m_themeComposer->currentTypeSet();
-
-            auto substituteStyle = [&typeSet](Content::TextStyle &style) {
-                QString hershey = typeSet.hersheyFamilyFor(style.fontFamily);
-                if (!hershey.isEmpty())
-                    style.fontFamily = hershey;
-            };
-
-            auto substituteInlines = [&substituteStyle](QList<Content::InlineNode> &inlines) {
-                for (auto &node : inlines) {
-                    std::visit([&](auto &n) {
-                        using T = std::decay_t<decltype(n)>;
-                        if constexpr (std::is_same_v<T, Content::TextRun>)
-                            substituteStyle(n.style);
-                        else if constexpr (std::is_same_v<T, Content::InlineCode>)
-                            substituteStyle(n.style);
-                        else if constexpr (std::is_same_v<T, Content::Link>)
-                            substituteStyle(n.style);
-                        else if constexpr (std::is_same_v<T, Content::FootnoteRef>)
-                            substituteStyle(n.style);
-                    }, node);
-                }
-            };
-
-            std::function<void(QList<Content::BlockNode> &)> substituteBlocks;
-            substituteBlocks = [&](QList<Content::BlockNode> &blocks) {
-                for (auto &block : blocks) {
-                    std::visit([&](auto &b) {
-                        using T = std::decay_t<decltype(b)>;
-                        if constexpr (std::is_same_v<T, Content::Paragraph>) {
-                            substituteInlines(b.inlines);
-                        } else if constexpr (std::is_same_v<T, Content::Heading>) {
-                            substituteInlines(b.inlines);
-                        } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
-                            substituteStyle(b.style);
-                        } else if constexpr (std::is_same_v<T, Content::BlockQuote>) {
-                            substituteBlocks(b.children);
-                        } else if constexpr (std::is_same_v<T, Content::List>) {
-                            for (auto &item : b.items)
-                                substituteBlocks(item.children);
-                        } else if constexpr (std::is_same_v<T, Content::Table>) {
-                            for (auto &row : b.rows)
-                                for (auto &cell : row.cells) {
-                                    substituteStyle(cell.style);
-                                    substituteInlines(cell.inlines);
-                                }
-                        } else if constexpr (std::is_same_v<T, Content::FootnoteSection>) {
-                            for (auto &fn : b.footnotes) {
-                                substituteStyle(fn.numberStyle);
-                                substituteStyle(fn.textStyle);
-                                substituteInlines(fn.content);
-                            }
-                        }
-                    }, block);
-                }
-            };
-
-            substituteBlocks(filteredDoc.blocks);
-        }
-
-        // Layout with filtered content
-        m_fontManager->resetUsage();
-        Layout::Engine layoutEngine(m_fontManager, m_textShaper);
-        layoutEngine.setHyphenateJustifiedText(
-            PenelopeSettings::self()->hyphenateJustifiedText());
-        if (opts.markdownCopy)
-            layoutEngine.setMarkdownDecorations(true);
-        Layout::LayoutResult layoutResult = layoutEngine.layout(filteredDoc, pl);
-
-        // Filter pages by range
-        if (opts.pageRangeModified && !opts.pageRangeExpr.isEmpty()) {
-            auto rangeResult = PageRangeParser::parse(opts.pageRangeExpr, layoutResult.pages.size());
-            if (rangeResult.valid && rangeResult.pages.size() < layoutResult.pages.size()) {
-                QList<Layout::Page> filteredPages;
-                for (int i = 0; i < layoutResult.pages.size(); ++i) {
-                    if (rangeResult.pages.contains(i + 1))  // 1-based
-                        filteredPages.append(layoutResult.pages[i]);
-                }
-                layoutResult.pages = filteredPages;
-                // Renumber pages
-                for (int i = 0; i < layoutResult.pages.size(); ++i)
-                    layoutResult.pages[i].pageNumber = i;
-            }
-        }
-
-        // Generate PDF with options
-        PdfGenerator pdfGen(m_fontManager);
-        pdfGen.setDocumentInfo(fi.fileName(), fi.baseName());
-        pdfGen.setMaxJustifyGap(settings->maxJustifyGap());
-        pdfGen.setExportOptions(opts);
-        if (pdfGen.generateToFile(layoutResult, pl, fi.baseName(), path)) {
-            statusBar()->showMessage(i18n("Exported to %1", path), 3000);
-        } else {
-            statusBar()->showMessage(i18n("Failed to export PDF."), 3000);
-        }
+    StyleManager *editingSm = m_typeDockWidget->currentStyleManager();
+    std::unique_ptr<StyleManager> ownedStyle;
+    StyleManager *styleManager;
+    if (editingSm) {
+        ownedStyle.reset(editingSm->clone());
+        styleManager = ownedStyle.get();
     } else {
-        // Legacy pipeline
-        if (!view->document()) {
-            statusBar()->showMessage(i18n("No document to export."), 3000);
-            return;
-        }
-        auto *controller = new PrintController(view->document(), this);
-        PageLayout pl = m_pageDockWidget->currentPageLayout();
-        controller->setPageLayout(pl);
-        QString title = m_tabWidget->tabText(m_tabWidget->currentIndex());
-        controller->setFileName(title);
-        controller->exportPdf(QString(), this);
-        delete controller;
+        ownedStyle = std::make_unique<StyleManager>();
+        styleManager = ownedStyle.get();
+        m_themeComposer->compose(styleManager);
     }
+
+    QFileInfo fi(filePath);
+    PageLayout pl = m_pageDockWidget->currentPageLayout();
+
+    // Build content (needed for heading tree + page count)
+    ContentBuilder contentBuilder;
+    contentBuilder.setBasePath(fi.absolutePath());
+    contentBuilder.setStyleManager(styleManager);
+    if (PenelopeSettings::self()->hyphenationEnabled()
+        || PenelopeSettings::self()->hyphenateJustifiedText())
+        contentBuilder.setHyphenator(m_hyphenator);
+    if (PenelopeSettings::self()->shortWordsEnabled())
+        contentBuilder.setShortWords(m_shortWords);
+    contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
+    Content::Document contentDoc = contentBuilder.build(markdown);
+    view->applyLanguageOverrides(contentDoc);
+
+    // Pre-layout to get page count for dialog
+    m_fontManager->resetUsage();
+    Layout::Engine preLayoutEngine(m_fontManager, m_textShaper);
+    preLayoutEngine.setHyphenateJustifiedText(
+        PenelopeSettings::self()->hyphenateJustifiedText());
+    Layout::LayoutResult preLayout = preLayoutEngine.layout(contentDoc, pl);
+    int pageCount = preLayout.pages.size();
+
+    // Load saved options from KConfig
+    PdfExportOptions opts;
+    auto *settings = PenelopeSettings::self();
+    opts.author = settings->pdfAuthor();
+    opts.markdownCopy = settings->pdfMarkdownCopy();
+    opts.unwrapParagraphs = settings->pdfUnwrapParagraphs();
+    opts.includeBookmarks = settings->pdfIncludeBookmarks();
+    opts.bookmarkMaxDepth = settings->pdfBookmarkMaxDepth();
+    opts.initialView = static_cast<PdfExportOptions::InitialView>(
+        settings->pdfInitialView());
+    opts.pageLayout = static_cast<PdfExportOptions::PageLayout>(
+        settings->pdfPageLayout());
+
+    // Overlay per-document options from MetadataStore
+    QJsonObject perDoc = m_metadataStore->load(filePath);
+    if (perDoc.contains(QStringLiteral("pdfExportOptions"))) {
+        QJsonObject saved = perDoc[QStringLiteral("pdfExportOptions")].toObject();
+        if (saved.contains(QStringLiteral("title")))
+            opts.title = saved[QStringLiteral("title")].toString();
+        if (saved.contains(QStringLiteral("author")))
+            opts.author = saved[QStringLiteral("author")].toString();
+        if (saved.contains(QStringLiteral("subject")))
+            opts.subject = saved[QStringLiteral("subject")].toString();
+        if (saved.contains(QStringLiteral("keywords")))
+            opts.keywords = saved[QStringLiteral("keywords")].toString();
+        if (saved.contains(QStringLiteral("pageRangeExpr")))
+            opts.pageRangeExpr = saved[QStringLiteral("pageRangeExpr")].toString();
+        if (saved.contains(QStringLiteral("excludedHeadingIndices"))) {
+            QJsonArray arr = saved[QStringLiteral("excludedHeadingIndices")].toArray();
+            for (const auto &v : arr)
+                opts.excludedHeadingIndices.insert(v.toInt());
+        }
+    }
+
+    // Show export dialog
+    PdfExportDialog dlg(contentDoc, pageCount, fi.baseName(), this);
+    dlg.setOptions(opts);
+    dlg.setHasNonWhiteBackgrounds(m_themeComposer->currentPalette().hasNonWhiteBackgrounds());
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    opts = dlg.options();
+
+    // Save global defaults to KConfig
+    settings->setPdfAuthor(opts.author);
+    settings->setPdfMarkdownCopy(opts.markdownCopy);
+    settings->setPdfUnwrapParagraphs(opts.unwrapParagraphs);
+    settings->setPdfIncludeBookmarks(opts.includeBookmarks);
+    settings->setPdfBookmarkMaxDepth(opts.bookmarkMaxDepth);
+    settings->setPdfInitialView(static_cast<int>(opts.initialView));
+    settings->setPdfPageLayout(static_cast<int>(opts.pageLayout));
+    settings->save();
+
+    // Save per-document options to MetadataStore
+    QJsonObject docOpts;
+    docOpts[QStringLiteral("title")] = opts.title;
+    docOpts[QStringLiteral("author")] = opts.author;
+    docOpts[QStringLiteral("subject")] = opts.subject;
+    docOpts[QStringLiteral("keywords")] = opts.keywords;
+    docOpts[QStringLiteral("pageRangeExpr")] = opts.pageRangeExpr;
+    QJsonArray excludedArr;
+    for (int idx : opts.excludedHeadingIndices)
+        excludedArr.append(idx);
+    docOpts[QStringLiteral("excludedHeadingIndices")] = excludedArr;
+    m_metadataStore->setValue(filePath, QStringLiteral("pdfExportOptions"), docOpts);
+
+    // File save dialog
+    QString path = QFileDialog::getSaveFileName(
+        this, i18n("Export as PDF"),
+        QString(), i18n("PDF Files (*.pdf)"));
+    if (path.isEmpty())
+        return;
+
+    // Filter content by excluded sections
+    Content::Document filteredDoc = contentDoc;
+    if (opts.sectionsModified && !opts.excludedHeadingIndices.isEmpty())
+        filteredDoc = ContentFilter::filterSections(contentDoc, opts.excludedHeadingIndices);
+
+    // Substitute TTF font families with Hershey equivalents before layout
+    if (opts.useHersheyFonts) {
+        const TypeSet &typeSet = m_themeComposer->currentTypeSet();
+
+        auto substituteStyle = [&typeSet](Content::TextStyle &style) {
+            QString hershey = typeSet.hersheyFamilyFor(style.fontFamily);
+            if (!hershey.isEmpty())
+                style.fontFamily = hershey;
+        };
+
+        auto substituteInlines = [&substituteStyle](QList<Content::InlineNode> &inlines) {
+            for (auto &node : inlines) {
+                std::visit([&](auto &n) {
+                    using T = std::decay_t<decltype(n)>;
+                    if constexpr (std::is_same_v<T, Content::TextRun>)
+                        substituteStyle(n.style);
+                    else if constexpr (std::is_same_v<T, Content::InlineCode>)
+                        substituteStyle(n.style);
+                    else if constexpr (std::is_same_v<T, Content::Link>)
+                        substituteStyle(n.style);
+                    else if constexpr (std::is_same_v<T, Content::FootnoteRef>)
+                        substituteStyle(n.style);
+                }, node);
+            }
+        };
+
+        std::function<void(QList<Content::BlockNode> &)> substituteBlocks;
+        substituteBlocks = [&](QList<Content::BlockNode> &blocks) {
+            for (auto &block : blocks) {
+                std::visit([&](auto &b) {
+                    using T = std::decay_t<decltype(b)>;
+                    if constexpr (std::is_same_v<T, Content::Paragraph>) {
+                        substituteInlines(b.inlines);
+                    } else if constexpr (std::is_same_v<T, Content::Heading>) {
+                        substituteInlines(b.inlines);
+                    } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
+                        substituteStyle(b.style);
+                    } else if constexpr (std::is_same_v<T, Content::BlockQuote>) {
+                        substituteBlocks(b.children);
+                    } else if constexpr (std::is_same_v<T, Content::List>) {
+                        for (auto &item : b.items)
+                            substituteBlocks(item.children);
+                    } else if constexpr (std::is_same_v<T, Content::Table>) {
+                        for (auto &row : b.rows)
+                            for (auto &cell : row.cells) {
+                                substituteStyle(cell.style);
+                                substituteInlines(cell.inlines);
+                            }
+                    } else if constexpr (std::is_same_v<T, Content::FootnoteSection>) {
+                        for (auto &fn : b.footnotes) {
+                            substituteStyle(fn.numberStyle);
+                            substituteStyle(fn.textStyle);
+                            substituteInlines(fn.content);
+                        }
+                    }
+                }, block);
+            }
+        };
+
+        substituteBlocks(filteredDoc.blocks);
+    }
+
+    // Layout with filtered content
+    m_fontManager->resetUsage();
+    Layout::Engine layoutEngine(m_fontManager, m_textShaper);
+    layoutEngine.setHyphenateJustifiedText(
+        PenelopeSettings::self()->hyphenateJustifiedText());
+    if (opts.markdownCopy)
+        layoutEngine.setMarkdownDecorations(true);
+    Layout::LayoutResult layoutResult = layoutEngine.layout(filteredDoc, pl);
+
+    // Filter pages by range
+    if (opts.pageRangeModified && !opts.pageRangeExpr.isEmpty()) {
+        auto rangeResult = PageRangeParser::parse(opts.pageRangeExpr, layoutResult.pages.size());
+        if (rangeResult.valid && rangeResult.pages.size() < layoutResult.pages.size()) {
+            QList<Layout::Page> filteredPages;
+            for (int i = 0; i < layoutResult.pages.size(); ++i) {
+                if (rangeResult.pages.contains(i + 1))  // 1-based
+                    filteredPages.append(layoutResult.pages[i]);
+            }
+            layoutResult.pages = filteredPages;
+            // Renumber pages
+            for (int i = 0; i < layoutResult.pages.size(); ++i)
+                layoutResult.pages[i].pageNumber = i;
+        }
+    }
+
+    // Generate PDF with options
+    PdfGenerator pdfGen(m_fontManager);
+    pdfGen.setDocumentInfo(fi.fileName(), fi.baseName());
+    pdfGen.setMaxJustifyGap(settings->maxJustifyGap());
+    pdfGen.setExportOptions(opts);
+    if (pdfGen.generateToFile(layoutResult, pl, fi.baseName(), path)) {
+        statusBar()->showMessage(i18n("Exported to %1", path), 3000);
+    } else {
+        statusBar()->showMessage(i18n("Failed to export PDF."), 3000);
+    }
+
 }
 
 void MainWindow::onFileExportRtf()
 {
-    rebuildCurrentDocument();
     auto *view = currentDocumentView();
     if (!view) {
         statusBar()->showMessage(i18n("No document to export."), 3000);
@@ -1149,14 +1126,11 @@ void MainWindow::onFileExportRtf()
 
     auto *tab = currentDocumentTab();
     bool success = false;
-    if (tab && tab->hasTocData()) {
+    if (tab) {
         ContentRtfExporter exporter;
-        const QByteArray data = exporter.exportBlocks(tab->cachedContentDoc().blocks);
+        const QByteArray data = exporter.exportBlocks(buildCompositionContent(compositionRequest(tab)).blocks);
         QSaveFile file(path);
         success = file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit();
-    } else if (view->document()) {
-        RtfExporter exporter;
-        success = exporter.exportToFile(view->document(), path);
     }
     if (success) {
         statusBar()->showMessage(i18n("Exported to %1", path), 3000);
@@ -1167,46 +1141,29 @@ void MainWindow::onFileExportRtf()
 
 void MainWindow::onFilePrint()
 {
-    rebuildCurrentDocument();
     auto *view = currentDocumentView();
     if (!view) {
         statusBar()->showMessage(i18n("No document to print."), 3000);
         return;
     }
 
-    if (currentDocumentTab()->hasTocData()) {
-        auto *tab = currentDocumentTab();
-        PageLayout pl = m_pageDockWidget->currentPageLayout();
-        m_fontManager->resetUsage();
-        Layout::Engine engine(m_fontManager, m_textShaper);
-        engine.setHyphenateJustifiedText(PenelopeSettings::self()->hyphenateJustifiedText());
-        auto layout = engine.layout(tab->cachedContentDoc(), pl);
-        PdfGenerator generator(m_fontManager);
-        QFileInfo fi(tab->filePath());
-        generator.setDocumentInfo(fi.fileName(), fi.baseName());
-        generator.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
-        // New pipeline: use PrintController with Poppler-based printing
-        auto *controller = new PrintController(nullptr, this);
-        controller->setPdfData(generator.generate(layout, pl, fi.baseName()));
-        controller->setPageLayout(pl);
-        QString title = m_tabWidget->tabText(m_tabWidget->currentIndex());
-        controller->setFileName(title);
-        controller->print(this);
-        delete controller;
-    } else {
-        // Legacy pipeline
-        if (!view->document()) {
-            statusBar()->showMessage(i18n("No document to print."), 3000);
-            return;
-        }
-        auto *controller = new PrintController(view->document(), this);
-        PageLayout pl = m_pageDockWidget->currentPageLayout();
-        controller->setPageLayout(pl);
-        QString title = m_tabWidget->tabText(m_tabWidget->currentIndex());
-        controller->setFileName(title);
-        controller->print(this);
-        delete controller;
-    }
+    auto *tab = currentDocumentTab();
+    PageLayout pl = m_pageDockWidget->currentPageLayout();
+    m_fontManager->resetUsage();
+    Layout::Engine engine(m_fontManager, m_textShaper);
+    engine.setHyphenateJustifiedText(PenelopeSettings::self()->hyphenateJustifiedText());
+    auto layout = engine.layout(buildCompositionContent(compositionRequest(tab)), pl);
+    PdfGenerator generator(m_fontManager);
+    QFileInfo fi(tab->filePath());
+    generator.setDocumentInfo(fi.fileName(), fi.baseName());
+    generator.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
+    // New pipeline: use PrintController with Poppler-based printing
+    auto *controller = new PrintController(this);
+    controller->setPdfData(generator.generate(layout, pl, fi.baseName()));
+    controller->setPageLayout(pl);
+    controller->print(this);
+    delete controller;
+
 }
 
 void MainWindow::onFileClose()
@@ -1475,6 +1432,7 @@ void MainWindow::restoreOpenFiles()
             vs.currentPage = scrollPages.value(savedIndex, 0);
             vs.scrollFraction = fracStrings.value(savedIndex).toDouble();
             vs.valid = true;
+            if (!tab->hasTocData()) tab->setInitialViewState(vs);
             tab->documentView()->restoreViewState(vs);
         }
     });
@@ -1558,6 +1516,100 @@ void MainWindow::restoreSession()
         onCompositionApplied();
 }
 
+CompositionRequest MainWindow::compositionRequest(DocumentTab *tab) const
+{
+    CompositionRequest request;
+    request.markdown = tab->sourceText();
+    QFileInfo fi(tab->filePath());
+    request.basePath = fi.absolutePath();
+    request.filename = fi.fileName();
+    request.title = fi.baseName();
+    request.sourceRevision = tab->sourceRevision();
+    request.semanticRevision = m_compositionGeneration;
+    std::unique_ptr<StyleManager> styles;
+    if (auto *editing = m_typeDockWidget->currentStyleManager()) styles.reset(editing->clone());
+    else {
+        styles = std::make_unique<StyleManager>();
+        m_themeComposer->compose(styles.get());
+    }
+    request.paragraphs = styles->paragraphStyles();
+    request.characters = styles->characterStyles();
+    request.tables = styles->tableStyles();
+    request.footnotes = styles->footnoteStyle();
+    request.pageLayout = m_pageDockWidget->currentPageLayout();
+    auto *view = tab->documentView();
+    request.languageOverrides = view->codeBlockLanguageOverrides();
+    request.width = qMax(qreal(200), (view->viewport()->width() - 2 * DocumentView::kSceneMargin)
+                                    / (view->zoomPercent() / 100.0));
+    auto *settings = PenelopeSettings::self();
+    request.continuous = settings->useWebView();
+    request.renderImages = settings->renderImages();
+    request.hyphenation = settings->hyphenationEnabled();
+    request.hyphenateJustified = settings->hyphenateJustifiedText();
+    request.shortWords = settings->shortWordsEnabled();
+    request.language = settings->hyphenationLanguage();
+    request.minWordLength = settings->hyphenationMinWordLength();
+    request.optimalTables = settings->tableLayoutAlgorithm() == PenelopeSettings::EnumTableLayoutAlgorithm::Optimal;
+    request.highlightCode = settings->syntaxHighlightingEnabled();
+    request.codeTheme = settings->codeHighlightTheme();
+    request.maxJustifyGap = settings->maxJustifyGap();
+    return request;
+}
+
+void MainWindow::installComposition(quint64 id, CompositionResultPtr result)
+{
+    auto *tab = m_renderTarget.data();
+    if (!tab || id != m_renderRequest || tab != currentDocumentTab() || tab->isSourceMode()) return;
+    const auto &request = result->request;
+    if (tab->sourceRevision() != request.sourceRevision
+        || m_compositionGeneration != request.semanticRevision
+        || PenelopeSettings::self()->useWebView() != request.continuous) return;
+    auto *view = tab->documentView();
+    if (request.continuous) {
+        const qreal width = qMax(qreal(200), (view->viewport()->width() - 2 * DocumentView::kSceneMargin)
+                                           / (view->zoomPercent() / 100.0));
+        if (qAbs(width - request.width) > 0.01) { rebuildCurrentDocument(); return; }
+    }
+    // Capture the latest scroll/zoom, not the state from when the job began.
+    ViewState state = tab->takeInitialViewState().value_or(view->saveViewState());
+    state.zoomPercent = view->zoomPercent();
+    view->setPageLayout(request.pageLayout);
+    const auto sourceMap = request.continuous ? result->continuousLayout.sourceMap : result->paginated.sourceMap;
+    const auto regions = request.continuous ? result->continuousLayout.codeBlockRegions : result->paginated.codeBlockRegions;
+    QList<HeadingPosition> headings;
+    QHash<quint64, Layout::SourceMapEntry> bySource;
+    for (const auto &entry : sourceMap) {
+        const quint64 key = (quint64(entry.startLine) << 32) | quint32(entry.endLine);
+        if (!bySource.contains(key)) bySource.insert(key, entry);
+    }
+    for (const auto &block : result->document.blocks) {
+        const auto *heading = std::get_if<Content::Heading>(&block);
+        if (!heading || heading->level < 1 || heading->level > 6) continue;
+        HeadingPosition hp;
+        hp.sourceLine = heading->source.startLine;
+        const auto entry = bySource.constFind((quint64(heading->source.startLine) << 32)
+                                             | quint32(heading->source.endLine));
+        if (entry != bySource.cend()) { hp.page = entry->pageNumber; hp.yOffset = entry->rect.top(); }
+        headings.append(hp);
+    }
+    m_tocWidget->buildFromContentModel(result->document, sourceMap);
+    tab->setTocData(result->document, sourceMap);
+    if (request.continuous) {
+        view->setWebFontOwner(result->fonts);
+        view->setWebContent(std::move(result->continuousLayout));
+        view->setRenderMode(DocumentView::WebMode);
+    } else {
+        view->setPdfData(result->pdf);
+        view->setRenderMode(DocumentView::PrintMode);
+    }
+    view->setSourceData(result->processedMarkdown, sourceMap, result->document, regions);
+    view->setHeadingPositions(headings);
+    view->restoreViewState(state);
+    tab->setCompositionGeneration(request.semanticRevision);
+    statusBar()->showMessage(i18n("Rendered %1", request.filename), 2000);
+    Q_EMIT documentRendered(tab);
+}
+
 void MainWindow::rebuildCurrentDocument()
 {
     auto *tab = currentDocumentTab();
@@ -1570,7 +1622,8 @@ void MainWindow::rebuildCurrentDocument()
     QPalette pal = editor->palette();
     pal.setColor(QPalette::Base, palette.pageBackground());
     pal.setColor(QPalette::Text, palette.text());
-    editor->setPalette(pal);
+    if (editor->palette() != pal)
+        editor->setPalette(pal);
 
     tab->markdownHighlighter()->setPaletteColors(
         palette.headingText(),
@@ -1583,182 +1636,16 @@ void MainWindow::rebuildCurrentDocument()
     if (filePath.isEmpty())
         return;
 
-    const QString markdown = tab->sourceText();
-
-    // Use the editing copy from the style dock, or load fresh if none
-    StyleManager *editingSm = m_typeDockWidget->currentStyleManager();
-    std::unique_ptr<StyleManager> ownedStyle;
-    StyleManager *styleManager;
-    if (editingSm) {
-        ownedStyle.reset(editingSm->clone());
-        styleManager = ownedStyle.get();
-    } else {
-        ownedStyle = std::make_unique<StyleManager>();
-        styleManager = ownedStyle.get();
-        m_themeComposer->compose(styleManager);
-    }
-
-    auto *view = tab->documentView();
-    if (!view)
+    if (tab->isSourceMode()) {
+        tab->setCompositionGeneration(0);
+        m_compositionController->cancel();
+        m_renderTarget.clear();
         return;
-
-    ViewState state = view->saveViewState();
-    PageLayout pl = m_pageDockWidget->currentPageLayout();
-    QFileInfo fi(filePath);
-    view->setPageLayout(pl);
-
-    if (PenelopeSettings::self()->usePdfRenderer() || PenelopeSettings::self()->useWebView()) {
-        // --- New rendering pipeline (shared content building) ---
-        ContentBuilder contentBuilder;
-        contentBuilder.setBasePath(fi.absolutePath());
-        contentBuilder.setStyleManager(styleManager);
-        if (PenelopeSettings::self()->hyphenationEnabled()
-            || PenelopeSettings::self()->hyphenateJustifiedText())
-            contentBuilder.setHyphenator(m_hyphenator);
-        if (PenelopeSettings::self()->shortWordsEnabled())
-            contentBuilder.setShortWords(m_shortWords);
-        contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
-        Content::Document contentDoc = contentBuilder.build(markdown);
-
-        view->applyLanguageOverrides(contentDoc);
-
-        m_fontManager->resetUsage();
-
-        Layout::Engine layoutEngine(m_fontManager, m_textShaper);
-        layoutEngine.setHyphenateJustifiedText(
-            PenelopeSettings::self()->hyphenateJustifiedText());
-
-        if (PenelopeSettings::self()->useWebView()) {
-            // --- Web view pipeline ---
-            qreal availWidth = view->viewport()->width() - 2 * DocumentView::kSceneMargin;
-            qreal zoomFactor = view->zoomPercent() / 100.0;
-            if (zoomFactor > 0)
-                availWidth /= zoomFactor;
-            if (availWidth < 200)
-                availWidth = 200;
-
-            Layout::ContinuousLayoutResult webResult =
-                layoutEngine.layoutContinuous(contentDoc, availWidth);
-
-            // Build heading positions (absolute y from source map)
-            QList<HeadingPosition> headingPositions;
-            for (const auto &block : contentDoc.blocks) {
-                const auto *heading = std::get_if<Content::Heading>(&block);
-                if (!heading || heading->level < 1 || heading->level > 6)
-                    continue;
-                HeadingPosition hp;
-                hp.page = 0;
-                hp.sourceLine = heading->source.startLine;
-                if (heading->source.startLine > 0) {
-                    for (const auto &entry : webResult.sourceMap) {
-                        if (entry.startLine == heading->source.startLine
-                            && entry.endLine == heading->source.endLine) {
-                            hp.yOffset = entry.rect.top();
-                            break;
-                        }
-                    }
-                }
-                headingPositions.append(hp);
-            }
-
-            // TOC from content model
-            m_tocWidget->buildFromContentModel(contentDoc, webResult.sourceMap);
-            tab->setTocData(contentDoc, webResult.sourceMap);
-
-            view->setWebFontManager(m_fontManager);
-            view->setHeadingPositions(headingPositions);
-            view->setSourceData(contentBuilder.processedMarkdown(), webResult.sourceMap,
-                                contentDoc, webResult.codeBlockRegions);
-            view->setWebContent(std::move(webResult));
-            view->setRenderMode(DocumentView::WebMode);
-            view->restoreViewState(state);
-            view->setDocumentInfo(fi.fileName(), fi.baseName());
-
-        } else {
-            // --- PDF rendering pipeline ---
-            Layout::LayoutResult layoutResult = layoutEngine.layout(contentDoc, pl);
-
-            PdfGenerator pdfGen(m_fontManager);
-            pdfGen.setDocumentInfo(fi.fileName(), fi.baseName());
-            pdfGen.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
-            // This PDF only ever rasterizes from memory in the reader, so spend
-            // speed rather than size on it. Export and print keep the default.
-            pdfGen.setCompressionLevel(1);
-            QByteArray pdf = pdfGen.generate(layoutResult, pl, fi.baseName());
-
-            // Clear legacy document if switching pipelines
-            QTextDocument *oldDoc = view->document();
-            if (oldDoc) {
-                view->setDocument(nullptr);
-                delete oldDoc;
-            }
-
-            view->setPdfData(pdf);
-            view->setSourceData(contentBuilder.processedMarkdown(), layoutResult.sourceMap, contentDoc,
-                                layoutResult.codeBlockRegions);
-            view->setRenderMode(DocumentView::PrintMode);
-            view->restoreViewState(state);
-            view->setDocumentInfo(fi.fileName(), fi.baseName());
-
-            // Build TOC directly from content model + source map
-            m_tocWidget->buildFromContentModel(contentDoc, layoutResult.sourceMap);
-            tab->setTocData(contentDoc, layoutResult.sourceMap);
-
-            // Pass heading positions to view for scroll-sync
-            {
-                QList<HeadingPosition> headingPositions;
-                for (const auto &block : contentDoc.blocks) {
-                    const auto *heading = std::get_if<Content::Heading>(&block);
-                    if (!heading || heading->level < 1 || heading->level > 6)
-                        continue;
-                    HeadingPosition hp;
-                    hp.sourceLine = heading->source.startLine;
-                    if (heading->source.startLine > 0) {
-                        for (const auto &entry : layoutResult.sourceMap) {
-                            if (entry.startLine == heading->source.startLine
-                                && entry.endLine == heading->source.endLine) {
-                                hp.page = entry.pageNumber;
-                                hp.yOffset = entry.rect.top();
-                                break;
-                            }
-                        }
-                    }
-                    headingPositions.append(hp);
-                }
-                view->setHeadingPositions(headingPositions);
-            }
-        }
-    } else {
-        // --- Legacy QTextDocument pipeline ---
-        auto *doc = new QTextDocument(tab);
-        DocumentBuilder scopedBuilder(doc);
-        auto *builder = &scopedBuilder;
-        builder->setBasePath(fi.absolutePath());
-        builder->setStyleManager(styleManager);
-        if (PenelopeSettings::self()->hyphenationEnabled()
-            || PenelopeSettings::self()->hyphenateJustifiedText())
-            builder->setHyphenator(m_hyphenator);
-        if (PenelopeSettings::self()->shortWordsEnabled())
-            builder->setShortWords(m_shortWords);
-        builder->setFootnoteStyle(styleManager->footnoteStyle());
-        builder->build(markdown);
-
-        CodeBlockHighlighter rebuildHighlighter;
-        rebuildHighlighter.highlight(doc);
-
-        QTextDocument *oldDoc = view->document();
-        view->setDocument(doc);
-        delete oldDoc;
-        view->restoreViewState(state);
-        view->setDocumentInfo(fi.fileName(), fi.baseName());
-
-        tab->clearTocData();
-        view->setRenderMode(DocumentView::PrintMode);
-        m_tocWidget->buildFromDocument(doc);
     }
+    m_renderTarget = tab;
+    m_renderRequest = m_compositionController->submit(compositionRequest(tab));
+    statusBar()->showMessage(i18n("Rendering %1…", QFileInfo(filePath).fileName()));
 
-    tab->setCompositionGeneration(m_compositionGeneration);
-    statusBar()->showMessage(i18n("Theme applied"), 2000);
 }
 
 void MainWindow::openFile(const QUrl &url)
@@ -1810,7 +1697,6 @@ void MainWindow::openFile(const QUrl &url)
         tab->documentView()->setCodeBlockLanguageOverrides(overrides);
     }
 
-    tab->documentView()->setDocumentInfo(fi.fileName(), fi.baseName());
 
     // Apply saved view mode from settings
     auto settingsViewMode = PenelopeSettings::self()->viewMode();
@@ -1930,9 +1816,12 @@ void MainWindow::openFile(const QUrl &url)
     auto *sourceTimer = new QTimer(tab);
     sourceTimer->setSingleShot(true);
     sourceTimer->setInterval(300);
-    connect(tab, &DocumentTab::sourceChanged, tab, [sourceTimer]() { sourceTimer->start(); });
+    connect(tab, &DocumentTab::sourceChanged, this, [this, tab, sourceTimer]() {
+        if (currentDocumentTab() == tab) m_compositionController->cancel();
+        if (!tab->isSourceMode()) sourceTimer->start();
+    });
     connect(sourceTimer, &QTimer::timeout, this, [this, tab]() {
-        if (currentDocumentTab() == tab) rebuildCurrentDocument();
+        if (currentDocumentTab() == tab && !tab->isSourceMode()) rebuildCurrentDocument();
     });
     connect(tab->sourceEditor()->document(), &QTextDocument::modificationChanged,
             this, [this, tab, fi](bool modified) {
@@ -1959,17 +1848,13 @@ void MainWindow::openFile(const QUrl &url)
         vs.zoomPercent = savedView.value(QStringLiteral("zoom")).toInt(qRound(PenelopeSettings::self()->defaultZoom() * 100));
         vs.currentPage = savedView.value(QStringLiteral("page")).toInt();
         vs.scrollFraction = savedView.value(QStringLiteral("scroll")).toDouble();
+        tab->setInitialViewState(vs);
         tab->documentView()->restoreViewState(vs);
     }
     m_recentFilesAction->addUrl(QUrl::fromLocalFile(filePath));
 
-    // Update TOC
-    if (!tab->hasTocData() && tab->documentView()->document()) {
-        m_tocWidget->buildFromDocument(tab->documentView()->document());
-    }
 
-    // Stamp composition generation so tab-switch knows it's up to date
-    tab->setCompositionGeneration(m_compositionGeneration);
+    // Composition is stamped only when the asynchronous result installs.
 
     // A6: Update file path label in status bar
     if (m_filePathLabel)

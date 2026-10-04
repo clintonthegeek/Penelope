@@ -1,11 +1,11 @@
 #include "documentview.h"
-#include "pageitem.h"
 #include "pdfpageitem.h"
 #include "rendercache.h"
 #include "webviewitem.h"
 #include "pagelayout.h"
 #include "contentrtfexporter.h"
-#include "documentbuilder.h"
+#include "contentbuilder.h"
+#include "contentplaintext.h"
 
 #include <climits>
 
@@ -63,59 +63,11 @@ DocumentView::~DocumentView()
     delete m_popplerDoc;
 }
 
-// --- Legacy QTextDocument path ---
-
-void DocumentView::setDocument(QTextDocument *doc)
-{
-    clearSelection();
-    clearPdfPages();
-    m_renderCache->setDocument(nullptr);
-    delete m_popplerDoc;
-    m_popplerDoc = nullptr;
-    m_pdfData.clear();
-    m_pdfMode = false;
-
-    qDeleteAll(m_pageItems);
-    m_pageItems.clear();
-    m_scene->clear();
-    m_webViewItem = nullptr;
-
-    m_document = doc;
-    if (!m_document) {
-        m_pageCount = 0;
-        return;
-    }
-
-    qreal dpi = logicalDpiX();
-    qreal s = (dpi > 0) ? dpi / 72.0 : 1.0;
-    QSizeF contentPts = m_marginsPoints.isNull()
-        ? m_pageSize
-        : m_pageLayout.contentSizePoints();
-    m_document->setPageSize(QSizeF(contentPts.width() * s,
-                                   contentPts.height() * s));
-    m_pageCount = m_document->pageCount();
-
-    layoutPages();
-
-    if (!m_pageItems.isEmpty()) {
-        m_currentPage = 0;
-        if (!m_skipAutoFit) {
-            QTimer::singleShot(0, this, &DocumentView::fitWidth);
-        }
-        m_skipAutoFit = false;
-    }
-}
-
-// --- New PDF path ---
+// --- PDF path ---
 
 void DocumentView::setPdfData(const QByteArray &pdf)
 {
     clearSelection();
-    // Clean up legacy path
-    qDeleteAll(m_pageItems);
-    m_pageItems.clear();
-    m_document = nullptr;
-
     // Clean up old PDF
     clearPdfPages();
     m_scene->clear();
@@ -177,20 +129,6 @@ void DocumentView::onPixmapReady(int pageNumber)
 
 // --- Common ---
 
-void DocumentView::setDocumentInfo(const QString &fileName, const QString &title)
-{
-    m_fileName = fileName;
-    m_title = title;
-
-    if (!m_pdfMode) {
-        for (auto *page : m_pageItems)
-            page->setDocumentInfo(m_pageCount, m_fileName, m_title);
-    }
-
-    if (m_scene)
-        m_scene->update();
-}
-
 ViewState DocumentView::saveViewState() const
 {
     ViewState state;
@@ -231,86 +169,38 @@ void DocumentView::restoreViewState(const ViewState &state)
 
 void DocumentView::layoutPages()
 {
-    if (m_webViewItem) return;
-    if (m_pdfMode)
-    {
-        switch (m_viewMode) {
-        case Continuous:                    layoutPagesContinuous(); break;
-        case SinglePage:                    layoutPagesSingle(); break;
-        case FacingPages:                   layoutPagesFacing(); break;
-        case FacingPagesFirstAlone:         layoutPagesFacingFirstAlone(); break;
-        case ContinuousFacing:              layoutPagesContinuousFacing(); break;
-        case ContinuousFacingFirstAlone:    layoutPagesContinuousFacingFirstAlone(); break;
-        }
-        for (auto *item : m_pdfPageItems)
-            item->setPageBackground(m_pageLayout.pageBackground);
-        return;
+    if (m_webViewItem || !m_pdfMode) return;
+    switch (m_viewMode) {
+    case Continuous:                    layoutPagesContinuous(); break;
+    case SinglePage:                    layoutPagesSingle(); break;
+    case FacingPages:                   layoutPagesFacing(); break;
+    case FacingPagesFirstAlone:         layoutPagesFacingFirstAlone(); break;
+    case ContinuousFacing:              layoutPagesContinuousFacing(); break;
+    case ContinuousFacingFirstAlone:    layoutPagesContinuousFacingFirstAlone(); break;
     }
-
-    // Legacy QTextDocument continuous layout
-    layoutPagesContinuous();
+    for (auto *item : m_pdfPageItems)
+        item->setPageBackground(m_pageLayout.pageBackground);
 }
 
 void DocumentView::layoutPagesContinuous()
 {
-    if (m_pdfMode) {
-        clearPdfPages();
-        qreal yOffset = kPageGap;
-        qreal sceneWidth = m_pageSize.width() + kSceneMargin * 2;
-
-        for (int i = 0; i < m_pageCount; ++i) {
-            QSizeF pageSize = m_pageSize;
-            if (m_popplerDoc) {
-                std::unique_ptr<Poppler::Page> pp(m_popplerDoc->page(i));
-                if (pp)
-                    pageSize = pp->pageSizeF();
-            }
-
-            auto *item = new PdfPageItem(i, pageSize, m_renderCache);
-            item->setZoomFactor(m_currentZoom / 100.0);
-            qreal xOffset = (sceneWidth - pageSize.width()) / 2.0;
-            item->setPos(xOffset, yOffset);
-            m_scene->addItem(item);
-            m_pdfPageItems.append(item);
-
-            yOffset += pageSize.height() + kPageGap;
-        }
-
-        m_scene->setSceneRect(0, 0, sceneWidth, yOffset + kPageGap);
-        return;
-    }
-
-    // Legacy path
+    if (!m_pdfMode) return;
+    clearPdfPages();
     qreal yOffset = kPageGap;
-    qreal sceneWidth = m_pageSize.width() + kSceneMargin * 2;
-
+    const qreal sceneWidth = m_pageSize.width() + kSceneMargin * 2;
     for (int i = 0; i < m_pageCount; ++i) {
-        PageItem *page;
-        if (i < m_pageItems.size()) {
-            page = m_pageItems[i];
-            page->setPageNumber(i);
-            page->setPageLayout(m_pageLayout);
-            page->setDocumentInfo(m_pageCount, m_fileName, m_title);
-        } else {
-            page = new PageItem(i, m_pageSize, m_document, m_marginsPoints);
-            page->setPageLayout(m_pageLayout);
-            page->setDocumentInfo(m_pageCount, m_fileName, m_title);
-            page->setFlag(QGraphicsItem::ItemUsesExtendedStyleOption);
-            m_scene->addItem(page);
-            m_pageItems.append(page);
+        QSizeF pageSize = m_pageSize;
+        if (m_popplerDoc) {
+            std::unique_ptr<Poppler::Page> pp(m_popplerDoc->page(i));
+            if (pp) pageSize = pp->pageSizeF();
         }
-
-        qreal xOffset = (sceneWidth - m_pageSize.width()) / 2.0;
-        page->setPos(xOffset, yOffset);
-        yOffset += m_pageSize.height() + kPageGap;
+        auto *item = new PdfPageItem(i, pageSize, m_renderCache);
+        item->setZoomFactor(m_currentZoom / 100.0);
+        item->setPos((sceneWidth - pageSize.width()) / 2.0, yOffset);
+        m_scene->addItem(item);
+        m_pdfPageItems.append(item);
+        yOffset += pageSize.height() + kPageGap;
     }
-
-    while (m_pageItems.size() > m_pageCount) {
-        auto *item = m_pageItems.takeLast();
-        m_scene->removeItem(item);
-        delete item;
-    }
-
     m_scene->setSceneRect(0, 0, sceneWidth, yOffset + kPageGap);
 }
 
@@ -518,7 +408,6 @@ void DocumentView::setPageLayout(const PageLayout &layout)
 {
     m_pageLayout = layout;
     m_pageSize = layout.pageSizePoints();
-    m_marginsPoints = layout.marginsPoints();
 
     // Update web view backgrounds when palette changes
     if (m_renderMode == WebMode) {
@@ -528,14 +417,6 @@ void DocumentView::setPageLayout(const PageLayout &layout)
     }
 
     if (m_pdfMode) {
-        layoutPages();
-    } else if (m_document) {
-        qreal dpi = logicalDpiX();
-        qreal s = (dpi > 0) ? dpi / 72.0 : 1.0;
-        QSizeF contentPts = layout.contentSizePoints();
-        m_document->setPageSize(QSizeF(contentPts.width() * s,
-                                       contentPts.height() * s));
-        m_pageCount = m_document->pageCount();
         layoutPages();
     }
 }
@@ -580,9 +461,7 @@ void DocumentView::zoomOut()
 void DocumentView::fitWidth()
 {
     qreal pageWidth = m_pageSize.width();
-    if (!m_pageItems.isEmpty())
-        pageWidth = m_pageItems.first()->boundingRect().width();
-    else if (!m_pdfPageItems.isEmpty())
+    if (!m_pdfPageItems.isEmpty())
         pageWidth = m_pdfPageItems.first()->boundingRect().width();
     else
         return;
@@ -602,9 +481,7 @@ void DocumentView::fitWidth()
 void DocumentView::fitPage()
 {
     QRectF pageRect;
-    if (!m_pageItems.isEmpty())
-        pageRect = m_pageItems.first()->boundingRect();
-    else if (!m_pdfPageItems.isEmpty())
+    if (!m_pdfPageItems.isEmpty())
         pageRect = m_pdfPageItems.first()->boundingRect();
     else
         return;
@@ -623,31 +500,17 @@ void DocumentView::fitPage()
 
 void DocumentView::goToPage(int page)
 {
-    if (page < 0 || page >= m_pageCount)
-        return;
+    if (page < 0 || page >= m_pageCount) return;
     m_currentPage = page;
-
-    if (m_pdfMode) {
-        if (m_viewMode == SinglePage || m_viewMode == FacingPages) {
-            layoutPages(); // relayout to show new page
-        } else {
-            // Continuous: scroll to page
-            if (page < m_pdfPageItems.size())
-                ensureVisible(m_pdfPageItems[page]);
-        }
+    if (!m_pdfMode) return;
+    if (!isContinuous()) {
+        layoutPages();
     } else {
-        if (m_viewMode == SinglePage) {
-            if (page < m_pageItems.size()) {
-                QRectF r = m_pageItems[page]->boundingRect()
-                               .translated(m_pageItems[page]->pos());
-                r.adjust(-20, -20, 20, 20);
-                fitInView(r, Qt::KeepAspectRatio);
-                m_currentZoom = qRound(transform().m11() * 100);
-                Q_EMIT zoomChanged(m_currentZoom);
+        for (auto *item : m_pdfPageItems) {
+            if (item->pageNumber() == page) {
+                ensureVisible(item);
+                break;
             }
-        } else {
-            if (page < m_pageItems.size())
-                ensureVisible(m_pageItems[page]);
         }
     }
 }
@@ -680,10 +543,6 @@ void DocumentView::scrollToPosition(int page, qreal yOffset)
                 break;
             }
         }
-    } else {
-        // Legacy path: fall back to goToPage
-        goToPage(page);
-        return;
     }
 }
 
@@ -743,17 +602,15 @@ void DocumentView::setWebContent(Layout::ContinuousLayoutResult &&result)
     m_popplerDoc = nullptr;
     m_pdfData.clear();
     m_pdfMode = false;
-    m_document = nullptr;
     m_linkCache.clear();
     m_pageCount = 1;
     m_currentPage = 0;
 
     m_scene->clear();
     m_webViewItem = nullptr;
-    m_pageItems.clear();
     m_pdfPageItems.clear();
 
-    m_webViewItem = new WebViewItem(m_webFontManager);
+    m_webViewItem = new WebViewItem(m_webFontManager, m_webFontOwner);
     m_webViewItem->setPageBackground(m_pageLayout.pageBackground);
     m_scene->addItem(m_webViewItem);
 
@@ -1652,19 +1509,6 @@ void DocumentView::updateCurrentPage()
         }
     }
 
-    // Check legacy pages
-    if (m_pdfPageItems.isEmpty()) {
-        for (int i = 0; i < m_pageItems.size(); ++i) {
-            QRectF r = m_pageItems[i]->boundingRect().translated(m_pageItems[i]->pos());
-            if (r.contains(center)) {
-                if (m_currentPage != i) {
-                    m_currentPage = i;
-                }
-                break;
-            }
-        }
-    }
-
     // --- Heading scroll-sync ---
     if (m_headingPositions.isEmpty())
         return;
@@ -1733,11 +1577,8 @@ QPair<int, int> DocumentView::selectedSourceLines() const
 QString DocumentView::selectedPlainText() const
 {
     if (m_wordSelection || m_processedMarkdown.isEmpty()) return extractSelectedTextFromPdf();
-    QTextDocument document;
-    DocumentBuilder builder(&document);
-    builder.build(extractSelectedText());
-    QString text = document.toPlainText();
-    text.remove(QChar(0x00AD));
-    text.replace(QChar(0x00A0), QLatin1Char(' '));
+    ContentBuilder builder;
+    builder.setRenderImages(false);
+    QString text = Content::toPlainText(builder.build(extractSelectedText()));
     return text;
 }

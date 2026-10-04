@@ -1,0 +1,1289 @@
+{
+  "reviewed_commit": "9c2e42fa6d83c7e53fc708a1d6c671de1958b03f",
+  "build_type": "RelWithDebInfo",
+  "flags": "-O2 -g -DNDEBUG",
+  "cpu_model": "Intel Core i7-1185G7, 4 cores / 8 logical CPUs",
+  "qt_version": "6.11.2",
+  "measurement_date": "2026-10-04",
+  "runs": [
+    {
+      "condition": "absolute-default",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-0.json",
+        "--no-run-text",
+        "--compress-level",
+        "6"
+      ],
+      "system_before": {
+        "load_average": [
+          24.119140625,
+          27.041015625,
+          29.828125
+        ],
+        "cpu_pressure": "some avg10=39.20 avg60=45.50 avg300=51.00 total=23072164254\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 6,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 80245000,
+                "layout_wall_ns": 81807465,
+                "parse_cpu_ns": 3410000,
+                "parse_wall_ns": 3434312,
+                "pdf_bytes": 661436,
+                "pdf_cpu_ns": 265148000,
+                "pdf_wall_ns": 271292977,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 91645000,
+                "layout_wall_ns": 94526257,
+                "parse_cpu_ns": 3852000,
+                "parse_wall_ns": 3870148,
+                "pdf_bytes": 661436,
+                "pdf_cpu_ns": 192852000,
+                "pdf_wall_ns": 200472246,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 52889000,
+                "layout_wall_ns": 55144850,
+                "parse_cpu_ns": 2392000,
+                "parse_wall_ns": 2412919,
+                "pdf_bytes": 661436,
+                "pdf_cpu_ns": 176430000,
+                "pdf_wall_ns": 187653962,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 218584000,
+                "layout_wall_ns": 223705602,
+                "parse_cpu_ns": 10006000,
+                "parse_wall_ns": 10137167,
+                "pdf_bytes": 2480738,
+                "pdf_cpu_ns": 747066000,
+                "pdf_wall_ns": 772838576,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 231606000,
+                "layout_wall_ns": 242264477,
+                "parse_cpu_ns": 10549000,
+                "parse_wall_ns": 10739306,
+                "pdf_bytes": 2480738,
+                "pdf_cpu_ns": 756027000,
+                "pdf_wall_ns": 798771427,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 229255000,
+                "layout_wall_ns": 240551403,
+                "parse_cpu_ns": 8917000,
+                "parse_wall_ns": 8995489,
+                "pdf_bytes": 2480738,
+                "pdf_cpu_ns": 792447000,
+                "pdf_wall_ns": 829419057,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": false,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "absolute-fast",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-1.json",
+        "--no-run-text",
+        "--compress-level",
+        "1"
+      ],
+      "system_before": {
+        "load_average": [
+          23.228515625,
+          26.8076171875,
+          29.7373046875
+        ],
+        "cpu_pressure": "some avg10=36.95 avg60=44.41 avg300=50.65 total=23074121668\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 1,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 63124000,
+                "layout_wall_ns": 73857073,
+                "parse_cpu_ns": 2572000,
+                "parse_wall_ns": 2686156,
+                "pdf_bytes": 793616,
+                "pdf_cpu_ns": 138126000,
+                "pdf_wall_ns": 160141644,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 56216000,
+                "layout_wall_ns": 58352260,
+                "parse_cpu_ns": 1813000,
+                "parse_wall_ns": 1825244,
+                "pdf_bytes": 793616,
+                "pdf_cpu_ns": 137063000,
+                "pdf_wall_ns": 160596560,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 62138000,
+                "layout_wall_ns": 63758066,
+                "parse_cpu_ns": 2740000,
+                "parse_wall_ns": 2880885,
+                "pdf_bytes": 793616,
+                "pdf_cpu_ns": 140528000,
+                "pdf_wall_ns": 144255075,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 251980000,
+                "layout_wall_ns": 287201731,
+                "parse_cpu_ns": 10661000,
+                "parse_wall_ns": 11095103,
+                "pdf_bytes": 3012110,
+                "pdf_cpu_ns": 575289000,
+                "pdf_wall_ns": 622223349,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 241463000,
+                "layout_wall_ns": 255361759,
+                "parse_cpu_ns": 10846000,
+                "parse_wall_ns": 11329484,
+                "pdf_bytes": 3012110,
+                "pdf_cpu_ns": 553181000,
+                "pdf_wall_ns": 597429879,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 242515000,
+                "layout_wall_ns": 277128078,
+                "parse_cpu_ns": 10574000,
+                "parse_wall_ns": 12154313,
+                "pdf_bytes": 3012110,
+                "pdf_cpu_ns": 553885000,
+                "pdf_wall_ns": 637747263,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": false,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "runs-fast",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-2.json",
+        "--run-text",
+        "--compress-level",
+        "1"
+      ],
+      "system_before": {
+        "load_average": [
+          23.37060546875,
+          26.77734375,
+          29.71142578125
+        ],
+        "cpu_pressure": "some avg10=37.69 avg60=44.07 avg300=50.49 total=23076108047\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 1,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 56359000,
+                "layout_wall_ns": 58285971,
+                "parse_cpu_ns": 2261000,
+                "parse_wall_ns": 2335874,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 105426000,
+                "pdf_wall_ns": 113713030,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 64265000,
+                "layout_wall_ns": 69856864,
+                "parse_cpu_ns": 2743000,
+                "parse_wall_ns": 3225773,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 101906000,
+                "pdf_wall_ns": 109542774,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 61641000,
+                "layout_wall_ns": 75093535,
+                "parse_cpu_ns": 2658000,
+                "parse_wall_ns": 3498153,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 108968000,
+                "pdf_wall_ns": 112359655,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 229780000,
+                "layout_wall_ns": 241917364,
+                "parse_cpu_ns": 10242000,
+                "parse_wall_ns": 10343950,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 363570000,
+                "pdf_wall_ns": 371258179,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 246812000,
+                "layout_wall_ns": 256595805,
+                "parse_cpu_ns": 10744000,
+                "parse_wall_ns": 10947264,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 368819000,
+                "pdf_wall_ns": 382059510,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 221958000,
+                "layout_wall_ns": 260346443,
+                "parse_cpu_ns": 9774000,
+                "parse_wall_ns": 9938815,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 350130000,
+                "pdf_wall_ns": 361037536,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": true,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "runs-default",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-3.json",
+        "--run-text",
+        "--compress-level",
+        "6"
+      ],
+      "system_before": {
+        "load_average": [
+          23.37060546875,
+          26.77734375,
+          29.71142578125
+        ],
+        "cpu_pressure": "some avg10=38.10 avg60=43.77 avg300=50.34 total=23077483715\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 6,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 51163000,
+                "layout_wall_ns": 53561413,
+                "parse_cpu_ns": 2294000,
+                "parse_wall_ns": 2299223,
+                "pdf_bytes": 297059,
+                "pdf_cpu_ns": 113580000,
+                "pdf_wall_ns": 119754070,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 57893000,
+                "layout_wall_ns": 60499210,
+                "parse_cpu_ns": 2404000,
+                "parse_wall_ns": 2641420,
+                "pdf_bytes": 297059,
+                "pdf_cpu_ns": 110122000,
+                "pdf_wall_ns": 114929818,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 55098000,
+                "layout_wall_ns": 57786096,
+                "parse_cpu_ns": 2616000,
+                "parse_wall_ns": 2745653,
+                "pdf_bytes": 297059,
+                "pdf_cpu_ns": 113801000,
+                "pdf_wall_ns": 117332638,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 238410000,
+                "layout_wall_ns": 260381711,
+                "parse_cpu_ns": 10088000,
+                "parse_wall_ns": 10361473,
+                "pdf_bytes": 1003156,
+                "pdf_cpu_ns": 417336000,
+                "pdf_wall_ns": 421507710,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 217397000,
+                "layout_wall_ns": 221443173,
+                "parse_cpu_ns": 9137000,
+                "parse_wall_ns": 9178510,
+                "pdf_bytes": 1003156,
+                "pdf_cpu_ns": 465238000,
+                "pdf_wall_ns": 478897204,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 235440000,
+                "layout_wall_ns": 260046799,
+                "parse_cpu_ns": 8870000,
+                "parse_wall_ns": 8975569,
+                "pdf_bytes": 1003156,
+                "pdf_cpu_ns": 469875000,
+                "pdf_wall_ns": 554573882,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": true,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "runs-default",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-4.json",
+        "--run-text",
+        "--compress-level",
+        "6"
+      ],
+      "system_before": {
+        "load_average": [
+          22.9404296875,
+          26.63134765625,
+          29.6484375
+        ],
+        "cpu_pressure": "some avg10=37.00 avg60=43.17 avg300=50.12 total=23078984536\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 6,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 61306000,
+                "layout_wall_ns": 64604156,
+                "parse_cpu_ns": 2681000,
+                "parse_wall_ns": 2921485,
+                "pdf_bytes": 297059,
+                "pdf_cpu_ns": 115687000,
+                "pdf_wall_ns": 121542010,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 55872000,
+                "layout_wall_ns": 58149949,
+                "parse_cpu_ns": 2161000,
+                "parse_wall_ns": 2219522,
+                "pdf_bytes": 297059,
+                "pdf_cpu_ns": 115307000,
+                "pdf_wall_ns": 120404843,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 58230000,
+                "layout_wall_ns": 60699261,
+                "parse_cpu_ns": 2793000,
+                "parse_wall_ns": 2876847,
+                "pdf_bytes": 297059,
+                "pdf_cpu_ns": 124102000,
+                "pdf_wall_ns": 131363897,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 249348000,
+                "layout_wall_ns": 281225803,
+                "parse_cpu_ns": 12050000,
+                "parse_wall_ns": 18488406,
+                "pdf_bytes": 1003156,
+                "pdf_cpu_ns": 453940000,
+                "pdf_wall_ns": 505090809,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 238975000,
+                "layout_wall_ns": 261620748,
+                "parse_cpu_ns": 11424000,
+                "parse_wall_ns": 14195116,
+                "pdf_bytes": 1003156,
+                "pdf_cpu_ns": 438721000,
+                "pdf_wall_ns": 497436113,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 238355000,
+                "layout_wall_ns": 251189469,
+                "parse_cpu_ns": 10523000,
+                "parse_wall_ns": 10573119,
+                "pdf_bytes": 1003156,
+                "pdf_cpu_ns": 432215000,
+                "pdf_wall_ns": 451815694,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": true,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "runs-fast",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-5.json",
+        "--run-text",
+        "--compress-level",
+        "1"
+      ],
+      "system_before": {
+        "load_average": [
+          22.54443359375,
+          26.48779296875,
+          29.58544921875
+        ],
+        "cpu_pressure": "some avg10=40.44 avg60=43.45 avg300=50.09 total=23080937517\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 1,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 59933000,
+                "layout_wall_ns": 67251263,
+                "parse_cpu_ns": 2484000,
+                "parse_wall_ns": 2490835,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 99328000,
+                "pdf_wall_ns": 101829746,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 56388000,
+                "layout_wall_ns": 59806607,
+                "parse_cpu_ns": 2715000,
+                "parse_wall_ns": 2725830,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 103622000,
+                "pdf_wall_ns": 106002479,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 58642000,
+                "layout_wall_ns": 59118202,
+                "parse_cpu_ns": 3017000,
+                "parse_wall_ns": 3045634,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 103288000,
+                "pdf_wall_ns": 143264378,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 213991000,
+                "layout_wall_ns": 221133589,
+                "parse_cpu_ns": 8360000,
+                "parse_wall_ns": 8648614,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 352481000,
+                "pdf_wall_ns": 366171141,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 245484000,
+                "layout_wall_ns": 258959881,
+                "parse_cpu_ns": 10614000,
+                "parse_wall_ns": 10700029,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 416180000,
+                "pdf_wall_ns": 435396128,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 228396000,
+                "layout_wall_ns": 237386107,
+                "parse_cpu_ns": 11298000,
+                "parse_wall_ns": 11833722,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 346096000,
+                "pdf_wall_ns": 355577903,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": true,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "absolute-fast",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-6.json",
+        "--no-run-text",
+        "--compress-level",
+        "1"
+      ],
+      "system_before": {
+        "load_average": [
+          21.53955078125,
+          26.2138671875,
+          29.47998046875
+        ],
+        "cpu_pressure": "some avg10=40.29 avg60=43.23 avg300=49.95 total=23082394962\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 1,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 54667000,
+                "layout_wall_ns": 55294350,
+                "parse_cpu_ns": 2221000,
+                "parse_wall_ns": 2495363,
+                "pdf_bytes": 793616,
+                "pdf_cpu_ns": 139059000,
+                "pdf_wall_ns": 141696866,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 57329000,
+                "layout_wall_ns": 57658978,
+                "parse_cpu_ns": 2268000,
+                "parse_wall_ns": 2281224,
+                "pdf_bytes": 793616,
+                "pdf_cpu_ns": 136325000,
+                "pdf_wall_ns": 140032455,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 60605000,
+                "layout_wall_ns": 64788576,
+                "parse_cpu_ns": 3117000,
+                "parse_wall_ns": 3378499,
+                "pdf_bytes": 793616,
+                "pdf_cpu_ns": 158029000,
+                "pdf_wall_ns": 167950460,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 221433000,
+                "layout_wall_ns": 229240655,
+                "parse_cpu_ns": 10884000,
+                "parse_wall_ns": 11237129,
+                "pdf_bytes": 3012110,
+                "pdf_cpu_ns": 581341000,
+                "pdf_wall_ns": 621992736,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 237989000,
+                "layout_wall_ns": 248525078,
+                "parse_cpu_ns": 11329000,
+                "parse_wall_ns": 11411019,
+                "pdf_bytes": 3012110,
+                "pdf_cpu_ns": 555798000,
+                "pdf_wall_ns": 660870008,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 246331000,
+                "layout_wall_ns": 279270812,
+                "parse_cpu_ns": 10200000,
+                "parse_wall_ns": 10820137,
+                "pdf_bytes": 3012110,
+                "pdf_cpu_ns": 558414000,
+                "pdf_wall_ns": 629109206,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": false,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "absolute-default",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--warm-fonts",
+        "--json",
+        "/tmp/penelope-perf-7.json",
+        "--no-run-text",
+        "--compress-level",
+        "6"
+      ],
+      "system_before": {
+        "load_average": [
+          23.41845703125,
+          26.52587890625,
+          29.5634765625
+        ],
+        "cpu_pressure": "some avg10=39.75 avg60=42.92 avg300=49.79 total=23084382242\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 6,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 54521000,
+                "layout_wall_ns": 56643929,
+                "parse_cpu_ns": 2676000,
+                "parse_wall_ns": 2834016,
+                "pdf_bytes": 661436,
+                "pdf_cpu_ns": 192307000,
+                "pdf_wall_ns": 202756544,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 62368000,
+                "layout_wall_ns": 67420152,
+                "parse_cpu_ns": 2931000,
+                "parse_wall_ns": 3014561,
+                "pdf_bytes": 661436,
+                "pdf_cpu_ns": 198155000,
+                "pdf_wall_ns": 213403763,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 59334000,
+                "layout_wall_ns": 63603424,
+                "parse_cpu_ns": 2806000,
+                "parse_wall_ns": 2991466,
+                "pdf_bytes": 661436,
+                "pdf_cpu_ns": 185876000,
+                "pdf_wall_ns": 191390715,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 187958000,
+                "layout_wall_ns": 190287597,
+                "parse_cpu_ns": 9212000,
+                "parse_wall_ns": 9369669,
+                "pdf_bytes": 2480738,
+                "pdf_cpu_ns": 696708000,
+                "pdf_wall_ns": 708221230,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 233203000,
+                "layout_wall_ns": 249830426,
+                "parse_cpu_ns": 10660000,
+                "parse_wall_ns": 10942609,
+                "pdf_bytes": 2480738,
+                "pdf_cpu_ns": 733016000,
+                "pdf_wall_ns": 783332985,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 212861000,
+                "layout_wall_ns": 218166408,
+                "parse_cpu_ns": 9990000,
+                "parse_wall_ns": 10037400,
+                "pdf_bytes": 2480738,
+                "pdf_cpu_ns": 743048000,
+                "pdf_wall_ns": 789441054,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": false,
+        "warm_fonts": true
+      }
+    },
+    {
+      "condition": "cold-fonts",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--json",
+        "/tmp/penelope-perf-cold-fonts.json",
+        "--compress-level",
+        "1"
+      ],
+      "system_before": {
+        "load_average": [
+          23.86572265625,
+          26.5673828125,
+          29.56005859375
+        ],
+        "cpu_pressure": "some avg10=39.36 avg60=42.58 avg300=49.58 total=23086456318\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 1,
+        "continuous": false,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 140963000,
+                "layout_wall_ns": 152637643,
+                "parse_cpu_ns": 2349000,
+                "parse_wall_ns": 2482244,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 101648000,
+                "pdf_wall_ns": 105793884,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 139906000,
+                "layout_wall_ns": 157917801,
+                "parse_cpu_ns": 2650000,
+                "parse_wall_ns": 2713554,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 120341000,
+                "pdf_wall_ns": 132041151,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 139864000,
+                "layout_wall_ns": 146734448,
+                "parse_cpu_ns": 2965000,
+                "parse_wall_ns": 3119466,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 112467000,
+                "pdf_wall_ns": 121578861,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 269722000,
+                "layout_wall_ns": 274907603,
+                "parse_cpu_ns": 9629000,
+                "parse_wall_ns": 10024605,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 356104000,
+                "pdf_wall_ns": 362127291,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 280579000,
+                "layout_wall_ns": 290969344,
+                "parse_cpu_ns": 8935000,
+                "parse_wall_ns": 9259849,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 358288000,
+                "pdf_wall_ns": 366408798,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              },
+              {
+                "continuous_cpu_ns": 0,
+                "continuous_wall_ns": 0,
+                "layout_cpu_ns": 277144000,
+                "layout_wall_ns": 283728961,
+                "parse_cpu_ns": 10327000,
+                "parse_wall_ns": 10614628,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 362397000,
+                "pdf_wall_ns": 381158756,
+                "raster_cpu_ns": 0,
+                "raster_wall_ns": 0
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": false,
+        "run_text": true,
+        "warm_fonts": false
+      }
+    },
+    {
+      "condition": "continuous-and-raster",
+      "command": [
+        "/tmp/penelope-performance-review/bin/penelope_renderbench",
+        "--sizes",
+        "400,1600",
+        "--iterations",
+        "3",
+        "--json",
+        "/tmp/penelope-perf-continuous-and-raster.json",
+        "--compress-level",
+        "1",
+        "--warm-fonts",
+        "--continuous",
+        "--raster"
+      ],
+      "system_before": {
+        "load_average": [
+          22.99560546875,
+          26.341796875,
+          29.470703125
+        ],
+        "cpu_pressure": "some avg10=37.61 avg60=42.05 avg300=49.37 total=23087780423\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0"
+      },
+      "data": {
+        "compression_level": 1,
+        "continuous": true,
+        "documents": [
+          {
+            "blocks": 417,
+            "bytes": 94166,
+            "label": "synthetic-400p",
+            "pages": 84,
+            "samples": [
+              {
+                "continuous_cpu_ns": 60566000,
+                "continuous_wall_ns": 67532840,
+                "layout_cpu_ns": 60209000,
+                "layout_wall_ns": 77878478,
+                "parse_cpu_ns": 2913000,
+                "parse_wall_ns": 4525227,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 110095000,
+                "pdf_wall_ns": 129462990,
+                "raster_cpu_ns": 26021000,
+                "raster_wall_ns": 27725894
+              },
+              {
+                "continuous_cpu_ns": 66210000,
+                "continuous_wall_ns": 118020313,
+                "layout_cpu_ns": 63476000,
+                "layout_wall_ns": 82254438,
+                "parse_cpu_ns": 2711000,
+                "parse_wall_ns": 2992443,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 111305000,
+                "pdf_wall_ns": 158082048,
+                "raster_cpu_ns": 25379000,
+                "raster_wall_ns": 26200158
+              },
+              {
+                "continuous_cpu_ns": 60534000,
+                "continuous_wall_ns": 64973411,
+                "layout_cpu_ns": 64050000,
+                "layout_wall_ns": 72501109,
+                "parse_cpu_ns": 2542000,
+                "parse_wall_ns": 2623465,
+                "pdf_bytes": 381351,
+                "pdf_cpu_ns": 107134000,
+                "pdf_wall_ns": 115706665,
+                "raster_cpu_ns": 25932000,
+                "raster_wall_ns": 48793158
+              }
+            ]
+          },
+          {
+            "blocks": 1665,
+            "bytes": 377971,
+            "label": "synthetic-1600p",
+            "pages": 293,
+            "samples": [
+              {
+                "continuous_cpu_ns": 222195000,
+                "continuous_wall_ns": 262203949,
+                "layout_cpu_ns": 235058000,
+                "layout_wall_ns": 249545780,
+                "parse_cpu_ns": 10681000,
+                "parse_wall_ns": 17809838,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 374820000,
+                "pdf_wall_ns": 394721664,
+                "raster_cpu_ns": 26680000,
+                "raster_wall_ns": 28093451
+              },
+              {
+                "continuous_cpu_ns": 240977000,
+                "continuous_wall_ns": 250784363,
+                "layout_cpu_ns": 243544000,
+                "layout_wall_ns": 264564889,
+                "parse_cpu_ns": 10329000,
+                "parse_wall_ns": 10878580,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 390509000,
+                "pdf_wall_ns": 417379821,
+                "raster_cpu_ns": 28294000,
+                "raster_wall_ns": 29509784
+              },
+              {
+                "continuous_cpu_ns": 228232000,
+                "continuous_wall_ns": 245208272,
+                "layout_cpu_ns": 238684000,
+                "layout_wall_ns": 250054698,
+                "parse_cpu_ns": 10720000,
+                "parse_wall_ns": 11601478,
+                "pdf_bytes": 1346159,
+                "pdf_cpu_ns": 363173000,
+                "pdf_wall_ns": 374951868,
+                "raster_cpu_ns": 24732000,
+                "raster_wall_ns": 27331235
+              }
+            ]
+          }
+        ],
+        "hyphenate": false,
+        "raster": true,
+        "run_text": true,
+        "warm_fonts": true
+      }
+    }
+  ]
+}

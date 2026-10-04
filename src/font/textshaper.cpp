@@ -18,6 +18,8 @@
 #include <unicode/uchar.h>
 
 #include <QDebug>
+#include <QDataStream>
+#include <QIODevice>
 
 TextShaper::TextShaper(FontManager *fontManager)
     : m_fontManager(fontManager)
@@ -284,6 +286,34 @@ QList<TextShaper::InternalRun> TextShaper::itemizeFontCoverage(
 // --- Main shaping entry point ---
 
 QList<ShapedRun> TextShaper::shape(const QString &text, const QList<StyleRun> &styles)
+{
+    if (m_cache.maxCost() == 0) { ++m_cacheMisses; return shapeUncached(text, styles); }
+    QByteArray key;
+    QDataStream stream(&key, QIODevice::WriteOnly);
+    stream << text << quint64(quintptr(m_fallbackFont)) << quint32(styles.size());
+    for (const auto &style : styles)
+        stream << style.start << style.length << style.fontFamily << style.fontWeight
+               << style.fontItalic << style.fontSize << style.fontFeatures;
+    if (auto *cached = m_cache.object(key)) {
+        ++m_cacheHits;
+        // resetUsage() is independent of cache lifetime. Replaying the glyphs
+        // is essential: otherwise the next PDF contains an empty font subset.
+        for (const auto &run : cached->runs)
+            for (const auto &glyph : run.glyphs)
+                m_fontManager->markGlyphUsed(run.font, glyph.glyphId);
+        return cached->runs;
+    }
+    ++m_cacheMisses;
+    auto runs = shapeUncached(text, styles);
+    qint64 cost = key.size() + sizeof(CachedShape);
+    for (const auto &run : runs)
+        cost += sizeof(ShapedRun) + run.glyphs.size() * sizeof(ShapedGlyph);
+    if (cost <= m_cache.maxCost())
+        m_cache.insert(key, new CachedShape{runs}, int(cost));
+    return runs;
+}
+
+QList<ShapedRun> TextShaper::shapeUncached(const QString &text, const QList<StyleRun> &styles)
 {
     QList<ShapedRun> result;
     if (text.isEmpty() || styles.isEmpty())

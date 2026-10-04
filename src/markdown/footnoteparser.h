@@ -29,7 +29,7 @@ public:
     // Parse markdown text: extract footnote definitions and rewrite references.
     // Returns the cleaned markdown with:
     //  - Footnote definitions removed
-    //  - [^label] references left intact (DocumentBuilder handles rendering)
+    //  - [^label] references left intact (ContentBuilder handles rendering)
     // Populates the footnotes() list.
     QString process(const QString &markdownText);
 

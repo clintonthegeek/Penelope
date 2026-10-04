@@ -1,8 +1,7 @@
 /*
  * contentbuilder.h — MD4C → Content::Document builder
  *
- * Same callback structure as DocumentBuilder, but emits Content:: nodes
- * instead of QTextCursor operations.
+ * Parses Markdown into styled content nodes for both reader modes and exports.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -15,6 +14,8 @@
 #include <QString>
 
 #include <md4c.h>
+#include <optional>
+#include <functional>
 
 #include "contentmodel.h"
 #include "footnotestyle.h"
@@ -34,6 +35,8 @@ public:
     // Source line ranges in blocks refer to this text.
     QString processedMarkdown() const { return m_processedMarkdown; }
 
+    void setRenderImages(bool enabled) { m_renderImages = enabled; }
+    void setCancellationCheck(std::function<bool()> check) { m_cancelled = std::move(check); }
     void setBasePath(const QString &basePath);
     void setStyleManager(StyleManager *sm);
     void setHyphenator(Hyphenator *hyph);
@@ -82,6 +85,8 @@ private:
     const char *m_bufferStart = nullptr;
 
     // State
+    std::optional<bool> m_renderImages;
+    std::function<bool()> m_cancelled;
     Content::Document m_doc;
     QString m_basePath;
     StyleManager *m_styleManager = nullptr;

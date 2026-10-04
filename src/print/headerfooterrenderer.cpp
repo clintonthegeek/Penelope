@@ -1,77 +1,10 @@
 #include "headerfooterrenderer.h"
-#include "pagelayout.h"
 
 #include <QDate>
-#include <QFont>
 #include <QLocale>
-#include <QPainter>
-#include <QPen>
 #include <QRegularExpression>
 
 namespace HeaderFooterRenderer {
-
-static void drawFields(QPainter *painter, const QRectF &rect,
-                       const QString &left, const QString &center,
-                       const QString &right, const PageMetadata &meta)
-{
-    QFont font(QStringLiteral("Noto Sans"));
-    font.setPointSizeF(9.0);
-    painter->setFont(font);
-    painter->setPen(QColor(0x88, 0x88, 0x88));
-
-    QString resolvedLeft = resolveField(left, meta);
-    QString resolvedCenter = resolveField(center, meta);
-    QString resolvedRight = resolveField(right, meta);
-
-    if (!resolvedLeft.isEmpty())
-        painter->drawText(rect, Qt::AlignLeft | Qt::AlignVCenter, resolvedLeft);
-    if (!resolvedCenter.isEmpty())
-        painter->drawText(rect, Qt::AlignHCenter | Qt::AlignVCenter, resolvedCenter);
-    if (!resolvedRight.isEmpty())
-        painter->drawText(rect, Qt::AlignRight | Qt::AlignVCenter, resolvedRight);
-}
-
-void drawHeader(QPainter *painter, const QRectF &rect,
-                const PageLayout &layout, const PageMetadata &meta,
-                qreal separatorWidth)
-{
-    if (!layout.headerEnabled || rect.height() <= 0)
-        return;
-
-    painter->save();
-    painter->setClipRect(rect);
-
-    drawFields(painter, rect,
-               layout.headerLeft, layout.headerCenter, layout.headerRight,
-               meta);
-
-    // Separator line at bottom of header
-    painter->setPen(QPen(QColor(0xcc, 0xcc, 0xcc), separatorWidth));
-    painter->drawLine(rect.bottomLeft(), rect.bottomRight());
-
-    painter->restore();
-}
-
-void drawFooter(QPainter *painter, const QRectF &rect,
-                const PageLayout &layout, const PageMetadata &meta,
-                qreal separatorWidth)
-{
-    if (!layout.footerEnabled || rect.height() <= 0)
-        return;
-
-    painter->save();
-    painter->setClipRect(rect);
-
-    // Separator line at top of footer
-    painter->setPen(QPen(QColor(0xcc, 0xcc, 0xcc), separatorWidth));
-    painter->drawLine(rect.topLeft(), rect.topRight());
-
-    drawFields(painter, rect,
-               layout.footerLeft, layout.footerCenter, layout.footerRight,
-               meta);
-
-    painter->restore();
-}
 
 QString resolveField(const QString &text, const PageMetadata &meta)
 {

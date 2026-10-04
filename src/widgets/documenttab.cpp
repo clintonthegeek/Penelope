@@ -1,4 +1,5 @@
 #include "documenttab.h"
+#include <QSignalBlocker>
 #include "documentview.h"
 #include "markdownhighlighter.h"
 #include "penelopesettings.h"
@@ -51,6 +52,7 @@ DocumentTab::DocumentTab(QWidget *parent)
         if (current == m_knownText)
             return;
         m_knownText = current;
+        ++m_sourceRevision;
         m_compositionGeneration = 0;
         Q_EMIT sourceChanged();
     });
@@ -80,8 +82,10 @@ void DocumentTab::setSourceText(const QString &text)
 // source on the user's behalf emit sourceChanged() themselves.
 void DocumentTab::replaceSourceText(const QString &text)
 {
-    m_knownText = text;
+    const QSignalBlocker blocker(m_sourceEditor);
     m_sourceEditor->setPlainText(text);
+    m_knownText = m_sourceEditor->toPlainText();
+    ++m_sourceRevision;
 }
 
 void DocumentTab::setTocData(const Content::Document &doc, const QList<Layout::SourceMapEntry> &sourceMap)

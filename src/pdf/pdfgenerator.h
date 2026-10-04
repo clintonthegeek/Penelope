@@ -14,6 +14,7 @@
 
 #ifndef PENELOPE_PDFGENERATOR_H
 #define PENELOPE_PDFGENERATOR_H
+#include <functional>
 
 #include <QByteArray>
 #include <QString>
@@ -40,6 +41,7 @@ public:
                         const QString &title,
                         const QString &filePath);
 
+    void setCancellationCheck(std::function<bool()> check) { m_cancelled = std::move(check); }
     void setDocumentInfo(const QString &filename, const QString &title);
     void setMaxJustifyGap(qreal gap) { m_maxJustifyGap = gap; }
     /// zlib level for embedded streams. The reader preview should pass 1: the
@@ -145,6 +147,7 @@ private:
     QString m_title;
     qreal m_maxJustifyGap = 14.0;
     PdfExportOptions m_exportOptions;
+    std::function<bool()> m_cancelled;
     int m_compressionLevel = -1;
     bool m_runText = true;
     // Glyph advance in 1/1000 em, keyed by face then glyph. Resolving one

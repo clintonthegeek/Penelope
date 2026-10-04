@@ -7,6 +7,7 @@
 #include <QTemporaryFile>
 
 #include <hyphen.h>
+#include <mutex>
 
 QHash<QString, QString> Hyphenator::s_dictPaths;
 
@@ -22,8 +23,8 @@ Hyphenator::~Hyphenator()
 
 void Hyphenator::initDictPaths()
 {
-    if (!s_dictPaths.isEmpty())
-        return;
+    static std::once_flag once;
+    std::call_once(once, [] {
 
     // 1. Bundled dictionaries in Qt resources
     QDir resourceDir(QStringLiteral(":/dicts"));
@@ -57,6 +58,7 @@ void Hyphenator::initDictPaths()
                 s_dictPaths.insert(lang, dir.filePath(entry));
         }
     }
+    });
 }
 
 QStringList Hyphenator::availableLanguages()

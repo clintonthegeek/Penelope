@@ -9,7 +9,6 @@
 
 class QTreeWidget;
 class QTreeWidgetItem;
-class QTextDocument;
 
 class TocWidget : public QWidget
 {
@@ -18,14 +17,12 @@ class TocWidget : public QWidget
 public:
     explicit TocWidget(QWidget *parent = nullptr);
 
-    void buildFromDocument(QTextDocument *document);
     void buildFromContentModel(const Content::Document &doc,
                                const QList<Layout::SourceMapEntry> &sourceMap);
     void clear();
     void highlightHeading(int sourceLine);
 
 Q_SIGNALS:
-    void headingClicked(int blockNumber);
     void headingNavigate(int page, qreal yOffset);
     void headingSourceNavigate(int sourceLine);
 

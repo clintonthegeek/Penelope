@@ -11,7 +11,7 @@
 #define PENELOPE_FONTMANAGER_H
 
 #include <QHash>
-#include <QObject>
+
 #include <QSet>
 #include <QString>
 
@@ -42,11 +42,12 @@ struct FontFace {
 
 namespace sfnt { struct SubsetResult; }
 
-class FontManager : public QObject {
-    Q_OBJECT
+class FontManager {
 public:
-    explicit FontManager(QObject *parent = nullptr);
-    ~FontManager() override;
+    FontManager();
+    FontManager(const FontManager &) = delete;
+    FontManager &operator=(const FontManager &) = delete;
+    ~FontManager();
 
     FontFace *loadFont(const QString &family, int weight = 400, bool italic = false);
     FontFace *loadFontFromPath(const QString &filePath, int faceIndex = 0);

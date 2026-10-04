@@ -2,9 +2,7 @@
 #define PENELOPE_FONTFEATURES_H
 
 #include <QFlags>
-#include <QFont>
-#include <QString>
-#include <QTextCharFormat>
+#include <QStringList>
 
 namespace FontFeatures {
 
@@ -26,45 +24,6 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(Features)
 inline Features defaultFeatures()
 {
     return Ligatures | Kerning | ContextAlts | OldStyleNums;
-}
-
-// Apply font features to a QTextCharFormat using native APIs.
-// This is the correct way to set features on styled text in QTextDocument,
-// because QTextCharFormat decomposes fonts into individual properties.
-//
-// Features with native QTextCharFormat support (work reliably):
-//   - SmallCaps  → setFontCapitalization(QFont::SmallCaps)
-//   - Kerning    → setFontKerning()
-//
-// Features without native support (applied via QFont::setFeature, may
-// not survive format round-trips in all Qt versions):
-//   - Ligatures  → liga (enabled by default in HarfBuzz)
-//   - OldStyleNums → onum
-//   - LiningNums → lnum
-//   - ContextAlts → calt (enabled by default in HarfBuzz)
-inline void applyToCharFormat(QTextCharFormat &cf, Features features)
-{
-    // Small caps - native QTextCharFormat property, always works
-    cf.setFontCapitalization(features.testFlag(SmallCaps)
-                             ? QFont::SmallCaps : QFont::MixedCase);
-
-    // Kerning - native QTextCharFormat property, always works
-    cf.setFontKerning(features.testFlag(Kerning));
-
-    // For features without native QTextCharFormat support, apply via
-    // QFont::setFeature(). These are stored on the QFont object and
-    // may propagate through the layout engine in newer Qt versions.
-    QFont f = cf.font();
-    f.setFeature("liga", features.testFlag(Ligatures) ? 1 : 0);
-    if (features.testFlag(OldStyleNums)) {
-        f.setFeature("onum", 1);
-        f.setFeature("lnum", 0);
-    } else if (features.testFlag(LiningNums)) {
-        f.setFeature("lnum", 1);
-        f.setFeature("onum", 0);
-    }
-    f.setFeature("calt", features.testFlag(ContextAlts) ? 1 : 0);
-    cf.setFont(f, QTextCharFormat::FontPropertiesSpecifiedOnly);
 }
 
 // Serialize features to a string list for JSON storage

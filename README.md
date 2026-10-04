@@ -8,7 +8,9 @@ reader, source editing, and configurable typography.
 It parses Markdown with MD4C, shapes text with HarfBuzz, finds line breaks with
 ICU, and lays out a semantic content model. Its PDF writer embeds subsetted
 fonts; Poppler provides the preview through an asynchronous render cache.
-A legacy QTextDocument renderer is also available.
+Reader composition runs in a worker with a bounded request queue and shaping
+cache. Source edits refresh the reader when returning from source view.
+Both reader modes use the shared content and layout pipeline.
 
 Features include:
 
@@ -33,12 +35,15 @@ and full inline-media/math rendering. See the
 [maintenance audit](docs/2026-10-03-maintenance-audit.md) for repaired defects,
 verification coverage and remaining limitations, and the
 [Markoff integration analysis](docs/2026-10-03-markoff-port-analysis.md) for the
-proposed reader/PDF library extraction.
+proposed reader/PDF library extraction. The [performance implementation](docs/2026-10-04-composition-implementation.md)
+and [scoped follow-up tasks](docs/2026-10-04-performance-tasks.md) describe the
+asynchronous pipeline and remaining work. The [legacy renderer removal](docs/2026-10-04-legacy-renderer-removal.md)
+records the consolidation of readers, exports and clipboard conversion.
 
 ## Building and testing
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```

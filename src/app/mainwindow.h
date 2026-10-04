@@ -2,6 +2,9 @@
 #define PENELOPE_MAINWINDOW_H
 
 #include <KXmlGuiWindow>
+#include <QPointer>
+#include "compositioncontroller.h"
+#include "documenttab.h"
 
 class QAction;
 class QCloseEvent;
@@ -44,6 +47,9 @@ public:
     void restoreOpenFiles();
     void activateWithFiles(const QStringList &paths);
 
+Q_SIGNALS:
+    void documentRendered(DocumentTab *tab);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
 
@@ -75,6 +81,8 @@ private:
     void setupActions();
     void setupSidebars();
     void rebuildCurrentDocument();
+    CompositionRequest compositionRequest(DocumentTab *tab) const;
+    void installComposition(quint64 id, CompositionResultPtr result);
     void saveSession();
     void restoreSession();
     DocumentView *currentDocumentView() const;
@@ -113,6 +121,9 @@ private:
     QLabel *m_filePathLabel = nullptr;
 
     // PDF rendering pipeline (Phase 4)
+    CompositionController *m_compositionController = nullptr;
+    QPointer<DocumentTab> m_renderTarget;
+    quint64 m_renderRequest = 0;
     FontManager *m_fontManager = nullptr;
     TextShaper *m_textShaper = nullptr;
 

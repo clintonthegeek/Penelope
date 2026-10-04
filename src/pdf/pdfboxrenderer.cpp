@@ -5,7 +5,7 @@
 
 #include "pdfboxrenderer.h"
 
-#include <cstdio>
+#include <cmath>
 
 #include "fontmanager.h"
 #include "hersheyfont.h"
@@ -110,6 +110,44 @@ QByteArray PdfBoxRenderer::pdfCoord(qreal v)
 void PdfBoxRenderer::appendCoord(QByteArray &out, qreal v)
 {
     out.append(QByteArray::number(v, 'f', 2));
+}
+
+// Fixed-point formatting without printf. Parsing a format string once per
+// glyph showed up as about five percent of PDF generation, because run-length
+// text emission needs one number per glyph. The value is ours to choose, so
+// only its magnitude matters; it just has to be accurate to well under a
+// hundredth of a point.
+void PdfBoxRenderer::appendAdjustment(QByteArray &out, qreal value)
+{
+    if (!qIsFinite(value)) {
+        out.append('0');
+        return;
+
+    }
+    bool negative = value < 0;
+    qreal magnitude = negative ? -value : value;
+    if (magnitude > 1e9) {
+        magnitude = 1e9;
+    }
+    const qint64 scaled = qint64(magnitude * 100.0 + 0.5);
+    if (negative && scaled != 0)
+        out.append('-');
+    appendUnsigned(out, scaled / 100);
+    out.append('.');
+    out.append(char('0' + (scaled / 10) % 10));
+    out.append(char('0' + scaled % 10));
+}
+
+void PdfBoxRenderer::appendUnsigned(QByteArray &out, quint64 v)
+{
+    char buf[24];
+    int n = 0;
+    do {
+        buf[n++] = char('0' + v % 10);
+        v /= 10;
+    } while (v != 0);
+    while (n > 0)
+        out.append(buf[--n]);
 }
 
 void PdfBoxRenderer::appendHex16(QByteArray &out, quint16 v)
@@ -375,13 +413,8 @@ void PdfBoxRenderer::drawGlyphsCIDFont(FontFace *face, qreal fontSize,
                 const qreal natural = info.positions[i - 1].x()
                                     + widths[i - 1] * fontSize / 1000.0;
                 const qreal shift = info.positions[i].x() - natural;
-                if (qAbs(shift) > 1e-9) {
-                    char buf[32];
-                    const int n = std::snprintf(buf, sizeof(buf), "%.2f",
-                                                -1000.0 * shift / fontSize);
-                    if (n > 0)
-                        m_stream->append(buf, n);
-                }
+                if (qAbs(shift) > 1e-9)
+                    appendAdjustment(*m_stream, -1000.0 * shift / fontSize);
             }
             appendHex16(*m_stream, static_cast<quint16>(info.glyphIds[i]));
         }

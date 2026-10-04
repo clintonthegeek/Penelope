@@ -166,6 +166,8 @@ private:
     static QByteArray pdfCoord(qreal v);
     static void appendCoord(QByteArray &out, qreal v);
     static void appendHex16(QByteArray &out, quint16 v);
+    static void appendUnsigned(QByteArray &out, quint64 v);
+    static void appendAdjustment(QByteArray &out, qreal value);
     static void appendRect(QByteArray &out, qreal x, qreal y, qreal w, qreal h);
     static QByteArray colorOperator(const QColor &color, bool fill = true);
     static void appendColorOperator(QByteArray &out, const QColor &color, bool fill = true);

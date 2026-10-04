@@ -15,6 +15,13 @@
 
 #include <KActionCollection>
 
+#ifdef __linux__
+#include <csignal>
+#include <sys/time.h>
+#include <ucontext.h>
+#include <dlfcn.h>
+#endif
+
 #include <poppler-qt6.h>
 
 #include "contentbuilder.h"
@@ -25,6 +32,78 @@
 #include "pdfgenerator.h"
 #include "penelopesettings.h"
 #include "textshaper.h"
+
+
+// Opt-in sampling profiler. Wall-clock timing on a loaded machine cannot
+// resolve single-digit effects, and hand-placed timers kept reporting zero
+// because of scope mistakes; sampling the instruction pointer and symbolising
+// afterwards answers where the time actually went. Linux-only.
+#ifdef __linux__
+namespace prof {
+static const int kMaxSamples = 500000;
+static void **g_pcs = nullptr;
+static volatile int g_count = 0;
+
+static void handler(int, siginfo_t *, void *uc)
+{
+    if (g_count >= kMaxSamples || !g_pcs)
+        return;
+    ucontext_t *c = static_cast<ucontext_t *>(uc);
+    g_pcs[g_count++] = reinterpret_cast<void *>(c->uc_mcontext.gregs[REG_RIP]);
+}
+
+void start()
+{
+    g_pcs = static_cast<void **>(malloc(sizeof(void *) * kMaxSamples));
+    struct sigaction sa;
+    sa.sa_sigaction = handler;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGPROF, &sa, nullptr);
+    struct itimerval tv;
+    tv.it_interval.tv_sec = 0;
+    tv.it_interval.tv_usec = 1000;
+    tv.it_value = tv.it_interval;
+    setitimer(ITIMER_PROF, &tv, nullptr);
+}
+
+void stopAndDump()
+{
+    struct itimerval off;
+    off.it_interval.tv_sec = 0;
+    off.it_interval.tv_usec = 0;
+    off.it_value = off.it_interval;
+    setitimer(ITIMER_PROF, &off, nullptr);
+
+    const QString maps = QStringLiteral("/tmp/opencode/maps.txt");
+    const QString out = QStringLiteral("/tmp/opencode/samples.txt");
+    QFile m("/proc/self/maps");
+    if (m.open(QIODevice::ReadOnly)) {
+        QFile o(maps);
+        if (o.open(QIODevice::WriteOnly))
+            o.write(m.readAll());
+    }
+    void *base = nullptr;
+    QFile f(out);
+    if (!f.open(QIODevice::WriteOnly))
+        return;
+    Dl_info info;
+    if (dladdr(reinterpret_cast<void *>(&g_pcs), &info) && info.dli_fbase) {
+        base = info.dli_fbase;
+    }
+    QHash<void *, int> hist;
+    for (int i = 0; i < g_count; ++i)
+        hist[g_pcs[i]]++;
+    for (auto it = hist.cbegin(); it != hist.cend(); ++it) {
+        f.write(QStringLiteral("%1 %2\n")
+                    .arg(quintptr(reinterpret_cast<char *>(it.key())
+                                  - reinterpret_cast<char *>(base)), 0, 16)
+                    .arg(it.value())
+                    .toUtf8());
+    }
+}
+} // namespace prof
+#endif
 
 namespace {
 
@@ -539,6 +618,11 @@ int main(int argc, char **argv)
         return 0;
     }
 
+#ifdef __linux__
+    const bool profiling = qEnvironmentVariableIsSet("BENCH_PROFILE");
+    if (profiling)
+        prof::start();
+#endif
     QTextStream out(stdout);
     out << QStringLiteral("penelope render benchmark  (iterations=%1, hyphenate=%2)\n")
                .arg(iterations)
@@ -568,5 +652,9 @@ int main(int argc, char **argv)
     for (const Row &r : std::as_const(rows))
         printRow(r, continuous, raster);
 
+#ifdef __linux__
+    if (profiling)
+        prof::stopAndDump();
+#endif
     return 0;
 }

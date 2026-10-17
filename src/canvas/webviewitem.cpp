@@ -25,6 +25,17 @@ void WebViewItem::setLayoutResult(Layout::ContinuousLayoutResult &&result)
     update();
 }
 
+void WebViewItem::appendElements(QList<Layout::PageElement> elements, qreal newHeight)
+{
+    prepareGeometryChange();
+    int oldCount = m_result.elements.size();
+    for (auto &el : elements) m_result.elements.append(el);
+    // adjust y? assume elements already have absolute y
+    m_result.totalHeight = newHeight;
+    // append source maps? not available here; caller handles via result? Spec says appendElements updates height only.
+    update();
+}
+
 QRectF WebViewItem::boundingRect() const
 {
     return QRectF(0, 0, m_result.contentWidth, m_result.totalHeight);

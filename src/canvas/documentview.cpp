@@ -635,6 +635,29 @@ void DocumentView::setWebContent(Layout::ContinuousLayoutResult &&result)
     }
 }
 
+void DocumentView::appendWebContent(Layout::ContinuousLayoutResult &&extra)
+{
+    Q_ASSERT(m_webViewItem);
+    Q_ASSERT(!m_pdfMode);
+    auto &res = m_webViewItem->layoutResult();
+    qreal baseHeight = res.totalHeight;
+    for (auto &el : extra.elements) {
+        std::visit([&](auto &e) { e.y += baseHeight; }, el);
+        res.elements.append(el);
+    }
+    for (auto &sm : extra.sourceMap) {
+        sm.rect.translate(0, baseHeight);
+        res.sourceMap.append(sm);
+    }
+    res.codeBlockRegions.append(extra.codeBlockRegions);
+    res.totalHeight += extra.totalHeight;
+    res.contentWidth = extra.contentWidth > 0 ? extra.contentWidth : res.contentWidth;
+    m_webViewItem->update();
+    qreal sceneW = m_webViewItem->boundingRect().width();
+    qreal sceneH = m_webViewItem->boundingRect().height();
+    m_scene->setSceneRect(0, 0, sceneW, sceneH);
+}
+
 // --- Events ---
 
 void DocumentView::wheelEvent(QWheelEvent *event)

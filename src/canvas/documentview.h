@@ -115,6 +115,7 @@ public:
     void setRenderMode(RenderMode mode);
     RenderMode renderMode() const { return m_renderMode; }
     void setWebContent(Layout::ContinuousLayoutResult &&result);
+    void appendWebContent(Layout::ContinuousLayoutResult &&extra);
     void setWebFontManager(FontManager *fm) { m_webFontManager = fm; m_webFontOwner.reset(); }
     void setWebFontOwner(std::shared_ptr<FontManager> owner) {
         m_webFontManager = owner.get(); m_webFontOwner = std::move(owner);

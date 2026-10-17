@@ -21,7 +21,9 @@ public:
     explicit WebViewItem(FontManager *fontManager, std::shared_ptr<FontManager> owner = {});
 
     void setLayoutResult(Layout::ContinuousLayoutResult &&result);
+    void appendElements(QList<Layout::PageElement> elements, qreal newHeight);
     const Layout::ContinuousLayoutResult &layoutResult() const { return m_result; }
+    Layout::ContinuousLayoutResult &layoutResult() { return m_result; }
 
     QRectF boundingRect() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,

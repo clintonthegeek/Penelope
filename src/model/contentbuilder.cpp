@@ -110,6 +110,7 @@ QList<Content::BlockNode> &ContentBuilder::currentBlocks()
 
 void ContentBuilder::addBlock(Content::BlockNode block)
 {
+    std::visit([&](auto &b) { b.blockId = m_nextBlockId++; }, block);
     currentBlocks().append(std::move(block));
 }
 
@@ -144,8 +145,9 @@ void ContentBuilder::appendInlineNode(Content::InlineNode node)
             if (m_styleManager)
                 fmt = resolveParagraphFormat(QStringLiteral("ListItem"));
             auto &children = info.items.last().children;
-            children.append(Content::Paragraph{fmt, {}});
+            children.append(Content::Paragraph{0, fmt, {}});
             auto *p = std::get_if<Content::Paragraph>(&children.last());
+            if (p) p->blockId = m_nextBlockId++;
             m_inlineStack.push(&p->inlines);
             info.hasImplicitParagraph = true;
             p->inlines.append(std::move(node));
@@ -179,6 +181,7 @@ QString ContentBuilder::processTypography(const QString &text) const
 Content::Document ContentBuilder::build(const QString &markdownText)
 {
     m_doc = Content::Document{};
+    m_nextBlockId = 1;
     m_containers.clear();
     m_inlineStack.clear();
     m_styleStack.clear();
@@ -267,6 +270,7 @@ Content::Document ContentBuilder::build(const QString &markdownText)
 
             section.footnotes.append(fn);
         }
+        section.blockId = m_nextBlockId++;
         m_doc.blocks.append(section);
     }
 
@@ -340,8 +344,9 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
         }
 
         auto &children = currentBlocks();
-        children.append(Content::Paragraph{fmt, {}});
+        children.append(Content::Paragraph{0, fmt, {}});
         auto *p = std::get_if<Content::Paragraph>(&children.last());
+        if (p) p->blockId = m_nextBlockId++;
         m_inlineStack.push(&p->inlines);
         break;
     }
@@ -444,7 +449,7 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
     }
 
     case MD_BLOCK_HR:
-        addBlock(Content::HorizontalRule{12.0, 12.0});
+        addBlock(Content::HorizontalRule{0, 12.0, 12.0});
         break;
 
     case MD_BLOCK_TABLE: {

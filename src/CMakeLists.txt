@@ -72,6 +72,8 @@ add_library(PenelopeCore STATIC
     # PDF rendering pipeline (Phase 4)
     model/contentbuilder.cpp
     model/contentbuilder.h
+    model/blockidentity.cpp
+    model/blockidentity.h
     model/contentmodel.h
     model/contentplaintext.cpp
     model/contentplaintext.h
@@ -90,8 +92,12 @@ add_library(PenelopeCore STATIC
     font/hersheyfont.h
     layout/layoutengine.cpp
     layout/layoutengine.h
+    layout/stylerunindex.cpp
+    layout/stylerunindex.h
     layout/linebreaker.cpp
     layout/linebreaker.h
+    layout/fragmentcache.cpp
+    layout/fragmentcache.h
     pdf/pdfwriter.cpp
     pdf/pdfwriter.h
     pdf/pdfgenerator.cpp

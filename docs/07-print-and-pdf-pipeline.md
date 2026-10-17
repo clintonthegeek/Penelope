@@ -1,5 +1,7 @@
 # Penelope: Print & PDF Pipeline Design (Planning Stage 5)
 
+This is the early planning record and describes a Qt text-document pipeline the application no longer uses. Interactive print view and export follow the [ebook-reader roadmap](2026-10-17-ebook-reader-roadmap.md). PDF generation remains the export and print-dialog path.
+
 ## Architecture Overview
 
 ```

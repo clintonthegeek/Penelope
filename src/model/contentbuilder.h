@@ -30,6 +30,7 @@ public:
     explicit ContentBuilder(QObject *parent = nullptr);
 
     Content::Document build(const QString &markdownText);
+    quint64 nextBlockId() { return m_nextBlockId++; }
 
     // The processed markdown text (after footnote extraction) used for parsing.
     // Source line ranges in blocks refer to this text.
@@ -88,6 +89,7 @@ private:
     std::optional<bool> m_renderImages;
     std::function<bool()> m_cancelled;
     Content::Document m_doc;
+    quint64 m_nextBlockId = 1;
     QString m_basePath;
     StyleManager *m_styleManager = nullptr;
     Hyphenator *m_hyphenator = nullptr;

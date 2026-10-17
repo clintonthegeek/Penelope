@@ -12,6 +12,7 @@
 #include <QCache>
 #include <QString>
 #include <QStringList>
+#include <functional>
 
 #include <hb.h>
 
@@ -54,6 +55,7 @@ public:
 
     void setFallbackFont(FontFace *face) { m_fallbackFont = face; m_cache.clear(); }
     void setCacheLimit(int bytes) { m_cache.setMaxCost(qMax(0, bytes)); }
+    void setCancellationCheck(std::function<bool()> check) { m_cancellationCheck = std::move(check); }
     quint64 cacheHits() const { return m_cacheHits; }
     quint64 cacheMisses() const { return m_cacheMisses; }
     int cacheCost() const { return m_cache.totalCost(); }
@@ -63,6 +65,7 @@ private:
     QCache<QByteArray, CachedShape> m_cache{8 * 1024 * 1024};
     quint64 m_cacheHits = 0;
     quint64 m_cacheMisses = 0;
+    std::function<bool()> m_cancellationCheck;
     QList<ShapedRun> shapeUncached(const QString &text, const QList<StyleRun> &styles);
     struct InternalRun {
         int start;

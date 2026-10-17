@@ -2,10 +2,12 @@
 #include "compositioncontroller.h"
 #include "fontmanager.h"
 #include "textshaper.h"
+#include "fragmentcache.h"
 #include "pdfgenerator.h"
 #include "hyphenator.h"
 #include "shortwords.h"
 #include "contentbuilder.h"
+#include "blockidentity.h"
 #include <QElapsedTimer>
 #include <exception>
 
@@ -84,8 +86,12 @@ public:
                 result->processedMarkdown = m_processed;
                 result->reusedContent = true;
             } else {
+                bool hadPrevious = m_cached.has_value();
+                Content::Document previousDoc = m_cachedDoc;
                 result->document = buildCompositionContent(r, &result->processedMarkdown, token);
                 if (!cancelled(token)) {
+                    if (hadPrevious && !previousDoc.blocks.isEmpty())
+                        restabilizeBlockIds(previousDoc.blocks, result->document.blocks);
                     m_cached.reset(); m_cachedDoc = {}; m_processed.clear();
                     if (reusable) {
                         m_cached = r; m_cachedDoc = result->document;
@@ -94,19 +100,53 @@ public:
                 }
             }
             result->parseNs = timer.nsecsElapsed();
-            if (cancelled(token)) { Q_EMIT completed(id, {}, {}); return; }
+            if (cancelled(token)) { m_shaper->setCancellationCheck({}); Q_EMIT completed(id, {}, {}); return; }
             m_fonts->resetUsage();
             const auto hits = m_shaper->cacheHits(), misses = m_shaper->cacheMisses();
             Layout::Engine engine(m_fonts.get(), m_shaper.get());
+            m_shaper->setCancellationCheck([token] { return cancelled(token); });
             engine.setHyphenateJustifiedText(r.hyphenateJustified);
             engine.setOptimalTableLayout(r.optimalTables);
             engine.setCodeHighlighting(r.codeTheme, r.highlightCode);
+            engine.setFragmentCache(&m_fragmentCache);
             engine.setCancellationCheck([token] { return cancelled(token); });
             timer.restart();
-            if (r.continuous) result->continuousLayout = engine.layoutContinuous(result->document, r.width);
-            else result->paginated = engine.layout(result->document, r.pageLayout);
+            if (r.startBlock > 0 && r.continuous) {
+                // resume cursor
+            }
+            if (r.continuous) {
+                if (r.maxBlocks > 0 || r.maxHeight > 0) {
+                    Layout::LayoutCursor cursor;
+                    cursor.nextBlock = r.startBlock;
+                    cursor.y = 0;
+                    Layout::LayoutBudget budget;
+                    budget.maxBlocks = r.maxBlocks;
+                    budget.maxHeight = r.maxHeight;
+                    budget.onePage = r.onePage;
+                    result->continuousLayout = engine.layoutContinuousFrom(result->document, r.width, &cursor, budget);
+                    result->cursor = cursor;
+                    result->finished = cursor.finished;
+                } else {
+                    result->continuousLayout = engine.layoutContinuous(result->document, r.width);
+                    result->finished = true;
+                }
+            } else if (r.onePage) {
+                Layout::LayoutCursor cursor;
+                cursor.nextBlock = r.startBlock;
+                Layout::Page page;
+                bool ok = engine.layoutNextPage(result->document, r.pageLayout, &cursor, &page);
+                if (ok) {
+                    result->paginated.pages.append(page);
+                }
+                result->cursor = cursor;
+                result->finished = cursor.finished;
+            } else {
+                result->paginated = engine.layout(result->document, r.pageLayout);
+                result->finished = true;
+            }
             result->layoutNs = timer.nsecsElapsed();
-            if (cancelled(token)) { Q_EMIT completed(id, {}, {}); return; }
+            if (cancelled(token)) { m_shaper->setCancellationCheck({}); Q_EMIT completed(id, {}, {}); return; }
+            m_shaper->setCancellationCheck({});
             result->shapeHits = m_shaper->cacheHits() - hits;
             result->shapeMisses = m_shaper->cacheMisses() - misses;
             if (!r.continuous) {
@@ -122,8 +162,10 @@ public:
                     Q_EMIT completed(id, {}, QStringLiteral("PDF generation failed")); return;
                 }
             }
+            m_shaper->setCancellationCheck({});
             Q_EMIT completed(id, cancelled(token) ? CompositionResultPtr{} : result, {});
         } catch (const std::exception &e) {
+            if (m_shaper) m_shaper->setCancellationCheck({});
             Q_EMIT completed(id, {}, QString::fromUtf8(e.what()));
         }
     }
@@ -139,6 +181,7 @@ private:
     }
     std::shared_ptr<FontManager> m_fonts;
     std::unique_ptr<TextShaper> m_shaper;
+    FragmentCache m_fragmentCache;
     std::optional<CompositionRequest> m_cached;
     Content::Document m_cachedDoc;
     QString m_processed;

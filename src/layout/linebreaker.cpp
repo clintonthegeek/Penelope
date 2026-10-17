@@ -125,7 +125,8 @@ struct Node {
 // ---------------------------------------------------------------------------
 BreakResult findBreaks(const QList<Item> &items,
                        const QList<qreal> &lineWidths,
-                       const Config &config)
+                       const Config &config,
+                       const std::function<bool()> &cancelled)
 {
     BreakResult result;
     result.optimal = true;
@@ -200,6 +201,11 @@ BreakResult findBreaks(const QList<Item> &items,
     bool prevWasBox = false;
 
     for (int i = 0; i < n; ++i) {
+        if (i % 32 == 0 && cancelled && cancelled()) {
+            BreakResult cr;
+            cr.cancelled = true;
+            return cr;
+        }
         const auto &item = items[i];
 
         // Determine if this position is a legal breakpoint
@@ -455,7 +461,8 @@ BreakResult findBreaks(const QList<Item> &items,
 // ---------------------------------------------------------------------------
 BreakResult findBreaksTiered(const QList<Item> &items,
                              const QList<qreal> &lineWidths,
-                             const Config &baseConfig)
+                             const Config &baseConfig,
+                             const std::function<bool()> &cancelled)
 {
     if (items.isEmpty() || lineWidths.isEmpty()) {
         BreakResult result;
@@ -467,7 +474,9 @@ BreakResult findBreaksTiered(const QList<Item> &items,
     {
         Config cfg = baseConfig;
         cfg.tolerance = 1.0;
-        auto result = findBreaks(items, lineWidths, cfg);
+        auto result = findBreaks(items, lineWidths, cfg, cancelled);
+        if (result.cancelled)
+            return result;
         if (result.optimal && !result.breaks.isEmpty())
             return result;
     }
@@ -476,7 +485,9 @@ BreakResult findBreaksTiered(const QList<Item> &items,
     {
         Config cfg = baseConfig;
         cfg.tolerance = 2.0;
-        auto result = findBreaks(items, lineWidths, cfg);
+        auto result = findBreaks(items, lineWidths, cfg, cancelled);
+        if (result.cancelled)
+            return result;
         if (result.optimal && !result.breaks.isEmpty())
             return result;
     }
@@ -485,7 +496,9 @@ BreakResult findBreaksTiered(const QList<Item> &items,
     {
         Config cfg = baseConfig;
         cfg.tolerance = baseConfig.looseTolerance;
-        auto result = findBreaks(items, lineWidths, cfg);
+        auto result = findBreaks(items, lineWidths, cfg, cancelled);
+        if (result.cancelled)
+            return result;
         if (!result.breaks.isEmpty())
             return result;
     }

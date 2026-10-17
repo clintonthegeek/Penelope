@@ -37,7 +37,7 @@ Sources containing Markdown image syntax bypass semantic caching so external ass
 
 New regression coverage checks request coalescing, newest-result delivery, explicit cancellation, width-only semantic and shaping reuse, glyph-usage replay and PDF extraction after cache hits, cache-size eviction and key changes, hidden-reader deferral, cancellation on source-mode entry, tab closure with pending work, and painting after the controller has been destroyed. Existing reader mode-switch tests now wait for asynchronous installation.
 
-The architecture is ready for the scoped follow-up work in [implementation tasks](2026-10-04-performance-tasks.md). Direct paginated painting and incremental pagination are deliberately separate changes; this implementation preserves the existing PDF reader's selection, search and export behavior.
+The worker, cache, and ownership boundary above stay. The [ebook-reader roadmap](2026-10-17-ebook-reader-roadmap.md) is the plan for what the worker should compute: a resumable layout of the visible range, with export still running that cursor to the end. The [October task list](2026-10-04-performance-tasks.md) is superseded by that roadmap. This implementation preserves the existing PDF reader's selection, search and export behavior until those roadmap tasks replace the interactive preview.
 
 ## Measurement limits
 

@@ -35,9 +35,14 @@ and full inline-media/math rendering. See the
 [maintenance audit](docs/2026-10-03-maintenance-audit.md) for repaired defects,
 verification coverage and remaining limitations, and the
 [Markoff integration analysis](docs/2026-10-03-markoff-port-analysis.md) for the
-proposed reader/PDF library extraction. The [performance implementation](docs/2026-10-04-composition-implementation.md)
-and [scoped follow-up tasks](docs/2026-10-04-performance-tasks.md) describe the
-asynchronous pipeline and remaining work. The [legacy renderer removal](docs/2026-10-04-legacy-renderer-removal.md)
+proposed reader/PDF library extraction.
+
+The current implementation plan is the [ebook-reader roadmap](docs/2026-10-17-ebook-reader-roadmap.md):
+typeset the visible range, keep it, and resume. The [step list](docs/2026-10-17-ebook-reader-tasks.md)
+is the order to implement it in. Do one step at a time. The [long-document benchmark](docs/2026-10-17-long-document-benchmark.md)
+is the measurement for that work. The [composition implementation](docs/2026-10-04-composition-implementation.md)
+describes the worker already in place. The [October task list](docs/2026-10-04-performance-tasks.md)
+is superseded by the roadmap. The [legacy renderer removal](docs/2026-10-04-legacy-renderer-removal.md)
 records the consolidation of readers, exports and clipboard conversion.
 
 ## Building and testing

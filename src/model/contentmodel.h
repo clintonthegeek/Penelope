@@ -111,12 +111,14 @@ using InlineNode = std::variant<
 // --- Block nodes ---
 
 struct Paragraph {
+    quint64 blockId = 0;
     ParagraphFormat format;
     QList<InlineNode> inlines;
     SourceRange source;
 };
 
 struct Heading {
+    quint64 blockId = 0;
     int level = 1;
     ParagraphFormat format;
     QList<InlineNode> inlines;
@@ -124,6 +126,7 @@ struct Heading {
 };
 
 struct CodeBlock {
+    quint64 blockId = 0;
     QString language;
     QString code;
     TextStyle style;
@@ -149,6 +152,7 @@ using BlockNode = std::variant<
 >;
 
 struct BlockQuote {
+    quint64 blockId = 0;
     int level = 1;
     QList<BlockNode> children;
     ParagraphFormat format;
@@ -164,6 +168,7 @@ struct ListItem {
 enum class ListType { Unordered, Ordered };
 
 struct List {
+    quint64 blockId = 0;
     ListType type = ListType::Unordered;
     int startNumber = 1;
     QList<ListItem> items;
@@ -183,6 +188,7 @@ struct TableRow {
 };
 
 struct Table {
+    quint64 blockId = 0;
     QList<TableRow> rows;
     int headerRowCount = 0;
     SourceRange source;
@@ -204,6 +210,7 @@ struct Table {
 };
 
 struct HorizontalRule {
+    quint64 blockId = 0;
     qreal topMargin = 12.0;
     qreal bottomMargin = 12.0;
     SourceRange source;
@@ -217,6 +224,7 @@ struct Footnote {
 };
 
 struct FootnoteSection {
+    quint64 blockId = 0;
     QList<Footnote> footnotes;
     bool showSeparator = true;
     qreal separatorLength = 72.0; // points

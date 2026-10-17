@@ -30,6 +30,10 @@ struct CompositionRequest {
     quint64 semanticRevision = 0;
     quint64 sourceRevision = 0;
     bool continuous = false;
+    int maxBlocks = 0;
+    qreal maxHeight = 0;
+    bool onePage = false;
+    int startBlock = 0;
     qreal width = 500;
     bool renderImages = true;
     bool hyphenation = false;
@@ -55,6 +59,8 @@ struct CompositionResult {
     CompositionRequest request;
     bool reusedContent = false;
     quint64 shapeHits = 0, shapeMisses = 0;
+    bool finished = true;
+    Layout::LayoutCursor cursor;
     qint64 parseNs = 0, layoutNs = 0, pdfNs = 0;
 };
 using CompositionResultPtr = std::shared_ptr<CompositionResult>;

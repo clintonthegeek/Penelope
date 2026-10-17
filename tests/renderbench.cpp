@@ -10,15 +10,24 @@
 
 #include <ctime>
 #include <atomic>
+#include <algorithm>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QImage>
 #include <QLatin1Char>
+#include <QPainter>
+#include <QScrollBar>
 #include <QPlainTextEdit>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QStyleOptionGraphicsItem>
+#include <QtMath>
 #include <QTabWidget>
 #include <QTextStream>
+#include <QTimer>
 #include <QUrl>
 
 #include <KActionCollection>
@@ -33,14 +42,19 @@
 
 #include <poppler-qt6.h>
 
+#include "compositioncontroller.h"
 #include "contentbuilder.h"
 #include "documenttab.h"
 #include "fontmanager.h"
+#include "hyphenator.h"
 #include "layoutengine.h"
 #include "mainwindow.h"
 #include "pdfgenerator.h"
+#include "pdfpageitem.h"
 #include "penelopesettings.h"
+#include "rendercache.h"
 #include "textshaper.h"
+#include "webviewitem.h"
 
 
 // Opt-in sampling profiler. Wall-clock timing on a loaded machine cannot
@@ -549,6 +563,645 @@ void printHeader(bool showContinuous, bool showRaster)
     out << cols.join(QLatin1Char('\t')) << Qt::endl;
 }
 
+QString codeDoc(int lines)
+{
+    QString md = QStringLiteral("```cpp\n");
+    for (int i = 0; i < lines; ++i) {
+        md += QStringLiteral("int value_%1 = (%1 * 17) % 13; // measured line of a fenced block\n").arg(i);
+    }
+    md += QStringLiteral("```\n");
+    return md;
+}
+
+QString wallDoc(int repeats)
+{
+    QString md = QStringLiteral("A single paragraph keeps growing so the reader can see one element hold every line. ");
+    for (int i = 0; i < repeats; ++i) {
+        md += QStringLiteral("Sentence %1 repeats the same prose so line breaking, not Markdown structure, dominates. ")
+                  .arg(i);
+    }
+    md += QLatin1Char('\n');
+    return md;
+}
+
+QJsonObject hostSnapshot()
+{
+    QJsonObject host;
+    host.insert(QStringLiteral("logical_cpus"), QThread::idealThreadCount());
+    QFile load(QStringLiteral("/proc/loadavg"));
+    if (load.open(QIODevice::ReadOnly))
+        host.insert(QStringLiteral("loadavg"), QString::fromUtf8(load.readAll()).trimmed());
+    QFile pressure(QStringLiteral("/proc/pressure/cpu"));
+    if (pressure.open(QIODevice::ReadOnly))
+        host.insert(QStringLiteral("cpu_pressure"), QString::fromUtf8(pressure.readAll()).trimmed());
+    return host;
+}
+
+bool writeJson(const QString &path, const QJsonObject &object)
+{
+    if (path.isEmpty())
+        return true;
+    QFile output(path);
+    const QByteArray data = QJsonDocument(object).toJson();
+    if (!output.open(QIODevice::WriteOnly) || output.write(data) != data.size()) {
+        QTextStream(stderr) << QStringLiteral("Cannot write benchmark JSON: %1\n").arg(path);
+        return false;
+    }
+    return true;
+}
+
+bool inlinesHaveSoftHyphen(const QList<Content::InlineNode> &nodes)
+{
+    for (const auto &node : nodes) {
+        const bool found = std::visit([](const auto &value) {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, Content::TextRun> || std::is_same_v<T, Content::InlineCode>
+                          || std::is_same_v<T, Content::Link>)
+                return value.text.contains(QChar(0x00ad));
+            else
+                return false;
+        }, node);
+        if (found)
+            return true;
+    }
+    return false;
+}
+
+bool blocksHaveSoftHyphen(const QList<Content::BlockNode> &blocks)
+{
+    for (const auto &block : blocks) {
+        const bool found = std::visit([](const auto &value) {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, Content::Paragraph> || std::is_same_v<T, Content::Heading>)
+                return inlinesHaveSoftHyphen(value.inlines);
+            else if constexpr (std::is_same_v<T, Content::CodeBlock>)
+                return value.code.contains(QChar(0x00ad));
+            else if constexpr (std::is_same_v<T, Content::BlockQuote>)
+                return blocksHaveSoftHyphen(value.children);
+            else if constexpr (std::is_same_v<T, Content::List>) {
+                for (const auto &item : value.items) {
+                    if (blocksHaveSoftHyphen(item.children))
+                        return true;
+                }
+                return false;
+            } else if constexpr (std::is_same_v<T, Content::Table>) {
+                for (const auto &row : value.rows) {
+                    for (const auto &cell : row.cells) {
+                        if (inlinesHaveSoftHyphen(cell.inlines))
+                            return true;
+                    }
+                }
+                return false;
+            } else {
+                return false;
+            }
+        }, block);
+        if (found)
+            return true;
+    }
+    return false;
+}
+
+bool documentHasSoftHyphen(const Content::Document &document)
+{
+    return blocksHaveSoftHyphen(document.blocks);
+}
+
+int linesInElement(const Layout::PageElement &element, int *maxLines, qreal *maxHeight)
+{
+    int count = 0;
+    qreal height = 0;
+    std::visit([&](const auto &box) {
+        using T = std::decay_t<decltype(box)>;
+        height = box.height;
+        if constexpr (std::is_same_v<T, Layout::BlockBox>) {
+            count = box.lines.size();
+        } else if constexpr (std::is_same_v<T, Layout::TableBox>) {
+            for (const auto &row : box.rows) {
+                for (const auto &cell : row.cells)
+                    count += cell.lines.size();
+            }
+        } else if constexpr (std::is_same_v<T, Layout::FootnoteSectionBox>) {
+            for (const auto &note : box.footnotes)
+                count += note.lines.size();
+        }
+    }, element);
+    if (maxLines)
+        *maxLines = std::max(*maxLines, count);
+    if (maxHeight)
+        *maxHeight = std::max(*maxHeight, height);
+    return count;
+}
+
+void summarizeElements(const QList<Layout::PageElement> &elements, int *lines, int *maxLines, qreal *maxHeight)
+{
+    int total = 0;
+    int widest = 0;
+    qreal tallest = 0;
+    for (const auto &element : elements)
+        total += linesInElement(element, &widest, &tallest);
+    if (lines)
+        *lines = total;
+    if (maxLines)
+        *maxLines = widest;
+    if (maxHeight)
+        *maxHeight = tallest;
+}
+
+// Direct item paint. A real QGraphicsView translates into item coordinates and
+// clips to the viewport. `unculled` instead passes the whole item rectangle as
+// exposedRect, which is what Qt does when ItemUsesExtendedStyleOption is missing.
+qint64 paintWeb(WebViewItem *item, const QRectF &viewport, bool unculled, qint64 *cpuNs)
+{
+    const int width = std::max(1, qCeil(viewport.width()));
+    const int height = std::max(1, qCeil(viewport.height()));
+    QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    if (!unculled)
+        painter.translate(-viewport.left(), -viewport.top());
+    painter.setClipRect(viewport);
+    QStyleOptionGraphicsItem option;
+    option.exposedRect = unculled ? item->boundingRect() : viewport;
+    option.rect = option.exposedRect.toAlignedRect();
+    StageTimer timer;
+    timer.start();
+    item->paint(&painter, &option, nullptr);
+    if (cpuNs)
+        *cpuNs = timer.cpuNsecsElapsed();
+    return timer.nsecsElapsed();
+}
+
+struct CompSample {
+    bool ok = false;
+    bool timeout = false;
+    QString error;
+    qint64 readyNs = 0;
+    qint64 parseNs = 0;
+    qint64 layoutNs = 0;
+    qint64 pdfNs = 0;
+    bool reused = false;
+    quint64 hits = 0;
+    quint64 misses = 0;
+    int pages = 0;
+    int elements = 0;
+    int lines = 0;
+    int maxLines = 0;
+    qreal maxElementHeight = 0;
+    qreal height = 0;
+    qint64 pdfBytes = 0;
+    bool softHyphens = false;
+    CompositionResultPtr result;
+};
+
+CompSample waitForComposition(CompositionController &controller, CompositionRequest request, int timeoutMs)
+{
+    CompSample sample;
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    const quint64 id = controller.submit(std::move(request));
+    QObject::connect(&controller, &CompositionController::ready, &loop,
+                     [&](quint64 readyId, CompositionResultPtr result) {
+        if (readyId != id)
+            return;
+        sample.ok = true;
+        sample.result = std::move(result);
+        loop.quit();
+    });
+    QObject::connect(&controller, &CompositionController::failed, &loop,
+                     [&](quint64 failedId, const QString &error) {
+        if (failedId != id)
+            return;
+        sample.error = error;
+        loop.quit();
+    });
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    StageTimer clock;
+    clock.start();
+    timer.start(timeoutMs);
+    loop.exec();
+    sample.readyNs = clock.nsecsElapsed();
+    if (!sample.ok && sample.error.isEmpty()) {
+        sample.timeout = true;
+        sample.error = QStringLiteral("timeout");
+        return sample;
+    }
+    if (!sample.ok)
+        return sample;
+    const auto &result = *sample.result;
+    sample.parseNs = result.parseNs;
+    sample.layoutNs = result.layoutNs;
+    sample.pdfNs = result.pdfNs;
+    sample.softHyphens = documentHasSoftHyphen(result.document);
+    sample.reused = result.reusedContent;
+    sample.hits = result.shapeHits;
+    sample.misses = result.shapeMisses;
+    sample.pdfBytes = result.pdf.size();
+    if (result.request.continuous) {
+        sample.elements = result.continuousLayout.elements.size();
+        sample.height = result.continuousLayout.totalHeight;
+        summarizeElements(result.continuousLayout.elements, &sample.lines, &sample.maxLines,
+                          &sample.maxElementHeight);
+        sample.ok = sample.elements > 0;
+    } else {
+        sample.pages = result.paginated.pages.size();
+        for (const auto &page : result.paginated.pages) {
+            sample.elements += page.elements.size();
+            int pageLines = 0;
+            int pageMax = 0;
+            qreal pageHeight = 0;
+            summarizeElements(page.elements, &pageLines, &pageMax, &pageHeight);
+            sample.lines += pageLines;
+            sample.maxLines = std::max(sample.maxLines, pageMax);
+            sample.maxElementHeight = std::max(sample.maxElementHeight, pageHeight);
+        }
+        sample.ok = sample.pages > 0 && !result.pdf.isEmpty();
+    }
+    if (!sample.ok && sample.error.isEmpty())
+        sample.error = QStringLiteral("empty result");
+    return sample;
+}
+
+QJsonObject compJson(const CompSample &sample)
+{
+    return QJsonObject{
+        {QStringLiteral("ok"), sample.ok},
+        {QStringLiteral("timeout"), sample.timeout},
+        {QStringLiteral("error"), sample.error},
+        {QStringLiteral("ready_ns"), sample.readyNs},
+        {QStringLiteral("parse_ns"), sample.parseNs},
+        {QStringLiteral("layout_ns"), sample.layoutNs},
+        {QStringLiteral("pdf_ns"), sample.pdfNs},
+        {QStringLiteral("reused_content"), sample.reused},
+        {QStringLiteral("shape_hits"), QString::number(sample.hits)},
+        {QStringLiteral("shape_misses"), QString::number(sample.misses)},
+        {QStringLiteral("pages"), sample.pages},
+        {QStringLiteral("elements"), sample.elements},
+        {QStringLiteral("lines"), sample.lines},
+        {QStringLiteral("max_lines_in_element"), sample.maxLines},
+        {QStringLiteral("max_element_height"), sample.maxElementHeight},
+        {QStringLiteral("content_height"), sample.height},
+        {QStringLiteral("pdf_bytes"), sample.pdfBytes},
+        {QStringLiteral("soft_hyphens"), sample.softHyphens},
+    };
+}
+
+void printComp(const QString &label, const CompSample &sample)
+{
+    QTextStream out(stdout);
+    out << pad(label, 22)
+        << pad(sample.ok ? ms(sample.readyNs) : sample.error, 12)
+        << pad(ms(sample.parseNs), 10) << pad(ms(sample.layoutNs), 10) << pad(ms(sample.pdfNs), 10)
+        << pad(sample.reused ? QStringLiteral("yes") : QStringLiteral("no"), 8)
+        << pad(QString::number(sample.hits), 8) << pad(QString::number(sample.misses), 8)
+        << pad(QString::number(sample.pages), 7) << pad(QString::number(sample.elements), 9)
+        << pad(QString::number(sample.lines), 8) << pad(QString::number(sample.maxLines), 9)
+        << Qt::endl;
+}
+
+void printCompHeader()
+{
+    QTextStream out(stdout);
+    out << pad(QStringLiteral("request"), 22) << pad(QStringLiteral("ready"), 12)
+        << pad(QStringLiteral("parse"), 10) << pad(QStringLiteral("layout"), 10)
+        << pad(QStringLiteral("pdf"), 10) << pad(QStringLiteral("reuse"), 8)
+        << pad(QStringLiteral("hits"), 8) << pad(QStringLiteral("misses"), 8)
+        << pad(QStringLiteral("pages"), 7) << pad(QStringLiteral("elements"), 9)
+        << pad(QStringLiteral("lines"), 8) << pad(QStringLiteral("maxLines"), 9) << Qt::endl;
+}
+
+CompositionRequest baseRequest(const QString &markdown, bool hyphenate)
+{
+    CompositionRequest request;
+    request.markdown = markdown;
+    request.filename = QStringLiteral("bench.md");
+    request.title = QStringLiteral("bench");
+    request.semanticRevision = 1;
+    request.language = QStringLiteral("en_US");
+    request.hyphenation = hyphenate;
+    request.hyphenateJustified = hyphenate;
+    request.highlightCode = true;
+    return request;
+}
+
+qint64 rasterPage(Poppler::Document *document, int pageNumber, qreal zoom, qint64 *cpuNs)
+{
+    StageTimer timer;
+    timer.start();
+    std::unique_ptr<Poppler::Page> page(document->page(pageNumber));
+    if (page) {
+        const QSizeF pageSize = page->pageSizeF();
+        const int width = std::max(1, qRound(pageSize.width() * zoom));
+        const int height = std::max(1, qRound(pageSize.height() * zoom));
+        page->renderToImage(72.0 * width / pageSize.width(), 72.0 * height / pageSize.height(),
+                            -1, -1, width, height);
+    }
+    if (cpuNs)
+        *cpuNs = timer.cpuNsecsElapsed();
+    return timer.nsecsElapsed();
+}
+
+struct ViewStudy {
+    QString label;
+    qint64 bytes = 0;
+    CompSample webCold;
+    CompSample webResize;
+    CompSample printCold;
+    CompSample printWide;
+    QList<qint64> paintTop, paintMid, paintStripe, paintUnculled, grabTop, grabMid;
+    QList<qint64> paintTopCpu, paintUnculledCpu;
+    qint64 paintColdNs = 0;
+    qint64 popplerLoadNs = 0;
+    qint64 pageWalkNs = 0;
+    qint64 sceneItemsNs = 0;
+    qint64 raster0Ns = 0;
+    qint64 rasterMidNs = 0;
+    qint64 rasterLastNs = 0;
+    qint64 raster0AgainNs = 0;
+    qint64 cacheReadyNs = 0;
+    bool cacheHit = false;
+    bool cacheTimeout = false;
+    int popplerPages = 0;
+};
+
+bool studyOne(const QString &label, const QString &markdown, bool hyphenate, int paintIterations,
+              qreal zoom, int timeoutMs, ViewStudy *study)
+{
+    study->label = label;
+    study->bytes = markdown.toUtf8().size();
+    QTextStream out(stdout);
+    out << QStringLiteral("\n%1  %2 bytes  hyphenation=%3\n")
+               .arg(label)
+               .arg(study->bytes)
+               .arg(hyphenate ? QStringLiteral("on") : QStringLiteral("off"));
+    printCompHeader();
+
+    {
+        CompositionController web;
+        auto request = baseRequest(markdown, hyphenate);
+        request.continuous = true;
+        request.width = PageLayout().contentSizePoints().width();
+        study->webCold = waitForComposition(web, request, timeoutMs);
+        printComp(QStringLiteral("web-cold"), study->webCold);
+        if (!study->webCold.ok)
+            return false;
+        auto *item = new WebViewItem(study->webCold.result->fonts.get(), study->webCold.result->fonts);
+        auto layout = study->webCold.result->continuousLayout;
+        item->setLayoutResult(std::move(layout));
+        const qreal width = std::max<qreal>(200, item->boundingRect().width());
+        const qreal viewHeight = 900;
+        const qreal mid = std::max<qreal>(0, item->boundingRect().height() / 2 - viewHeight / 2);
+        study->paintColdNs = paintWeb(item, QRectF(0, 0, width, viewHeight), false, nullptr);
+        for (int i = 0; i < paintIterations; ++i) {
+            qint64 cpu = 0;
+            study->paintTop.append(paintWeb(item, QRectF(0, 0, width, viewHeight), false, &cpu));
+            study->paintTopCpu.append(cpu);
+            study->paintMid.append(paintWeb(item, QRectF(0, mid, width, viewHeight), false, nullptr));
+            study->paintStripe.append(paintWeb(item, QRectF(0, mid, width, 120), false, nullptr));
+            study->paintUnculled.append(paintWeb(item, QRectF(0, 0, width, viewHeight), true, &cpu));
+            study->paintUnculledCpu.append(cpu);
+        }
+        {
+            // Destroy the item before the next composition. The worker mutates
+            // the same font context the painter reads, and this loop would
+            // otherwise deliver paint events during that job.
+            QGraphicsScene scene;
+            scene.addItem(item);
+            QGraphicsView view(&scene);
+            view.setRenderHint(QPainter::Antialiasing, true);
+            view.setRenderHint(QPainter::TextAntialiasing, true);
+            view.resize(int(width) + 40, int(viewHeight));
+            view.show();
+            QApplication::processEvents();
+            for (int i = 0; i < paintIterations; ++i) {
+                StageTimer timer;
+                timer.start();
+                view.viewport()->grab();
+                study->grabTop.append(timer.nsecsElapsed());
+                const int maximum = view.verticalScrollBar()->maximum();
+                view.verticalScrollBar()->setValue(maximum / 2);
+                QApplication::processEvents();
+                timer.start();
+                view.viewport()->grab();
+                study->grabMid.append(timer.nsecsElapsed());
+                view.verticalScrollBar()->setValue(0);
+                QApplication::processEvents();
+            }
+        }
+        request.width += 120;
+        study->webResize = waitForComposition(web, request, timeoutMs);
+        printComp(QStringLiteral("web-width"), study->webResize);
+        if (!study->webResize.ok)
+            return false;
+    }
+
+    {
+        CompositionController print;
+        auto request = baseRequest(markdown, hyphenate);
+        request.continuous = false;
+        study->printCold = waitForComposition(print, request, timeoutMs);
+        printComp(QStringLiteral("print-cold"), study->printCold);
+        if (!study->printCold.ok)
+            return false;
+        const QByteArray pdf = study->printCold.result->pdf;
+        StageTimer timer;
+        timer.start();
+        auto document = Poppler::Document::loadFromData(pdf);
+        study->popplerLoadNs = timer.nsecsElapsed();
+        if (!document) {
+            QTextStream(stderr) << QStringLiteral("Poppler could not load the preview PDF\n");
+            return false;
+        }
+        document->setRenderHint(Poppler::Document::Antialiasing, true);
+        document->setRenderHint(Poppler::Document::TextAntialiasing, true);
+        study->popplerPages = document->numPages();
+        timer.start();
+        for (int i = 0; i < document->numPages(); ++i) {
+            std::unique_ptr<Poppler::Page> page(document->page(i));
+            if (page)
+                page->pageSizeF();
+        }
+        study->pageWalkNs = timer.nsecsElapsed();
+        const int midPage = document->numPages() / 2;
+        const int lastPage = document->numPages() - 1;
+        study->raster0Ns = rasterPage(document.get(), 0, zoom, nullptr);
+        study->rasterMidNs = rasterPage(document.get(), midPage, zoom, nullptr);
+        study->rasterLastNs = rasterPage(document.get(), lastPage, zoom, nullptr);
+        study->raster0AgainNs = rasterPage(document.get(), 0, zoom, nullptr);
+
+        timer.start();
+        QGraphicsScene scene;
+        std::unique_ptr<Poppler::Page> first(document->page(0));
+        const QSizeF pageSize = first ? first->pageSizeF() : QSizeF(595, 842);
+        for (int i = 0; i < document->numPages(); ++i) {
+            auto *pageItem = new PdfPageItem(i, pageSize, nullptr);
+            scene.addItem(pageItem);
+        }
+        study->sceneItemsNs = timer.nsecsElapsed();
+
+        RenderCache cache;
+        cache.setDocument(document.get());
+        int readyPages = 0;
+        const int want = std::min(2, document->numPages());
+        QEventLoop loop;
+        QTimer timeout;
+        timeout.setSingleShot(true);
+        QObject::connect(&cache, &RenderCache::pixmapReady, &loop, [&](int) {
+            if (++readyPages >= want)
+                loop.quit();
+        });
+        QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        auto enqueue = [&](int pageNumber) {
+            std::unique_ptr<Poppler::Page> page(document->page(pageNumber));
+            if (!page)
+                return;
+            const QSizeF size = page->pageSizeF();
+            RenderCache::Request req;
+            req.pageNumber = pageNumber;
+            req.width = std::max(1, qRound(size.width() * zoom));
+            req.height = std::max(1, qRound(size.height() * zoom));
+            req.dpr = 1;
+            cache.requestPixmap(req);
+        };
+        timer.start();
+        for (int i = 0; i < want; ++i)
+            enqueue(i);
+        timeout.start(timeoutMs);
+        if (want > 0)
+            loop.exec();
+        study->cacheReadyNs = timer.nsecsElapsed();
+        study->cacheTimeout = readyPages < want;
+        if (!study->cacheTimeout && want > 0) {
+            std::unique_ptr<Poppler::Page> page(document->page(0));
+            const QSizeF size = page->pageSizeF();
+            study->cacheHit = !cache.cachedPixmap(0, std::max(1, qRound(size.width() * zoom)),
+                                                   std::max(1, qRound(size.height() * zoom)), 1).isNull();
+        }
+        cache.setDocument(nullptr);
+
+        request.pageLayout.orientation = QPageLayout::Landscape;
+        study->printWide = waitForComposition(print, request, timeoutMs);
+        printComp(QStringLiteral("print-width"), study->printWide);
+        if (!study->printWide.ok)
+            return false;
+    }
+
+    out << QStringLiteral("web paint ms   cold=%1 top=%2 mid=%3 stripe=%4 unculled=%5 (cpu top=%6 unculled=%7) grabTop=%8 grabMid=%9\n")
+               .arg(ms(study->paintColdNs), ms(summarize(study->paintTop).median),
+                    ms(summarize(study->paintMid).median), ms(summarize(study->paintStripe).median),
+                    ms(summarize(study->paintUnculled).median), ms(summarize(study->paintTopCpu).median),
+                    ms(summarize(study->paintUnculledCpu).median), ms(summarize(study->grabTop).median),
+                    ms(summarize(study->grabMid).median));
+    out << QStringLiteral("print install  popplerLoad=%1 pageWalk=%2 sceneItems=%3 pages=%4\n")
+               .arg(ms(study->popplerLoadNs), ms(study->pageWalkNs), ms(study->sceneItemsNs))
+               .arg(study->popplerPages);
+    out << QStringLiteral("print raster   first=%1 mid=%2 last=%3 firstAgain=%4 cacheTwo=%5 cacheHit=%6\n")
+               .arg(ms(study->raster0Ns), ms(study->rasterMidNs), ms(study->rasterLastNs),
+                    ms(study->raster0AgainNs),
+                    study->cacheTimeout ? QStringLiteral("timeout") : ms(study->cacheReadyNs),
+                    study->cacheHit ? QStringLiteral("yes") : QStringLiteral("no"));
+    return true;
+}
+
+QJsonObject studyJson(const ViewStudy &study)
+{
+    auto samples = [](const QList<qint64> &values) {
+        QJsonArray array;
+        for (qint64 value : values)
+            array.append(value);
+        return array;
+    };
+    return QJsonObject{
+        {QStringLiteral("label"), study.label},
+        {QStringLiteral("bytes"), study.bytes},
+        {QStringLiteral("web_cold"), compJson(study.webCold)},
+        {QStringLiteral("web_width"), compJson(study.webResize)},
+        {QStringLiteral("print_cold"), compJson(study.printCold)},
+        {QStringLiteral("print_width"), compJson(study.printWide)},
+        {QStringLiteral("paint_cold_ns"), study.paintColdNs},
+        {QStringLiteral("paint_top_ns"), samples(study.paintTop)},
+        {QStringLiteral("paint_mid_ns"), samples(study.paintMid)},
+        {QStringLiteral("paint_stripe_ns"), samples(study.paintStripe)},
+        {QStringLiteral("paint_unculled_ns"), samples(study.paintUnculled)},
+        {QStringLiteral("paint_top_cpu_ns"), samples(study.paintTopCpu)},
+        {QStringLiteral("paint_unculled_cpu_ns"), samples(study.paintUnculledCpu)},
+        {QStringLiteral("grab_top_ns"), samples(study.grabTop)},
+        {QStringLiteral("grab_mid_ns"), samples(study.grabMid)},
+        {QStringLiteral("poppler_load_ns"), study.popplerLoadNs},
+        {QStringLiteral("page_walk_ns"), study.pageWalkNs},
+        {QStringLiteral("scene_items_ns"), study.sceneItemsNs},
+        {QStringLiteral("raster_first_ns"), study.raster0Ns},
+        {QStringLiteral("raster_mid_ns"), study.rasterMidNs},
+        {QStringLiteral("raster_last_ns"), study.rasterLastNs},
+        {QStringLiteral("raster_first_again_ns"), study.raster0AgainNs},
+        {QStringLiteral("cache_two_pages_ns"), study.cacheReadyNs},
+        {QStringLiteral("cache_hit"), study.cacheHit},
+        {QStringLiteral("cache_timeout"), study.cacheTimeout},
+        {QStringLiteral("poppler_pages"), study.popplerPages},
+    };
+}
+
+QString markdownForShape(const QString &shape, int count)
+{
+    if (shape == QLatin1String("code"))
+        return codeDoc(count);
+    if (shape == QLatin1String("wall"))
+        return wallDoc(count);
+    return syntheticDoc(count);
+}
+
+int runViews(const QString &file, const QList<int> &sizes, const QStringList &shapes, bool hyphenate,
+             int iterations, qreal zoom, int timeoutMs, const QString &jsonPath)
+{
+    QTextStream out(stdout);
+    out << QStringLiteral("penelope view benchmark  paintIterations=%1 zoom=%2 timeoutMs=%3\n")
+               .arg(iterations)
+               .arg(zoom, 0, 'f', 2)
+               .arg(timeoutMs);
+    out << QStringLiteral("Times are milliseconds. ready is worker submit to installed result.\n");
+    out << QStringLiteral("Web paint is one 900px viewport. cold is the first paint; later paints reuse QRawFont. unculled passes the whole item as exposedRect.\n");
+    out << QStringLiteral("pageWalk opens every Poppler page, as continuous print layout does.\n");
+    out << hostSnapshot().value(QStringLiteral("loadavg")).toString() << Qt::endl;
+    out << hostSnapshot().value(QStringLiteral("cpu_pressure")).toString() << Qt::endl;
+
+    QJsonArray studies;
+    auto run = [&](const QString &label, const QString &markdown) {
+        ViewStudy study;
+        if (!studyOne(label, markdown, hyphenate, iterations, zoom, timeoutMs, &study))
+            return false;
+        studies.append(studyJson(study));
+        return true;
+    };
+    if (!file.isEmpty()) {
+        QFile input(file);
+        if (!input.open(QIODevice::ReadOnly)) {
+            QTextStream(stderr) << QStringLiteral("cannot read %1\n").arg(file);
+            return 1;
+        }
+        if (!run(QFileInfo(file).fileName(), QString::fromUtf8(input.readAll())))
+            return 1;
+    } else {
+        for (const QString &shape : shapes) {
+            for (int count : sizes) {
+                if (!run(QStringLiteral("%1-%2").arg(shape).arg(count), markdownForShape(shape, count)))
+                    return 1;
+            }
+        }
+    }
+    const QJsonObject root{
+        {QStringLiteral("host"), hostSnapshot()},
+        {QStringLiteral("hyphenation"), hyphenate},
+        {QStringLiteral("zoom"), zoom},
+        {QStringLiteral("paint_iterations"), iterations},
+        {QStringLiteral("timeout_ms"), timeoutMs},
+        {QStringLiteral("studies"), studies},
+    };
+    return writeJson(jsonPath, root) ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -558,6 +1211,8 @@ int main(int argc, char **argv)
     qputenv("XDG_CONFIG_HOME", config.path().toUtf8());
     qputenv("XDG_DATA_HOME", config.path().toUtf8());
     QApplication app(argc, argv);
+    Q_INIT_RESOURCE(dicts);
+    Q_INIT_RESOURCE(fonts);
     QApplication::setApplicationName(QStringLiteral("penelope_renderbench"));
     KLocalizedString::setApplicationDomain("penelope");
 
@@ -573,6 +1228,11 @@ int main(int argc, char **argv)
     bool openMode = false;
     bool rebuildMode = false;
     bool hashMode = false;
+    bool viewsMode = false;
+    bool sizesSet = false;
+    bool windowSet = false;
+    bool hyphenateOff = false;
+    QString shapeArg = QStringLiteral("prose");
     qreal zoom = 1.0;
     int compressLevel = -1;
     int runTextMode = -1;
@@ -588,6 +1248,7 @@ int main(int argc, char **argv)
             file = args.at(++i);
         } else if (a == QStringLiteral("--sizes") && i + 1 < args.size()) {
             sizes.clear();
+            sizesSet = true;
             const QStringList parts = args.at(++i).split(QLatin1Char(','), Qt::SkipEmptyParts);
             for (const QString &p : parts)
                 sizes.append(p.trimmed().toInt());
@@ -605,7 +1266,14 @@ int main(int argc, char **argv)
             rebuildMode = true;
         } else if (a == QStringLiteral("--hash")) {
             hashMode = true;
+        } else if (a == QStringLiteral("--views")) {
+            viewsMode = true;
+        } else if (a == QStringLiteral("--no-hyphenate")) {
+            hyphenateOff = true;
+        } else if (a == QStringLiteral("--shape") && i + 1 < args.size()) {
+            shapeArg = args.at(++i);
         } else if (a == QStringLiteral("--window-ms") && i + 1 < args.size()) {
+            windowSet = true;
             windowMs = args.at(++i).toLongLong();
         } else if (a == QStringLiteral("--zoom") && i + 1 < args.size()) {
             zoom = args.at(++i).toDouble();
@@ -619,6 +1287,25 @@ int main(int argc, char **argv)
     }
     if (iterations < 1)
         iterations = 1;
+
+    if (viewsMode) {
+        if (file.isEmpty() && !sizesSet) {
+            QTextStream(stderr) << QStringLiteral("--views requires --file or --sizes\n");
+            return 1;
+        }
+        QStringList shapes;
+        if (shapeArg == QLatin1String("all"))
+            shapes = {QStringLiteral("prose"), QStringLiteral("code"), QStringLiteral("wall")};
+        else if (shapeArg == QLatin1String("prose") || shapeArg == QLatin1String("code")
+                 || shapeArg == QLatin1String("wall"))
+            shapes = {shapeArg};
+        else {
+            QTextStream(stderr) << QStringLiteral("--shape must be prose, code, wall, or all\n");
+            return 1;
+        }
+        const int timeoutMs = windowSet ? int(windowMs) : 180000;
+        return runViews(file, sizes, shapes, !hyphenateOff, iterations, zoom, timeoutMs, jsonPath);
+    }
 
     if (rebuildMode) {
         if (file.isEmpty()) {

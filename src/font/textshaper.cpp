@@ -308,7 +308,8 @@ QList<ShapedRun> TextShaper::shape(const QString &text, const QList<StyleRun> &s
     qint64 cost = key.size() + sizeof(CachedShape);
     for (const auto &run : runs)
         cost += sizeof(ShapedRun) + run.glyphs.size() * sizeof(ShapedGlyph);
-    if (cost <= m_cache.maxCost())
+    bool cancelled = m_cancellationCheck && m_cancellationCheck();
+    if (!cancelled && !runs.isEmpty() && cost <= m_cache.maxCost())
         m_cache.insert(key, new CachedShape{runs}, int(cost));
     return runs;
 }
@@ -326,6 +327,11 @@ QList<ShapedRun> TextShaper::shapeUncached(const QString &text, const QList<Styl
     QList<InternalRun> textRuns = itemizeFontCoverage(text, styledRuns, styles);
 
     for (const InternalRun &run : textRuns) {
+        if (m_cancellationCheck && m_cancellationCheck()) {
+            if (!result.isEmpty())
+                return {};
+            return result;
+        }
         if (run.styleIndex < 0 || run.styleIndex >= styles.size())
             continue;
         const StyleRun &style = styles[run.styleIndex];

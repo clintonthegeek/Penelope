@@ -1,5 +1,7 @@
 # Penelope: Project Planning Roadmap
 
+This is the early planning record. The document to implement is the [ebook-reader roadmap](2026-10-17-ebook-reader-roadmap.md).
+
 ## Locked-In Requirements
 
 | Aspect | Decision |

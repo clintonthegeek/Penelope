@@ -62,6 +62,7 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     m_renderer.setPainter(painter);
 
     int startIdx = firstVisibleElement(exposed.top());
+    m_renderer.setLineClip(exposed);
 
     for (int i = startIdx; i < m_result.elements.size(); ++i) {
         const auto &element = m_result.elements[i];
@@ -82,6 +83,7 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     }
     QColor color = QApplication::palette().color(QPalette::Highlight);
     color.setAlpha(80);
+    m_renderer.setLineClip(QRectF());
     for (const auto &rect : m_selectionRects) painter->fillRect(rect, color);
 }
 

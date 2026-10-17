@@ -70,6 +70,9 @@ public:
                                 qreal x, qreal baselineY);
     virtual void renderImageBlock(const Layout::BlockBox &box);
 
+    void setLineClip(const QRectF &clip);
+    int lastPaintedLineCount() const { return m_lastPaintedLineCount; }
+
     // --- Drawing primitives (pure virtual — each backend implements) ---
 
     /// Fill and/or stroke a rectangle.
@@ -129,6 +132,9 @@ protected:
                               qreal x, qreal baselineY);
 
     FontManager *m_fontManager;
+    bool m_hasLineClip = false;
+    QRectF m_lineClip;
+    int m_lastPaintedLineCount = 0;
 
     // --- Shared justification helpers ---
 

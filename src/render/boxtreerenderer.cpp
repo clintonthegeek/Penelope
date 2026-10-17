@@ -31,6 +31,11 @@ void BoxTreeRenderer::renderElement(const Layout::PageElement &element)
     }, element);
 }
 
+void BoxTreeRenderer::setLineClip(const QRectF &clip) {
+    if (clip.isNull()) { m_hasLineClip = false; m_lineClip = QRectF(); }
+    else { m_hasLineClip = true; m_lineClip = clip; }
+}
+
 void BoxTreeRenderer::renderBlockBox(const Layout::BlockBox &box)
 {
     // Background
@@ -69,8 +74,15 @@ void BoxTreeRenderer::renderBlockBox(const Layout::BlockBox &box)
     }
 
     // Lines
+    m_lastPaintedLineCount = 0;
     qreal lineY = 0;
     for (int li = 0; li < box.lines.size(); ++li) {
+        qreal top = box.y + lineY;
+        qreal bottom = top + box.lines[li].height;
+        if (m_hasLineClip && (bottom <= m_lineClip.top() || top >= m_lineClip.bottom())) {
+            lineY += box.lines[li].height;
+            continue;
+        }
         qreal lineX = box.x;
         qreal lineAvailWidth = box.width;
         if (li == 0 && box.firstLineIndent != 0) {
@@ -78,6 +90,7 @@ void BoxTreeRenderer::renderBlockBox(const Layout::BlockBox &box)
             lineAvailWidth -= box.firstLineIndent;
         }
         renderLineBox(box.lines[li], lineX, box.y + lineY, lineAvailWidth);
+        ++m_lastPaintedLineCount;
         lineY += box.lines[li].height;
     }
 }

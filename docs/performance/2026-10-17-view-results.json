@@ -1,0 +1,1257 @@
+{
+  "note": "RelWithDebInfo view benchmark, 2026-10-17",
+  "runs": [
+    {
+      "file": "all-400-1600.json",
+      "host": {
+        "cpu_pressure": "some avg10=0.00 avg60=0.14 avg300=2.05 total=70228798\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "loadavg": "1.84 2.88 2.54 2/1507 29780",
+        "logical_cpus": 8
+      },
+      "hyphenation": true,
+      "studies": [
+        {
+          "bytes": 94166,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 16502762,
+          "grab_mid_ns": [
+            1407062,
+            1237175,
+            1287838
+          ],
+          "grab_top_ns": [
+            1732771,
+            1172415,
+            1038546
+          ],
+          "label": "prose-400",
+          "page_walk_ns": 265017,
+          "paint_cold_ns": 3604055,
+          "paint_mid_ns": [
+            1119448,
+            1140161,
+            1079194
+          ],
+          "paint_stripe_ns": [
+            202682,
+            255374,
+            213620
+          ],
+          "paint_top_cpu_ns": [
+            1005000,
+            1033000,
+            917000
+          ],
+          "paint_top_ns": [
+            1008093,
+            1035678,
+            918798
+          ],
+          "paint_unculled_cpu_ns": [
+            17704000,
+            17102000,
+            17445000
+          ],
+          "paint_unculled_ns": [
+            17860556,
+            17131114,
+            17580899
+          ],
+          "poppler_load_ns": 1042687,
+          "poppler_pages": 37,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 550,
+            "error": "",
+            "layout_ns": 46121900,
+            "lines": 1683,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 37,
+            "parse_ns": 14840157,
+            "pdf_bytes": 351926,
+            "pdf_ns": 51334043,
+            "ready_ns": 112673682,
+            "reused_content": false,
+            "shape_hits": "995",
+            "shape_misses": "425",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 537,
+            "error": "",
+            "layout_ns": 25664789,
+            "lines": 1380,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 48,
+            "parse_ns": 203011,
+            "pdf_bytes": 356535,
+            "pdf_ns": 42122141,
+            "ready_ns": 68192599,
+            "reused_content": true,
+            "shape_hits": "1420",
+            "shape_misses": "0",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "raster_first_again_ns": 6927441,
+          "raster_first_ns": 8082297,
+          "raster_last_ns": 3941346,
+          "raster_mid_ns": 7460059,
+          "scene_items_ns": 40672,
+          "web_cold": {
+            "content_height": 24348.93799999996,
+            "elements": 533,
+            "error": "",
+            "layout_ns": 51899188,
+            "lines": 1683,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 16325019,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 68622993,
+            "reused_content": false,
+            "shape_hits": "995",
+            "shape_misses": "425",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 19689.535999999967,
+            "elements": 533,
+            "error": "",
+            "layout_ns": 24568678,
+            "lines": 1372,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 145797,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 24776669,
+            "reused_content": true,
+            "shape_hits": "1420",
+            "shape_misses": "0",
+            "soft_hyphens": true,
+            "timeout": false
+          }
+        },
+        {
+          "bytes": 377971,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 16640235,
+          "grab_mid_ns": [
+            1136025,
+            1125181,
+            1183287
+          ],
+          "grab_top_ns": [
+            1651791,
+            1191648,
+            1053811
+          ],
+          "label": "prose-1600",
+          "page_walk_ns": 837962,
+          "paint_cold_ns": 3664302,
+          "paint_mid_ns": [
+            1085572,
+            1021325,
+            1112997
+          ],
+          "paint_stripe_ns": [
+            158448,
+            163326,
+            204125
+          ],
+          "paint_top_cpu_ns": [
+            971000,
+            1048000,
+            1122000
+          ],
+          "paint_top_ns": [
+            974239,
+            1051513,
+            1124557
+          ],
+          "paint_unculled_cpu_ns": [
+            67395000,
+            69041000,
+            70301000
+          ],
+          "paint_unculled_ns": [
+            67533500,
+            70687836,
+            70585506
+          ],
+          "poppler_load_ns": 1581773,
+          "poppler_pages": 147,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 2194,
+            "error": "",
+            "layout_ns": 158790721,
+            "lines": 6736,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 147,
+            "parse_ns": 43275793,
+            "pdf_bytes": 1348504,
+            "pdf_ns": 170920316,
+            "ready_ns": 373471480,
+            "reused_content": false,
+            "shape_hits": "4012",
+            "shape_misses": "1673",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 2135,
+            "error": "",
+            "layout_ns": 149898128,
+            "lines": 5514,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 192,
+            "parse_ns": 706411,
+            "pdf_bytes": 1362607,
+            "pdf_ns": 175069979,
+            "ready_ns": 325965119,
+            "reused_content": true,
+            "shape_hits": "4020",
+            "shape_misses": "1665",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "raster_first_again_ns": 7094297,
+          "raster_first_ns": 7774193,
+          "raster_last_ns": 2970391,
+          "raster_mid_ns": 7264376,
+          "scene_items_ns": 53809,
+          "web_cold": {
+            "content_height": 97427.75200000164,
+            "elements": 2123,
+            "error": "",
+            "layout_ns": 139752580,
+            "lines": 6736,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 38782276,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 179018561,
+            "reused_content": false,
+            "shape_hits": "4012",
+            "shape_misses": "1673",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 78760.18000000258,
+            "elements": 2123,
+            "error": "",
+            "layout_ns": 142594134,
+            "lines": 5490,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 728014,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 143487686,
+            "reused_content": true,
+            "shape_hits": "4020",
+            "shape_misses": "1665",
+            "soft_hyphens": true,
+            "timeout": false
+          }
+        },
+        {
+          "bytes": 26991,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 19429289,
+          "grab_mid_ns": [
+            8539494,
+            7698630,
+            7485943
+          ],
+          "grab_top_ns": [
+            7692649,
+            8557840,
+            7522717
+          ],
+          "label": "code-400",
+          "page_walk_ns": 67959,
+          "paint_cold_ns": 9437295,
+          "paint_mid_ns": [
+            7300825,
+            7337458,
+            7121093
+          ],
+          "paint_stripe_ns": [
+            6195542,
+            6624457,
+            6446386
+          ],
+          "paint_top_cpu_ns": [
+            7587000,
+            7727000,
+            7200000
+          ],
+          "paint_top_ns": [
+            7626591,
+            7775596,
+            7215664
+          ],
+          "paint_unculled_cpu_ns": [
+            7150000,
+            6777000,
+            6801000
+          ],
+          "paint_unculled_ns": [
+            7167030,
+            6789695,
+            6813433
+          ],
+          "poppler_load_ns": 872013,
+          "poppler_pages": 10,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 10,
+            "error": "",
+            "layout_ns": 56704835,
+            "lines": 400,
+            "max_element_height": 675.2079999999993,
+            "max_lines_in_element": 44,
+            "ok": true,
+            "pages": 10,
+            "parse_ns": 5990741,
+            "pdf_bytes": 90697,
+            "pdf_ns": 24962567,
+            "ready_ns": 88169166,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 15,
+            "error": "",
+            "layout_ns": 31709615,
+            "lines": 400,
+            "max_element_height": 420.5139999999998,
+            "max_lines_in_element": 27,
+            "ok": true,
+            "pages": 15,
+            "parse_ns": 149247,
+            "pdf_bytes": 95596,
+            "pdf_ns": 15834142,
+            "ready_ns": 47944090,
+            "reused_content": true,
+            "shape_hits": "1",
+            "shape_misses": "0",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "raster_first_again_ns": 9337344,
+          "raster_first_ns": 12429994,
+          "raster_last_ns": 2111429,
+          "raster_mid_ns": 9905060,
+          "scene_items_ns": 37470,
+          "web_cold": {
+            "content_height": 6024.799999999989,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 54604167,
+            "lines": 400,
+            "max_element_height": 6008.799999999989,
+            "max_lines_in_element": 400,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 6037501,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 61369821,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 6024.799999999989,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 30218211,
+            "lines": 400,
+            "max_element_height": 6008.799999999989,
+            "max_lines_in_element": 400,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 92793,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 30370673,
+            "reused_content": true,
+            "shape_hits": "1",
+            "shape_misses": "0",
+            "soft_hyphens": false,
+            "timeout": false
+          }
+        },
+        {
+          "bytes": 109791,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 21314894,
+          "grab_mid_ns": [
+            29034123,
+            28535597,
+            29631135
+          ],
+          "grab_top_ns": [
+            29470829,
+            29574424,
+            29168066
+          ],
+          "label": "code-1600",
+          "page_walk_ns": 195811,
+          "paint_cold_ns": 30390088,
+          "paint_mid_ns": [
+            27813647,
+            27709342,
+            28596363
+          ],
+          "paint_stripe_ns": [
+            26114138,
+            29072127,
+            26766768
+          ],
+          "paint_top_cpu_ns": [
+            27174000,
+            27163000,
+            26921000
+          ],
+          "paint_top_ns": [
+            27348828,
+            27863230,
+            26992973
+          ],
+          "paint_unculled_cpu_ns": [
+            26463000,
+            26568000,
+            26368000
+          ],
+          "paint_unculled_ns": [
+            26572561,
+            26645344,
+            26429053
+          ],
+          "poppler_load_ns": 875131,
+          "poppler_pages": 37,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 37,
+            "error": "",
+            "layout_ns": 509326381,
+            "lines": 1600,
+            "max_element_height": 675.2079999999993,
+            "max_lines_in_element": 44,
+            "ok": true,
+            "pages": 37,
+            "parse_ns": 6457442,
+            "pdf_bytes": 303563,
+            "pdf_ns": 62702749,
+            "ready_ns": 578930922,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 60,
+            "error": "",
+            "layout_ns": 489867872,
+            "lines": 1600,
+            "max_element_height": 420.5139999999998,
+            "max_lines_in_element": 27,
+            "ok": true,
+            "pages": 60,
+            "parse_ns": 177748,
+            "pdf_bytes": 325476,
+            "pdf_ns": 58162762,
+            "ready_ns": 548371406,
+            "reused_content": true,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "raster_first_again_ns": 9406530,
+          "raster_first_ns": 9990562,
+          "raster_last_ns": 4703915,
+          "raster_mid_ns": 10534790,
+          "scene_items_ns": 43548,
+          "web_cold": {
+            "content_height": 24003.199999999957,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 499664411,
+            "lines": 1600,
+            "max_element_height": 23987.199999999957,
+            "max_lines_in_element": 1600,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 6365264,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 506438995,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 24003.199999999957,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 485040705,
+            "lines": 1600,
+            "max_element_height": 23987.199999999957,
+            "max_lines_in_element": 1600,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 402334,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 485611833,
+            "reused_content": true,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          }
+        },
+        {
+          "bytes": 35575,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 21304427,
+          "grab_mid_ns": [
+            7033935,
+            7433229,
+            7504945
+          ],
+          "grab_top_ns": [
+            7559658,
+            7229578,
+            7611751
+          ],
+          "label": "wall-400",
+          "page_walk_ns": 69627,
+          "paint_cold_ns": 9478454,
+          "paint_mid_ns": [
+            6851310,
+            6842463,
+            7093648
+          ],
+          "paint_stripe_ns": [
+            7589314,
+            6431459,
+            6389611
+          ],
+          "paint_top_cpu_ns": [
+            6699000,
+            6981000,
+            6830000
+          ],
+          "paint_top_ns": [
+            6726661,
+            7003175,
+            6856072
+          ],
+          "paint_unculled_cpu_ns": [
+            7457000,
+            6663000,
+            6682000
+          ],
+          "paint_unculled_ns": [
+            7512344,
+            6691513,
+            6701732
+          ],
+          "poppler_load_ns": 921837,
+          "poppler_pages": 10,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 10,
+            "error": "",
+            "layout_ns": 17448722,
+            "lines": 432,
+            "max_element_height": 674.1899999999993,
+            "max_lines_in_element": 45,
+            "ok": true,
+            "pages": 10,
+            "parse_ns": 8414522,
+            "pdf_bytes": 115941,
+            "pdf_ns": 25401825,
+            "ready_ns": 51665117,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 10,
+            "error": "",
+            "layout_ns": 5828478,
+            "lines": 280,
+            "max_element_height": 419.49599999999975,
+            "max_lines_in_element": 28,
+            "ok": true,
+            "pages": 10,
+            "parse_ns": 74386,
+            "pdf_bytes": 114294,
+            "pdf_ns": 15390924,
+            "ready_ns": 21431436,
+            "reused_content": true,
+            "shape_hits": "1",
+            "shape_misses": "0",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "raster_first_again_ns": 9772332,
+          "raster_first_ns": 10045967,
+          "raster_last_ns": 6239785,
+          "raster_mid_ns": 9836023,
+          "scene_items_ns": 35945,
+          "web_cold": {
+            "content_height": 6472.223999999988,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 17152626,
+            "lines": 432,
+            "max_element_height": 6472.223999999988,
+            "max_lines_in_element": 432,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 7882268,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 25432261,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 5138.825999999991,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 6205762,
+            "lines": 343,
+            "max_element_height": 5138.825999999991,
+            "max_lines_in_element": 343,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 92091,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 6427974,
+            "reused_content": true,
+            "shape_hits": "1",
+            "shape_misses": "0",
+            "soft_hyphens": true,
+            "timeout": false
+          }
+        },
+        {
+          "bytes": 142975,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 25811641,
+          "grab_mid_ns": [
+            27454526,
+            27418662,
+            28690005
+          ],
+          "grab_top_ns": [
+            28129195,
+            28735074,
+            29390487
+          ],
+          "label": "wall-1600",
+          "page_walk_ns": 254275,
+          "paint_cold_ns": 28685264,
+          "paint_mid_ns": [
+            26921878,
+            28128565,
+            26484635
+          ],
+          "paint_stripe_ns": [
+            28151050,
+            26215512,
+            27024369
+          ],
+          "paint_top_cpu_ns": [
+            28094000,
+            26853000,
+            26610000
+          ],
+          "paint_top_ns": [
+            28216721,
+            26936121,
+            26699926
+          ],
+          "paint_unculled_cpu_ns": [
+            26670000,
+            26725000,
+            27043000
+          ],
+          "paint_unculled_ns": [
+            26754496,
+            26824786,
+            27151028
+          ],
+          "poppler_load_ns": 1245471,
+          "poppler_pages": 39,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 39,
+            "error": "",
+            "layout_ns": 48194236,
+            "lines": 1744,
+            "max_element_height": 674.1899999999993,
+            "max_lines_in_element": 45,
+            "ok": true,
+            "pages": 39,
+            "parse_ns": 15489467,
+            "pdf_bytes": 398103,
+            "pdf_ns": 62274908,
+            "ready_ns": 126266168,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 41,
+            "error": "",
+            "layout_ns": 26510928,
+            "lines": 1123,
+            "max_element_height": 419.49599999999975,
+            "max_lines_in_element": 28,
+            "ok": true,
+            "pages": 41,
+            "parse_ns": 207519,
+            "pdf_bytes": 408595,
+            "pdf_ns": 55043411,
+            "ready_ns": 81843101,
+            "reused_content": true,
+            "shape_hits": "1",
+            "shape_misses": "0",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "raster_first_again_ns": 10287408,
+          "raster_first_ns": 10407786,
+          "raster_last_ns": 7595075,
+          "raster_mid_ns": 11726548,
+          "scene_items_ns": 44571,
+          "web_cold": {
+            "content_height": 26128.607999999953,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 47987371,
+            "lines": 1744,
+            "max_element_height": 26128.607999999953,
+            "max_lines_in_element": 1744,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 15207886,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 63753780,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 20630.213999999964,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 27680074,
+            "lines": 1377,
+            "max_element_height": 20630.213999999964,
+            "max_lines_in_element": 1377,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 200388,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 27929533,
+            "reused_content": true,
+            "shape_hits": "1",
+            "shape_misses": "0",
+            "soft_hyphens": true,
+            "timeout": false
+          }
+        }
+      ]
+    },
+    {
+      "file": "prose-6400.json",
+      "host": {
+        "cpu_pressure": "some avg10=0.00 avg60=0.13 avg300=2.02 total=70261998\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "loadavg": "1.94 2.88 2.54 2/1506 29803",
+        "logical_cpus": 8
+      },
+      "hyphenation": true,
+      "studies": [
+        {
+          "bytes": 1516298,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 19760306,
+          "grab_mid_ns": [
+            1166506,
+            1185888,
+            1215444
+          ],
+          "grab_top_ns": [
+            1521567,
+            1275425,
+            1111279
+          ],
+          "label": "prose-6400",
+          "page_walk_ns": 3202708,
+          "paint_cold_ns": 4805317,
+          "paint_mid_ns": [
+            1240497,
+            1027991,
+            1057016
+          ],
+          "paint_stripe_ns": [
+            227576,
+            204868,
+            211497
+          ],
+          "paint_top_cpu_ns": [
+            1043000,
+            1161000,
+            1773000
+          ],
+          "paint_top_ns": [
+            1046144,
+            1162613,
+            1781678
+          ],
+          "paint_unculled_cpu_ns": [
+            277445000,
+            275650000,
+            277770000
+          ],
+          "paint_unculled_ns": [
+            278368399,
+            276235280,
+            278297186
+          ],
+          "poppler_load_ns": 2715508,
+          "poppler_pages": 586,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 8764,
+            "error": "",
+            "layout_ns": 618594993,
+            "lines": 26946,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 586,
+            "parse_ns": 151161419,
+            "pdf_bytes": 5329315,
+            "pdf_ns": 672778950,
+            "ready_ns": 1443126835,
+            "reused_content": false,
+            "shape_hits": "16021",
+            "shape_misses": "6665",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 8536,
+            "error": "",
+            "layout_ns": 606076444,
+            "lines": 22045,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 768,
+            "parse_ns": 1992386,
+            "pdf_bytes": 5394912,
+            "pdf_ns": 687848305,
+            "ready_ns": 1296307311,
+            "reused_content": true,
+            "shape_hits": "16029",
+            "shape_misses": "6657",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "raster_first_again_ns": 7331254,
+          "raster_first_ns": 8580576,
+          "raster_last_ns": 1787852,
+          "raster_mid_ns": 6688277,
+          "scene_items_ns": 124049,
+          "web_cold": {
+            "content_height": 389617.04400006187,
+            "elements": 8487,
+            "error": "",
+            "layout_ns": 619918656,
+            "lines": 26934,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 138874254,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 759030816,
+            "reused_content": false,
+            "shape_hits": "16021",
+            "shape_misses": "6665",
+            "soft_hyphens": true,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 314901.80999999016,
+            "elements": 8487,
+            "error": "",
+            "layout_ns": 576975128,
+            "lines": 21947,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 2373691,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 579450367,
+            "reused_content": true,
+            "shape_hits": "16029",
+            "shape_misses": "6657",
+            "soft_hyphens": true,
+            "timeout": false
+          }
+        }
+      ]
+    },
+    {
+      "file": "code-3200.json",
+      "host": {
+        "cpu_pressure": "some avg10=0.00 avg60=0.11 avg300=1.94 total=70329575\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "loadavg": "1.95 2.85 2.54 2/1505 29827",
+        "logical_cpus": 8
+      },
+      "hyphenation": true,
+      "studies": [
+        {
+          "bytes": 221791,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 22929099,
+          "grab_mid_ns": [
+            56380038,
+            57859603,
+            58373865
+          ],
+          "grab_top_ns": [
+            55754820,
+            56153043,
+            55147350
+          ],
+          "label": "code-3200",
+          "page_walk_ns": 389028,
+          "paint_cold_ns": 57086331,
+          "paint_mid_ns": [
+            55977497,
+            52830655,
+            53511883
+          ],
+          "paint_stripe_ns": [
+            56423756,
+            55565388,
+            53570361
+          ],
+          "paint_top_cpu_ns": [
+            52967000,
+            54142000,
+            52972000
+          ],
+          "paint_top_ns": [
+            53118360,
+            55133991,
+            53149944
+          ],
+          "paint_unculled_cpu_ns": [
+            51899000,
+            54337000,
+            55246000
+          ],
+          "paint_unculled_ns": [
+            52170537,
+            54549672,
+            55429083
+          ],
+          "poppler_load_ns": 1090990,
+          "poppler_pages": 73,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 73,
+            "error": "",
+            "layout_ns": 2333917883,
+            "lines": 3200,
+            "max_element_height": 675.2079999999993,
+            "max_lines_in_element": 44,
+            "ok": true,
+            "pages": 73,
+            "parse_ns": 10483155,
+            "pdf_bytes": 587937,
+            "pdf_ns": 114946531,
+            "ready_ns": 2459571766,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 119,
+            "error": "",
+            "layout_ns": 2392689443,
+            "lines": 3200,
+            "max_element_height": 420.5139999999998,
+            "max_lines_in_element": 27,
+            "ok": true,
+            "pages": 119,
+            "parse_ns": 702200,
+            "pdf_bytes": 632629,
+            "pdf_ns": 118018052,
+            "ready_ns": 2511541481,
+            "reused_content": true,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "raster_first_again_ns": 10012000,
+          "raster_first_ns": 9363964,
+          "raster_last_ns": 8087843,
+          "raster_mid_ns": 9999806,
+          "scene_items_ns": 44907,
+          "web_cold": {
+            "content_height": 47974.400000003596,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 2385394052,
+            "lines": 3200,
+            "max_element_height": 47958.400000003596,
+            "max_lines_in_element": 3200,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 8621000,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 2394422016,
+            "reused_content": false,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 47974.400000003596,
+            "elements": 1,
+            "error": "",
+            "layout_ns": 2310091595,
+            "lines": 3200,
+            "max_element_height": 47958.400000003596,
+            "max_lines_in_element": 3200,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 318378,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 2310554381,
+            "reused_content": true,
+            "shape_hits": "0",
+            "shape_misses": "1",
+            "soft_hyphens": false,
+            "timeout": false
+          }
+        }
+      ]
+    },
+    {
+      "file": "prose-1600-nohyph.json",
+      "host": {
+        "cpu_pressure": "some avg10=0.00 avg60=0.11 avg300=1.94 total=70336893\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "loadavg": "1.95 2.85 2.54 3/1505 29835",
+        "logical_cpus": 8
+      },
+      "hyphenation": false,
+      "studies": [
+        {
+          "bytes": 377971,
+          "cache_hit": true,
+          "cache_timeout": false,
+          "cache_two_pages_ns": 15972976,
+          "grab_mid_ns": [
+            1395185
+          ],
+          "grab_top_ns": [
+            1708826
+          ],
+          "label": "prose-1600",
+          "page_walk_ns": 801230,
+          "paint_cold_ns": 4331486,
+          "paint_mid_ns": [
+            1042884
+          ],
+          "paint_stripe_ns": [
+            153397
+          ],
+          "paint_top_cpu_ns": [
+            916000
+          ],
+          "paint_top_ns": [
+            921214
+          ],
+          "paint_unculled_cpu_ns": [
+            55098000
+          ],
+          "paint_unculled_ns": [
+            55318186
+          ],
+          "poppler_load_ns": 1184459,
+          "poppler_pages": 147,
+          "print_cold": {
+            "content_height": 0,
+            "elements": 2194,
+            "error": "",
+            "layout_ns": 150949879,
+            "lines": 6736,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 147,
+            "parse_ns": 6809171,
+            "pdf_bytes": 1124092,
+            "pdf_ns": 148390289,
+            "ready_ns": 306675993,
+            "reused_content": false,
+            "shape_hits": "4012",
+            "shape_misses": "1673",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "print_width": {
+            "content_height": 0,
+            "elements": 2135,
+            "error": "",
+            "layout_ns": 132765338,
+            "lines": 5514,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 192,
+            "parse_ns": 656834,
+            "pdf_bytes": 1125394,
+            "pdf_ns": 152745575,
+            "ready_ns": 286388727,
+            "reused_content": true,
+            "shape_hits": "4020",
+            "shape_misses": "1665",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "raster_first_again_ns": 6295182,
+          "raster_first_ns": 7211162,
+          "raster_last_ns": 2878482,
+          "raster_mid_ns": 7315016,
+          "scene_items_ns": 53655,
+          "web_cold": {
+            "content_height": 97427.75200000164,
+            "elements": 2123,
+            "error": "",
+            "layout_ns": 145603175,
+            "lines": 6736,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 6409753,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 152361217,
+            "reused_content": false,
+            "shape_hits": "4012",
+            "shape_misses": "1673",
+            "soft_hyphens": false,
+            "timeout": false
+          },
+          "web_width": {
+            "content_height": 78760.18000000258,
+            "elements": 2123,
+            "error": "",
+            "layout_ns": 131249538,
+            "lines": 5490,
+            "max_element_height": 91.928,
+            "max_lines_in_element": 8,
+            "ok": true,
+            "pages": 0,
+            "parse_ns": 590816,
+            "pdf_bytes": 0,
+            "pdf_ns": 0,
+            "ready_ns": 131921821,
+            "reused_content": true,
+            "shape_hits": "4020",
+            "shape_misses": "1665",
+            "soft_hyphens": false,
+            "timeout": false
+          }
+        }
+      ]
+    }
+  ]
+}

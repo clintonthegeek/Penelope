@@ -6,6 +6,7 @@
 #define PENELOPE_LINEBREAKER_H
 
 #include <QList>
+#include <functional>
 
 namespace LineBreaking {
 
@@ -56,6 +57,7 @@ struct Breakpoint {
 struct BreakResult {
     QList<Breakpoint> breaks;
     bool optimal = true;
+    bool cancelled = false;
 };
 
 struct Config {
@@ -71,11 +73,13 @@ struct Config {
 
 BreakResult findBreaks(const QList<Item> &items,
                        const QList<qreal> &lineWidths,
-                       const Config &config = {});
+                       const Config &config = {},
+                       const std::function<bool()> &cancelled = {});
 
 BreakResult findBreaksTiered(const QList<Item> &items,
                              const QList<qreal> &lineWidths,
-                             const Config &baseConfig = {});
+                             const Config &baseConfig = {},
+                             const std::function<bool()> &cancelled = {});
 
 qreal computeAdjustmentRatio(const QList<Item> &items,
                               int start, int end,

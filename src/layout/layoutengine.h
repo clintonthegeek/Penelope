@@ -24,6 +24,7 @@
 #include <optional>
 
 #include "contentmodel.h"
+class FragmentCache;
 #include "pagelayout.h"
 
 class FontManager;
@@ -279,18 +280,37 @@ struct ContinuousLayoutResult {
 
 // --- Layout Engine ---
 
+struct LayoutCursor {
+    int nextBlock = 0;
+    bool finished = false;
+    qreal y = 0;
+    int currentPageNumber = 0;
+    qreal yOnPage = 0;
+    bool prevKeepWithNext = false;
+    QList<PageElement> queue;
+    int queueIndex = 0;
+};
+struct LayoutBudget {
+    int maxBlocks = 0;
+    qreal maxHeight = 0;
+    bool onePage = false;
+};
+
 class Engine {
 public:
     Engine(FontManager *fontManager, TextShaper *textShaper);
 
     LayoutResult layout(const Content::Document &doc, const PageLayout &pageLayout);
     ContinuousLayoutResult layoutContinuous(const Content::Document &doc, qreal availWidth);
+    ContinuousLayoutResult layoutContinuousFrom(const Content::Document &doc, qreal width, LayoutCursor *cursor, const LayoutBudget &budget);
+    bool layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage);
 
     void setOptimalTableLayout(bool enabled) { m_optimalTableLayout = enabled; }
     void setCodeHighlighting(const QString &theme, bool enabled) {
         m_codeTheme = theme; m_codeHighlighting = enabled;
     }
     void setCancellationCheck(std::function<bool()> check) { m_cancelled = std::move(check); }
+    void setFragmentCache(FragmentCache *cache) { m_fragmentCache = cache; }
     void setHyphenateJustifiedText(bool enabled) { m_hyphenateJustifiedText = enabled; }
     void setMarkdownDecorations(bool enabled) { m_markdownDecorations = enabled; }
 
@@ -353,6 +373,8 @@ private:
     std::optional<bool> m_codeHighlighting;
     QString m_codeTheme;
     std::function<bool()> m_cancelled;
+    bool m_breakCancelled = false;
+    FragmentCache *m_fragmentCache = nullptr;
     FontManager *m_fontManager;
     TextShaper *m_textShaper;
     bool m_hyphenateJustifiedText = true;

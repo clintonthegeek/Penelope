@@ -3,6 +3,7 @@
 
 #include <QHash>
 #include <QWidget>
+#include <QTimer>
 
 #include "pagelayout.h"
 
@@ -42,6 +43,7 @@ private:
     QDoubleSpinBox *m_marginBottomSpin = nullptr;
     QDoubleSpinBox *m_marginLeftSpin = nullptr;
     QDoubleSpinBox *m_marginRightSpin = nullptr;
+    QTimer *m_marginDebounce = nullptr;
 
     // Header/footer controls
     QCheckBox *m_headerCheck = nullptr;

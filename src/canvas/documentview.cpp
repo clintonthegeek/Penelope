@@ -635,6 +635,11 @@ void DocumentView::setWebContent(Layout::ContinuousLayoutResult &&result)
     }
 }
 
+void DocumentView::layoutExtended()
+{
+    m_moreRequested = false;
+}
+
 void DocumentView::appendWebContent(Layout::ContinuousLayoutResult &&extra)
 {
     Q_ASSERT(m_webViewItem);
@@ -688,6 +693,15 @@ void DocumentView::scrollContentsBy(int dx, int dy)
         dx = 0;
     QGraphicsView::scrollContentsBy(dx, dy);
     updateCurrentPage();
+    if (m_renderMode == WebMode && !m_layoutCursor.finished && !m_moreRequested) {
+        int max = verticalScrollBar()->maximum();
+        int val = verticalScrollBar()->value();
+        int vp = viewport()->height();
+        if (max - val < vp) {
+            m_moreRequested = true;
+            Q_EMIT moreLayoutRequested();
+        }
+    }
 }
 
 // --- Middle-mouse smooth zoom (Okular pattern) ---

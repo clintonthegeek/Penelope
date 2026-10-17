@@ -114,14 +114,19 @@ PageLayoutWidget::PageLayoutWidget(QWidget *parent)
             this, &PageLayoutWidget::pageLayoutChanged);
     connect(m_orientationCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &PageLayoutWidget::pageLayoutChanged);
+    m_marginDebounce = new QTimer(this);
+    m_marginDebounce->setSingleShot(true);
+    m_marginDebounce->setInterval(150);
+    connect(m_marginDebounce, &QTimer::timeout, this, &PageLayoutWidget::pageLayoutChanged);
+    auto debounceMargin = [this]() { m_marginDebounce->start(); };
     connect(m_marginTopSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
-            this, &PageLayoutWidget::pageLayoutChanged);
+            this, debounceMargin);
     connect(m_marginBottomSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
-            this, &PageLayoutWidget::pageLayoutChanged);
+            this, debounceMargin);
     connect(m_marginLeftSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
-            this, &PageLayoutWidget::pageLayoutChanged);
+            this, debounceMargin);
     connect(m_marginRightSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
-            this, &PageLayoutWidget::pageLayoutChanged);
+            this, debounceMargin);
 
     // Header/footer signal connections
     connect(m_headerCheck, &QCheckBox::toggled,

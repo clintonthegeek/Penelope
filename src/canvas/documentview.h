@@ -116,6 +116,7 @@ public:
     RenderMode renderMode() const { return m_renderMode; }
     void setWebContent(Layout::ContinuousLayoutResult &&result);
     void appendWebContent(Layout::ContinuousLayoutResult &&extra);
+    void layoutExtended();
     void setWebFontManager(FontManager *fm) { m_webFontManager = fm; m_webFontOwner.reset(); }
     void setWebFontOwner(std::shared_ptr<FontManager> owner) {
         m_webFontManager = owner.get(); m_webFontOwner = std::move(owner);
@@ -130,6 +131,7 @@ Q_SIGNALS:
     void codeBlockLanguageChanged();
     void currentHeadingChanged(int index);
     void webRelayoutRequested();
+    void moreLayoutRequested();
     void languageOverrideRequested(const QString &codeKey, const QString &currentLang);
     void rtfCopyOptionsRequested();
 
@@ -189,6 +191,8 @@ private:
 
     // Web view rendering
     RenderMode m_renderMode = PrintMode;
+    Layout::LayoutCursor m_layoutCursor;
+    bool m_moreRequested = false;
     WebViewItem *m_webViewItem = nullptr;
     QTimer m_relayoutTimer;
     std::shared_ptr<FontManager> m_webFontOwner;

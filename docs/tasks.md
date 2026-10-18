@@ -1,7 +1,7 @@
 # Tasks
 
 Every step this file has carried is implemented. The evidence column names the
-regression slot that proves it, all of which pass in
+regression slot that proves it; the 117 slots all pass in
 `QT_QPA_PLATFORM=offscreen ctest --test-dir build`.
 
 Work goes in the same shape as before: one step per change; the step names the
@@ -37,7 +37,7 @@ milliseconds. Use a `RelWithDebInfo` build for speed comparisons
 
 | Id | Step | Evidence |
 |---|---|---|
-| MD-01 | Math spans are modelled; inline math flows, display math is centred | `md01MathSpans` |
+| MD-01 | Math spans are modelled and typeset with the vendored jkqtmathtext; inline math flows, display math is centred, unparseable source stays text | `md01MathSpans`, `md01MathIsTypeset`, `md01MathStaysInPdfTextLayer` |
 | MD-02 | Raw HTML is set as markup rather than prose | `md02RawHtmlIsMarkedUp` |
 | MD-03 | Wikilink and embed targets reach the model | `al05LinkTargetsAndTitles` |
 | MD-04 | Inline images survive headings, table cells and list items | `md04InlineImagesAwayFromParagraphs` |
@@ -45,13 +45,13 @@ milliseconds. Use a `RelWithDebInfo` build for speed comparisons
 | MD-06 | Optional smart punctuation, with code untouched | `md06SmartPunctuation` |
 | MD-07 | Image titles are hover hints | `md07ImageTitles` |
 | MD-08 | `)` markers, list tightness and fence info strings are preserved | `md08ListAndFenceDetails` |
-| MD-09 | Front matter policy (AL-01); definition lists are not planned | `al01FrontmatterIsMetadata` |
+| MD-09 | Front matter policy (AL-01). Definition lists are out of the dialect: MD4C has no flag for them and the markdown grammar markoff-parser drives has no such node, so neither implementation can produce them | `al01FrontmatterIsMetadata` |
 
 ## Quality
 
 | Id | Step | Evidence |
 |---|---|---|
-| Q-01 | Styled copy stops at the selection, from the shaped runs | `q01SelectionCopyIsClipped` |
+| Q-01 | Every copy stops at the characters the selection covers, from the shaped runs: plain text, Markdown sidecar and styled RTF | `q01SelectionCopyIsClipped`, `q01SelectionCopyStopsAtCharacters` |
 | Q-02 | Cluster-accurate PDF text: ligatures spell out, RTL extracts, missing scripts fall back | `q02PdfTextSemantics` |
 | Q-03 | The reader answers assistive technology block by block | `q03ReaderIsAccessible` |
 | Q-04 | One ICU line-break iterator per engine | `q04BreakIteratorIsReused` |
@@ -64,9 +64,6 @@ milliseconds. Use a `RelWithDebInfo` build for speed comparisons
 
 | What | Why |
 |---|---|
-| LaTeX *typesetting* (MD-01's engine) | jkqtmathtext is 1.5 MB of source plus 12 MB of bundled math fonts and needs Qt 6.8 where Penelope declares 6.6. Markoff carries it; the rebase brings it. Math is set, not typeset, until then. |
-| Character-level selection (Q-01's full form) | Penelope's source map is line-based and block-relative byte ranges arrive with `markoff-parser`. The styled copy is run-accurate today. |
 | Styled copy in the PDF fallback path | There is no display list to read in that mode; it keeps the block-based extraction. |
-| Definition lists (MD-09) | Neither MD4C nor Markoff's parser has them. |
 | A streaming Markdown parser, replacing MD4C/HarfBuzz/the PDF writer | The first screen may wait for the parse; it is the smaller floor. |
 | Reflowing print view on window resize | That is the PDF-reader behaviour we keep. |

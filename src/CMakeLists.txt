@@ -102,6 +102,8 @@ add_library(PenelopeCore STATIC
     font/sfnt.h
     font/hersheyfont.cpp
     font/hersheyfont.h
+    layout/mathrenderer.cpp
+    layout/mathrenderer.h
     layout/layoutengine.cpp
     layout/layoutengine.h
     layout/stylerunindex.cpp
@@ -378,6 +380,7 @@ target_link_libraries(PenelopeCore
         ${HARFBUZZ_LIBRARIES}
         ${HARFBUZZ_ICU_LIBRARIES}
         ${HARFBUZZ_SUBSET_LIBRARIES}
+        jkqtmathtext
 )
 
 qt_add_executable(Penelope

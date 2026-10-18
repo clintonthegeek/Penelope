@@ -1640,11 +1640,103 @@ QList<Content::BlockNode> DocumentView::selectedRunsDocument() const
     return {paragraph};
 }
 
+
+namespace {
+
+// A run cut down to the characters the selection covers. Cluster indices the
+// shaper reports are character offsets into the run, so the edges of a
+// selection land on character boundaries rather than on whole runs.
+Layout::GlyphBox clipGlyphBox(const Layout::GlyphBox &box, qreal from, qreal to)
+{
+    Layout::GlyphBox out = box;
+    out.mdPrefix.clear();
+    out.mdSuffix.clear();
+    out.checkboxState = Layout::GlyphBox::NoCheckbox;
+    if (box.glyphs.isEmpty() || box.text.isEmpty())
+        return out;
+
+    // Cluster indices count from the start of the text the run was shaped with,
+    // which is the block's text, not this run's own string.
+    const int base = box.textStart;
+    const int runEnd = base + box.text.size();
+    int firstCluster = std::numeric_limits<int>::max();
+    int lastCluster = -1;
+    QList<Layout::GlyphInfo> kept;
+    qreal x = 0;
+    for (int i = 0; i < box.glyphs.size(); ++i) {
+        const Layout::GlyphInfo &glyph = box.glyphs.at(i);
+        const qreal glyphEnd = x + glyph.xAdvance;
+        if (glyphEnd > from && x < to) {
+            const int next = (i + 1 < box.glyphs.size()) ? box.glyphs.at(i + 1).cluster
+                                                         : runEnd;
+            const int low = qMin(glyph.cluster, next);
+            const int high = qMax(glyph.cluster, next);
+            firstCluster = qMin(firstCluster, low);
+            lastCluster = qMax(lastCluster, high);
+            kept.append(glyph);
+        }
+        x = glyphEnd;
+    }
+    if (kept.isEmpty() || lastCluster <= firstCluster) {
+        out.text.clear();
+        out.width = 0;
+        out.textLength = 0;
+        out.glyphs.clear();
+        return out;
+    }
+
+    firstCluster = qBound(base, firstCluster, runEnd);
+    lastCluster = qBound(firstCluster, lastCluster, runEnd);
+    out.text = box.text.mid(firstCluster - base, lastCluster - firstCluster);
+    out.textStart = box.textStart + firstCluster;
+    out.textLength = out.text.size();
+    out.glyphs = kept;
+    qreal width = 0;
+    for (const auto &glyph : kept)
+        width += glyph.xAdvance;
+    out.width = width;
+    return out;
+}
+
+} // namespace
+
+QList<Content::BlockNode> DocumentView::selectionCopyBlocks() const
+{
+    QList<Content::BlockNode> fromRuns = selectedRunsDocument();
+    if (!fromRuns.isEmpty())
+        return fromRuns;
+    if (m_wordSelection || m_sourceMap.isEmpty() || m_processedMarkdown.isEmpty()
+        || m_contentDoc.blocks.isEmpty())
+        return {};
+    const auto [minLine, maxLine] = selectedSourceLines();
+    if (minLine > maxLine)
+        return {};
+    return extractSelectedBlocks(minLine, maxLine);
+}
+
+QString DocumentView::selectedDisplayListText() const
+{
+    if (m_wordSelection || m_processedMarkdown.isEmpty() || m_pagesWithSelection.isEmpty())
+        return {};
+    QStringList lineText;
+    collectSelectedRuns(nullptr, &lineText);
+    return lineText.join(QLatin1Char('\n'));
+}
+
 QList<Layout::GlyphBox> DocumentView::selectedGlyphBoxes() const
 {
     QList<Layout::GlyphBox> selected;
+    collectSelectedRuns(&selected, nullptr);
+    return selected;
+}
+
+// Walks the display list once, collecting the runs the selection covers and,
+// when asked, the text of each line they belong to.
+void DocumentView::collectSelectedRuns(QList<Layout::GlyphBox> *runs,
+                                       QStringList *lineText) const
+{
     if (m_pagesWithSelection.isEmpty())
-        return selected;
+        return;
     const QRectF sel = QRectF(m_selectPressPos, m_selectCurrentPos).normalized();
 
     auto takeLine = [&](const Layout::LineBox &line, const Layout::BlockBox &box,
@@ -1663,12 +1755,30 @@ QList<Layout::GlyphBox> DocumentView::selectedGlyphBoxes() const
         if (!lineRect.intersects(sel))
             return;
         qreal x = originX + box.x + line.x;
+        QString lineString;
         for (const auto &gbox : line.glyphs) {
             const QRectF boxRect(x, originY + box.y, gbox.width, line.height);
-            if (gbox.width > 0 && boxRect.intersects(sel))
-                selected.append(gbox);
+            if (gbox.width > 0 && boxRect.intersects(sel)) {
+                const qreal visLeft = qMax(boxRect.left(), sel.left());
+                const qreal visRight = qMin(boxRect.right(), sel.right());
+                if (visLeft <= boxRect.left() && visRight >= boxRect.right()) {
+                    if (runs)
+                        runs->append(gbox);
+                    lineString.append(gbox.text);
+                } else {
+                    const Layout::GlyphBox clipped =
+                        clipGlyphBox(gbox, visLeft - boxRect.left(), visRight - boxRect.left());
+                    if (!clipped.text.isEmpty()) {
+                        if (runs)
+                            runs->append(clipped);
+                        lineString.append(clipped.text);
+                    }
+                }
+            }
             x += gbox.width;
         }
+        if (lineText && !lineString.trimmed().isEmpty())
+            lineText->append(lineString);
     };
 
     auto takeBlocks = [&](const QList<Layout::PageElement> &elements, qreal originX, qreal originY) {
@@ -1707,7 +1817,6 @@ QList<Layout::GlyphBox> DocumentView::selectedGlyphBoxes() const
                        item->pos().y() + item->contentOrigin().y());
         }
     }
-    return selected;
 }
 
 QString DocumentView::extractSelectedText() const
@@ -1868,19 +1977,15 @@ void DocumentView::copySelection()
     if (hasSourceData)
         mimeData->setData(QStringLiteral("text/markdown"), text.toUtf8());
 
-    // Generate styled RTF from content model blocks
+    // Generate styled RTF from the runs the selection covers
     if (hasSourceData && !m_contentDoc.blocks.isEmpty()) {
-        const auto [minLine, maxLine] = selectedSourceLines();
-
-        if (minLine <= maxLine) {
-            QList<Content::BlockNode> filteredBlocks = extractSelectedBlocks(minLine, maxLine);
-            if (!filteredBlocks.isEmpty()) {
-                ContentRtfExporter rtfExporter;
-                QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks, RtfFilterOptions(),
-                                                        m_contentDoc.footnoteStyle);
-                mimeData->setData(QStringLiteral("text/rtf"), rtf);
-                mimeData->setData(QStringLiteral("application/rtf"), rtf);
-            }
+        QList<Content::BlockNode> filteredBlocks = selectionCopyBlocks();
+        if (!filteredBlocks.isEmpty()) {
+            ContentRtfExporter rtfExporter;
+            QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks, RtfFilterOptions(),
+                                                      m_contentDoc.footnoteStyle);
+            mimeData->setData(QStringLiteral("text/rtf"), rtf);
+            mimeData->setData(QStringLiteral("application/rtf"), rtf);
         }
     }
 
@@ -2372,6 +2477,11 @@ QPair<int, int> DocumentView::selectedSourceLines() const
 
 QString DocumentView::selectedPlainText() const
 {
+    if (!m_wordSelection && !m_processedMarkdown.isEmpty()) {
+        const QString fromDisplayList = selectedDisplayListText();
+        if (!fromDisplayList.isEmpty())
+            return fromDisplayList;
+    }
     if (m_wordSelection || m_processedMarkdown.isEmpty()) return extractSelectedTextFromPdf();
     ContentBuilder builder;
     builder.setRenderImages(false);

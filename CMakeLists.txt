@@ -18,7 +18,8 @@ include(KDEInstallDirs)
 include(KDECMakeSettings)
 
 # Qt
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Network)
+# 6.8 is the floor the vendored math renderer needs.
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Network)
 qt_standard_project_setup()
 
 # KDE Frameworks
@@ -50,6 +51,7 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(HARFBUZZ_ICU REQUIRED harfbuzz-icu)
 pkg_check_modules(HARFBUZZ_SUBSET REQUIRED harfbuzz-subset)
 
+add_subdirectory(libs/jkqtmathtext)
 add_subdirectory(src)
 
 include(CTest)

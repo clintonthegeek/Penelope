@@ -194,6 +194,10 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
                         if (!image.image.isNull())
                             ensureImageRegistered(image.imageId, image.image);
                     }
+                    for (const auto &glyph : line.glyphs) {
+                        if (!glyph.mathImage.isNull() && !glyph.imageId.isEmpty())
+                            ensureImageRegistered(glyph.imageId, glyph.mathImage);
+                    }
                 }
             } else if (const auto *section = std::get_if<Layout::FootnoteSectionBox>(&elem)) {
                 for (const auto &note : section->footnotes) {
@@ -208,6 +212,10 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
                             for (const auto &image : line.images) {
                                 if (!image.image.isNull())
                                     ensureImageRegistered(image.imageId, image.image);
+                            }
+                            for (const auto &glyph : line.glyphs) {
+                                if (!glyph.mathImage.isNull() && !glyph.imageId.isEmpty())
+                                    ensureImageRegistered(glyph.imageId, glyph.mathImage);
                             }
                         }
                     }

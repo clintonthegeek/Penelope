@@ -308,6 +308,21 @@ void BoxTreeRenderer::renderLineBox(const Layout::LineBox &line,
 void BoxTreeRenderer::renderGlyphBox(const Layout::GlyphBox &gbox,
                                       qreal x, qreal baselineY)
 {
+    if (!gbox.mathImage.isNull()) {
+        // A typeset formula: the image replaces the glyphs on screen, while the
+        // box keeps its text for copying and for the PDF's text layer.
+        drawImage(QRectF(x, baselineY - gbox.ascent, gbox.width,
+                         gbox.ascent + gbox.descent),
+                  gbox.mathImage);
+        return;
+    }
+
+    renderGlyphRun(gbox, x, baselineY);
+}
+
+void BoxTreeRenderer::renderGlyphRun(const Layout::GlyphBox &gbox,
+                                     qreal x, qreal baselineY)
+{
     if (gbox.font && gbox.font->isHershey) {
         renderHersheyGlyphBox(gbox, x, baselineY);
         return;

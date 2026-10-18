@@ -51,9 +51,10 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
   citation, and a click through to the note and back. Endnote placement is a
   setting. Number format, start value, prefix/suffix and separator are
   configurable.
-- Math spans are kept as a model node: inline math flows with the text, display
-  math is centred on its own line. A LaTeX engine typesets them later; see
-  [Known limitations](#known-limitations).
+- LaTeX math is typeset with jkqtmathtext (vendored): inline formulas flow with
+  the text and display formulas sit centred on their own line. A formula that
+  does not parse stays as its source. The LaTeX also stays in the text layer, so
+  copying and PDF text extraction still return it.
 - Front matter is read as metadata rather than shown; `_underscore_` is
   emphasis; raw HTML is set as markup; HTML entities decode; `[[Page|label]]`
   links and `![[Note]]` embeds keep their targets; image titles are hover
@@ -103,7 +104,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Qt 6.6 or newer and KDE Frameworks 6 are required, along with Poppler's Qt 6
+The LaTeX renderer is vendored in `libs/jkqtmathtext` with its two math fonts,
+so it is built with the project and needs no extra system package.
+
+Qt 6.8 or newer and KDE Frameworks 6 are required, along with Poppler's Qt 6
 bindings, FreeType, HarfBuzz (with ICU and subset support), ICU, fontconfig,
 libhyphen, MD4C and zlib. Qt Test is needed for the test suite; pass
 `-DBUILD_TESTING=OFF` for an application-only build.
@@ -123,8 +127,6 @@ pacman -S qt6-base extra-cmake-modules ki18n kcoreaddons kxmlgui kiconthemes \
 - Body margins are shared by every page; per-page margins apply only to headers
   and footers.
 - A table row taller than a page can overflow.
-- Math is set, not typeset: no LaTeX engine renders formulas yet, and plain
-  text extraction of the PDF gives the LaTeX source of a formula.
 - Styled copy is accurate to the run: copying part of a paragraph in the PDF
   reader still copies whole blocks, and copying in the paginated reader takes
   the runs the selection covers rather than individual characters.

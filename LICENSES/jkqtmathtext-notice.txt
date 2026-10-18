@@ -1,0 +1,15 @@
+Bundled: libs/jkqtmathtext (JKQtMathText by Jan W. Krieger and contributors)
+
+JKQtMathText is a self-contained LaTeX parser and renderer for Qt. Penelope
+typesets Markdown math spans with it.
+
+License: GNU Lesser General Public License, version 2.1 or later. Each source
+file carries the notice; see libs/jkqtmathtext/jkqtmathtext.h.
+
+The renderer compiles two math fonts into the library:
+
+  * XITS (XITS-Regular, XITS-Bold, XITS-Italic, XITS-BoldItalic, XITSMath,
+    XITSMath-Bold) -- SIL Open Font License 1.1.
+    License text: libs/jkqtmathtext/resources/xits/OFL.txt
+  * Fira Math (FiraMath-Regular) -- SIL Open Font License 1.1.
+    License text: libs/jkqtmathtext/resources/firaMath/LICENSE

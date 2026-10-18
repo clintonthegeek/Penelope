@@ -3621,6 +3621,172 @@ private Q_SLOTS:
         view.setAccessibleName(QStringLiteral("notes.md"));
         QCOMPARE(reader->text(QAccessible::Name), QStringLiteral("notes.md"));
     }
+    void q01SelectionCopyStopsAtCharacters() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        const QString source = QStringLiteral("Alpha beta gamma delta epsilon.\n");
+        auto doc = builder.build(source);
+        auto layout = engine.layoutContinuous(doc, 500);
+        QVERIFY(!layout.sourceMap.isEmpty());
+
+        DocumentView view;
+        view.resize(700, 400);
+        view.setRenderMode(DocumentView::WebMode);
+        view.setWebFontManager(&fonts);
+        view.setSourceData(builder.processedMarkdown(), layout.sourceMap, doc, layout.codeBlockRegions);
+        view.setWebContent(std::move(layout));
+        view.setCursorMode(DocumentView::SelectionTool);
+        view.show();
+        QTest::qWait(20);
+
+        // Find the run that holds "beta" and the x range of its cluster 1..3.
+        const auto &elements = view.webViewItem()->layoutResult().elements;
+        const Layout::GlyphBox *word = nullptr;
+        QRectF wordRect;
+        for (const auto &element : elements) {
+            const auto *box = std::get_if<Layout::BlockBox>(&element);
+            if (!box)
+                continue;
+            qreal y = view.webViewItem()->pos().y() + box->y;
+            for (const auto &line : box->lines) {
+                qreal x = view.webViewItem()->pos().x() + box->x + line.x;
+                for (const auto &gbox : line.glyphs) {
+                    if (gbox.text.trimmed() == QStringLiteral("beta")) {
+                        word = &gbox;
+                        wordRect = QRectF(x, y, gbox.width, line.height);
+                    }
+                    x += gbox.width;
+                }
+                y += line.height;
+            }
+        }
+        QVERIFY(word);
+
+        // Left edge of cluster 1 ("b"), right edge of cluster 3 ("t"):
+        // the selection covers exactly "et".
+        auto advanceTo = [&](int cluster) {
+            qreal x = 0;
+            for (const auto &glyph : word->glyphs) {
+                if (glyph.cluster >= cluster)
+                    return x;
+                x += glyph.xAdvance;
+            }
+            return x;
+        };
+        const qreal left = wordRect.left() + advanceTo(word->textStart + 1);
+        const qreal right = wordRect.left() + advanceTo(word->textStart + 3);
+
+        const QPoint start = view.mapFromScene(QPointF(left + 0.5, wordRect.top() + 1));
+        const QPoint end = view.mapFromScene(QPointF(right - 0.5, wordRect.bottom() - 1));
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QMouseEvent move(QEvent::MouseMove, end, view.viewport()->mapToGlobal(end),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(view.viewport(), &move);
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+        // The Ctrl+C path: plain text and styled copy both stop at the
+        // characters under the selection.
+        view.copySelection();
+        auto *mime = QApplication::clipboard()->mimeData();
+        QVERIFY2(mime->text().contains(QStringLiteral("et")), qPrintable(mime->text()));
+        QVERIFY2(!mime->text().contains(QStringLiteral("beta")), qPrintable(mime->text()));
+        QVERIFY2(!mime->text().contains(QStringLiteral("Alpha")), qPrintable(mime->text()));
+        QVERIFY(mime->hasFormat(QStringLiteral("text/rtf")));
+        const QByteArray rtf = mime->data(QStringLiteral("text/rtf"));
+        QVERIFY2(rtf.contains("et"), rtf.constData());
+        QVERIFY2(!rtf.contains("beta"), rtf.constData());
+        QVERIFY2(!rtf.contains("Alpha"), rtf.constData());
+
+        // Copy as RTF takes the same path.
+        view.copySelectionAsRtf();
+        auto *rtfOnly = QApplication::clipboard()->mimeData();
+        const QByteArray rtfAgain = rtfOnly->data(QStringLiteral("text/rtf"));
+        QVERIFY2(rtfAgain.contains("et"), rtfAgain.constData());
+        QVERIFY2(!rtfAgain.contains("beta"), rtfAgain.constData());
+    }
+    void md01MathIsTypeset() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        const QString source = QStringLiteral(
+            "Inline $x^2 + \\frac{1}{2}$ here.\n\n$$E = mc^2$$\n\nBroken $\\begin$ math.\n");
+        auto doc = builder.build(source);
+        auto layout = engine.layoutContinuous(doc, 500);
+
+        int typeset = 0;
+        QStringList latexSeen;
+        bool displayCentred = false;
+        for (const auto &element : layout.elements) {
+            const auto *box = std::get_if<Layout::BlockBox>(&element);
+            if (!box)
+                continue;
+            for (const auto &line : box->lines) {
+                for (const auto &gbox : line.glyphs) {
+                    if (gbox.mathImage.isNull())
+                        continue;
+                    ++typeset;
+                    latexSeen.append(gbox.text);
+                    QVERIFY2(gbox.width > 0, "a typeset formula has width");
+                    QVERIFY2(gbox.ascent > 0 && gbox.mathImage.height() > 0, "and height");
+                    QVERIFY2(!gbox.imageId.isEmpty(), "and an embeddable name");
+                    if (gbox.text.contains(QStringLiteral("E = mc^2")))
+                        displayCentred = line.alignment == Qt::AlignCenter;
+                }
+            }
+        }
+        QCOMPARE(typeset, 2); // the inline formula and the display one
+        bool sawInline = false;
+        for (const QString &latex : latexSeen)
+            sawInline |= latex.contains(QStringLiteral("x^2"));
+        QVERIFY2(sawInline, "the inline formula is typeset");
+        QVERIFY2(displayCentred, "display math sits on a centred line");
+
+        // Math that does not parse stays as its source text.
+        bool brokenStayedText = false;
+        for (const auto &element : layout.elements) {
+            const auto *box = std::get_if<Layout::BlockBox>(&element);
+            if (!box)
+                continue;
+            for (const auto &line : box->lines) {
+                for (const auto &gbox : line.glyphs) {
+                    if (!gbox.mathImage.isNull())
+                        continue;
+                    if (gbox.text.contains(QStringLiteral("begin")))
+                        brokenStayedText = true;
+                }
+            }
+        }
+        QVERIFY2(brokenStayedText, "unparseable math keeps its source text");
+    }
+    // The formula is drawn as an image on the page, so unless the glyph run is
+    // emitted invisibly too, the PDF loses it: no text to extract, nothing to
+    // search.
+    void md01MathStaysInPdfTextLayer() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        auto doc = builder.build(
+            QStringLiteral("Inline $e^{i\\pi} + 1 = 0$ here.\n\n$$\\frac{a}{b}$$\n"));
+        PageLayout pl;
+        auto result = engine.layout(doc, pl);
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(result, pl, QStringLiteral("Math"));
+        QVERIFY(!pdf.isEmpty());
+        QVERIFY2(pdf.contains("/Subtype /Image"), "the formulas are drawn as images");
+
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        QString text;
+        for (int i = 0; i < poppler->numPages(); ++i)
+            text += poppler->page(i)->text(QRectF());
+        QVERIFY2(text.contains(QStringLiteral("e^{i\\pi} + 1 = 0")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("\\frac{a}{b}")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("Inline")), qPrintable(text));
+    }
 };
 
 int main(int argc, char **argv) {

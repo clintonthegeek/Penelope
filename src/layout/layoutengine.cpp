@@ -942,6 +942,13 @@ struct CollectedText {
     QList<Content::TextStyle> textStyles; // rendering styles, parallel to styleRuns
     QSet<int> softHyphenPositions;        // cleaned-text positions at soft hyphens
     QList<MarkdownRange> markdownRanges;
+    struct MathSpan {
+        int start = 0;
+        int length = 0;
+        QString source;
+        bool display = false;
+    };
+    QList<MathSpan> mathSpans;
 };
 
 // Strip U+00AD (soft hyphen) from text, recording their cleaned-text positions
@@ -1033,6 +1040,7 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                 mathStyle.fontFeatures.clear();
                 const int startPos = result.text.size();
                 result.text.append(n.source);
+                result.mathSpans.append({startPos, n.source.size(), n.source, n.display});
                 StyleRun sr;
                 sr.start = startPos;
                 sr.length = n.source.size();
@@ -1342,6 +1350,17 @@ QList<LineBox> Engine::breakTextIntoLines(const QList<Content::InlineNode> &inli
     if (useSoftHyphens)
         breakPositions.unite(collected.softHyphenPositions);
 
+    // A formula is a single box: it must not be broken at the spaces inside its
+    // LaTeX, and the break at either end lets the line breaker treat it as one
+    // word.
+    for (const auto &span : collected.mathSpans) {
+        for (int pos = span.start + 1; pos < span.start + span.length; ++pos)
+            breakPositions.remove(pos);
+        if (span.start > 0)
+            breakPositions.insert(span.start);
+        breakPositions.insert(span.start + span.length);
+    }
+
     // Add non-breaking space (U+00A0) positions as split points.
     // ICU's line-break iterator doesn't break at nbsp (by design), but we
     // need separate glyph boxes so that justification can stretch the gap.
@@ -1471,6 +1490,39 @@ QList<LineBox> Engine::breakTextIntoLines(const QList<Content::InlineNode> &inli
         w.gbox.textLength = end - start;
         w.gbox.text = collected.text.mid(start, end - start);
         registerGlyphText(w.gbox);
+    }
+
+    // Typeset each formula and give its word the image's metrics, so the line
+    // breaker reserves the right width and the baseline lands in the right
+    // place. A formula that does not parse keeps its source text.
+    for (const auto &span : collected.mathSpans) {
+        for (auto &w : words) {
+            if (w.isNewline)
+                continue;
+            if (w.gbox.textStart != span.start || w.gbox.textLength != span.length)
+                continue;
+            const QString key = QStringLiteral("%1|%2|%3")
+                                    .arg(span.source)
+                                    .arg(w.gbox.style.fontSize)
+                                    .arg(w.gbox.style.foreground.name());
+            auto cached = m_mathCache.constFind(key);
+            if (cached == m_mathCache.constEnd()) {
+                MathArt art = typesetMath(span.source, w.gbox.style.fontSize,
+                                          w.gbox.style.foreground);
+                cached = m_mathCache.insert(key, art);
+                if (m_mathCache.size() > 512)
+                    m_mathCache.clear();
+            }
+            const MathArt &art = cached.value();
+            if (!art.isValid())
+                continue;
+            w.gbox.mathImage = art.image;
+            w.gbox.imageId = art.id;
+            w.gbox.width = art.width;
+            w.gbox.ascent = art.ascent;
+            w.gbox.descent = art.descent;
+            break;
+        }
     }
 
     // Apply markdown decorations to glyph boxes

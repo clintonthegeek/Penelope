@@ -115,6 +115,13 @@ public:
     QList<Layout::GlyphBox> selectedGlyphBoxes() const;
     // That selection as a document, for the styled copy.
     QList<Content::BlockNode> selectedRunsDocument() const;
+    // The blocks a copy should carry: the shaped runs the selection covers when
+    // the display list is available, whole blocks only as a fallback (the PDF
+    // reader, which has no display list to read).
+    QList<Content::BlockNode> selectionCopyBlocks() const;
+    // The selection's rendered text, cut at character boundaries.
+    QString selectedDisplayListText() const;
+    void collectSelectedRuns(QList<Layout::GlyphBox> *runs, QStringList *lineText) const;
     void clearSelection();
     // Source breadcrumbs for markdown-faithful copy + styled RTF export
     void setSourceData(const QString &processedMarkdown,

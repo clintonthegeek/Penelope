@@ -154,6 +154,7 @@ public:
     void renderBlockBox(const Layout::BlockBox &box) override;
     void renderLineBox(const Layout::LineBox &line,
                        qreal originX, qreal originY, qreal availWidth) override;
+    void renderGlyphBox(const Layout::GlyphBox &gbox, qreal x, qreal baselineY) override;
     void renderHersheyGlyphBox(const Layout::GlyphBox &gbox,
                                qreal x, qreal baselineY) override;
     void renderImageBlock(const Layout::BlockBox &box) override;

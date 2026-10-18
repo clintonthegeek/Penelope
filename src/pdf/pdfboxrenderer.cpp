@@ -750,6 +750,35 @@ void PdfBoxRenderer::renderLineBox(const Layout::LineBox &line,
     }
 }
 
+void PdfBoxRenderer::renderGlyphBox(const Layout::GlyphBox &gbox, qreal x, qreal baselineY)
+{
+    if (gbox.mathImage.isNull()) {
+        BoxTreeRenderer::renderGlyphBox(gbox, x, baselineY);
+        return;
+    }
+
+    if (m_stream && m_imageNameCb && !gbox.imageId.isEmpty()) {
+        const QByteArray name = m_imageNameCb(gbox.imageId);
+        if (!name.isEmpty()) {
+            const qreal height = gbox.ascent + gbox.descent;
+            const qreal imgY = pdfY(baselineY - gbox.ascent) - height;
+            *m_stream += "q\n";
+            *m_stream += pdfCoord(gbox.width) + " 0 0 " + pdfCoord(height) + " "
+                    + pdfCoord(x) + " " + pdfCoord(imgY) + " cm\n";
+            *m_stream += "/" + name + " Do\n";
+            *m_stream += "Q\n";
+        }
+    }
+
+    // The formula stays in the text layer: drawing it invisibly keeps it
+    // extractable and searchable.
+    if (m_stream)
+        *m_stream += "3 Tr\n";
+    renderGlyphRun(gbox, x, baselineY);
+    if (m_stream)
+        *m_stream += "0 Tr\n";
+}
+
 void PdfBoxRenderer::renderImageBlock(const Layout::BlockBox &box)
 {
     if (!m_stream || box.image.isNull() || box.imageId.isEmpty() || !m_imageNameCb)

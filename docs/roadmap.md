@@ -14,8 +14,6 @@ deferral per feature, and one project — rebasing onto `markoff-core`.
 
 | What | Why |
 |---|---|
-| LaTeX **typesetting** | Math is modelled and set (inline in the flow, display centred) but no LaTeX engine typesets it. jkqtmathtext — the renderer Markoff uses — is 1.5 MB of source plus 12 MB of bundled math fonts and requires Qt 6.8, where Penelope declares 6.6. Vendoring it now would duplicate what the rebase brings. |
-| **Character-level** selection | The styled copy is run-accurate, taken from the shaped runs the selection covers, so a partial paragraph no longer copies as a whole block. Character anchors want block-relative byte ranges, which `markoff-parser` supplies. |
 | Styled copy in the **PDF** reader | That mode has no display list to read, so it falls back to the block-based extraction. It disappears with the rebase. |
 | **Definition lists** | Neither MD4C nor Markoff's parser recognises them; they are not part of the dialect we target. |
 | **Task-list interactivity** | Clicking a checkbox edits the source: a write path a reader does not need. |
@@ -65,3 +63,8 @@ For reference when judging a change, the parts that matter:
 - **Reading.** Six arrangements, zoom, hover hints for links and images, a
   heading tree, per-file view state, file watching with position-preserving
   reload, and an accessible per-block tree for assistive technology.
+- **Math.** `Content::Math` carries the LaTeX source; the layout engine typesets
+  it with the vendored jkqtmathtext (XITS and Fira Math compiled in) and puts the
+  result in the flow as a box with the image's metrics. The source stays in the
+  box's text, so copying and the PDF text layer keep the formula. The library
+  needs Qt 6.8, which is now the project's floor.

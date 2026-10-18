@@ -60,6 +60,11 @@ public:
     virtual void renderFootnoteSectionBox(const Layout::FootnoteSectionBox &box);
     virtual void renderLineBox(const Layout::LineBox &line,
                                qreal originX, qreal originY, qreal availWidth);
+    /// The glyph run itself, without the branches for math images and
+    /// checkboxes. A backend that draws a formula as an image still calls this
+    /// to emit the run invisibly, so the formula stays in the text layer.
+    void renderGlyphRun(const Layout::GlyphBox &gbox, qreal x, qreal baselineY);
+
     virtual void renderGlyphBox(const Layout::GlyphBox &gbox,
                                 qreal x, qreal baselineY);
     virtual void renderHersheyGlyphBox(const Layout::GlyphBox &gbox,

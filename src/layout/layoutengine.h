@@ -28,6 +28,7 @@
 #include <optional>
 
 #include "contentmodel.h"
+#include "mathrenderer.h"
 class FragmentCache;
 #include "pagelayout.h"
 
@@ -74,6 +75,10 @@ struct GlyphBox {
     QString text;      // original text content of this glyph box
     // Task list checkbox (rendered as vector graphic, not font glyph)
     CheckboxState checkboxState = NoCheckbox;
+    // A formula typeset into a raster: the box takes the image's size and the
+    // text layer keeps the LaTeX source for copying and for PDF extraction.
+    QImage mathImage;
+    QString imageId; // resource name for the PDF writer
 };
 
 // Returns true if the justify gap between two adjacent glyph boxes should be
@@ -457,6 +462,9 @@ private:
     std::unique_ptr<icu::BreakIterator> m_lineBreakIterator;
     int m_breakIteratorCreations = 0;
     QCache<QString, QImage> m_imageCache;
+    // Typeset formulas, kept per engine: a page of math must not re-typeset on
+    // every layout pass.
+    QHash<QString, MathArt> m_mathCache;
     int m_imageDecodes = 0;
     static constexpr int kImageCacheBytes = 64 * 1024 * 1024;
     FragmentCache *m_fragmentCache = nullptr;

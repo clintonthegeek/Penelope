@@ -47,6 +47,7 @@ Engine::Engine(FontManager *fontManager, TextShaper *textShaper)
 
 LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &pageLayout)
 {
+    m_footnoteStyle = doc.footnoteStyle;
     m_breakCancelled = false;
     LayoutResult result;
     result.pageSize = pageLayout.pageSizePoints();
@@ -71,6 +72,7 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
 LayoutResult Engine::layoutReusing(const Content::Document &doc, const PageLayout &pageLayout,
                                    const LayoutResult *previous, bool geometryChanged)
 {
+    m_footnoteStyle = doc.footnoteStyle;
     auto fresh = [&]() { return layout(doc, pageLayout); };
     if (!previous || geometryChanged || previous->pages.isEmpty())
         return fresh();
@@ -177,6 +179,7 @@ void Engine::buildSourceMap(LayoutResult &result, const PageLayout &pageLayout) 
 
 ContinuousLayoutResult Engine::layoutContinuous(const Content::Document &doc, qreal availWidth)
 {
+    m_footnoteStyle = doc.footnoteStyle;
     m_breakCancelled = false;
     ContinuousLayoutResult result;
     result.contentWidth = availWidth;
@@ -205,6 +208,7 @@ ContinuousLayoutResult Engine::layoutContinuous(const Content::Document &doc, qr
 ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc, qreal width,
                                                   LayoutCursor *cursor, const LayoutBudget &budget)
 {
+    m_footnoteStyle = doc.footnoteStyle;
     ContinuousLayoutResult result;
     result.contentWidth = width;
 
@@ -302,6 +306,7 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
 }
 
 bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage) {
+    m_footnoteStyle = doc.footnoteStyle;
     if (!cursor || cursor->finished || !outPage) return false;
     if (m_breakCancelled) return false;
 
@@ -673,6 +678,7 @@ QString stripSoftHyphens(const QString &text, int offset, QSet<int> &positions)
 
 CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                               const Content::TextStyle &baseStyle,
+                              const FootnoteStyle &noteStyle,
                               bool markdownMode = false)
 {
     CollectedText result;
@@ -723,9 +729,10 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                     result.markdownRanges.append({sr.start, sr.start + sr.length,
                                                    QStringLiteral("`"), QStringLiteral("`")});
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
+                const QString marker = Content::footnoteMarker(noteStyle, n.index);
                 StyleRun sr;
                 sr.start = result.text.size();
-                sr.length = n.label.size();
+                sr.length = marker.size();
                 sr.fontFamily = n.style.fontFamily;
                 sr.fontWeight = n.style.fontWeight;
                 sr.fontItalic = n.style.italic;
@@ -733,7 +740,7 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                 sr.fontFeatures = n.style.fontFeatures;
                 result.styleRuns.append(sr);
                 result.textStyles.append(n.style);
-                result.text.append(n.label);
+                result.text.append(marker);
             } else if constexpr (std::is_same_v<T, Content::SoftBreak>) {
                 // Treat as space
                 StyleRun sr;
@@ -890,7 +897,7 @@ QList<LineBox> Engine::breakIntoLines(const QList<Content::InlineNode> &inlines,
     // For code blocks: still set glyph text fields (m_markdownDecorations)
     // but suppress markdown range creation (bold/italic from syntax highlighting
     // should not produce ** markers in the ActualText).
-    auto collected = collectInlines(inlines, baseStyle,
+    auto collected = collectInlines(inlines, baseStyle, m_footnoteStyle,
                                     m_markdownDecorations && markdownRanges);
     if (collected.text.isEmpty())
         return lines;
@@ -1383,7 +1390,7 @@ BlockBox Engine::layoutParagraph(const Content::Paragraph &para, qreal availWidt
     qreal effectiveWidth = availWidth - para.format.leftMargin - para.format.rightMargin;
 
     bool cacheHit = false;
-    auto collected = collectInlines(para.inlines, baseStyle, m_markdownDecorations);
+    auto collected = collectInlines(para.inlines, baseStyle, m_footnoteStyle, m_markdownDecorations);
     quint64 contentHash = qHash(collected.text);
     contentHash = qHashMulti(contentHash, int(para.format.alignment));
     for (const auto &sr : collected.styleRuns)
@@ -1450,7 +1457,7 @@ BlockBox Engine::layoutHeading(const Content::Heading &heading, qreal availWidth
     }
 
     bool cacheHit = false;
-    auto collected = collectInlines(heading.inlines, baseStyle, m_markdownDecorations);
+    auto collected = collectInlines(heading.inlines, baseStyle, m_footnoteStyle, m_markdownDecorations);
     quint64 contentHash = qHash(collected.text);
     contentHash = qHashMulti(contentHash, int(heading.format.alignment));
     for (const auto &sr : collected.styleRuns)
@@ -2062,7 +2069,7 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
     for (const auto &fn : fs.footnotes) {
         if (m_cancelled && m_cancelled()) return {};
         FootnoteBox fbox;
-        fbox.label = fn.label;
+        fbox.label = Content::footnoteMarker(m_footnoteStyle, fn.index);
         fbox.numberStyle = fn.numberStyle;
         fbox.y = y;
 
@@ -2089,7 +2096,7 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
                     fmt.leftMargin = kIndent;
                     fmt.firstLineIndent = -kIndent;
                     QList<Content::InlineNode> inlines = paragraph->inlines;
-                    inlines.prepend(Content::TextRun{fn.label + QStringLiteral(". "), fn.numberStyle});
+                    inlines.prepend(Content::TextRun{fbox.label + QStringLiteral(". "), fn.numberStyle});
 
                     BlockBox box;
                     box.type = BlockBox::ParagraphBlock;
@@ -2110,7 +2117,7 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
                 // A list, table or fence puts the marker on its own line.
                 Content::ParagraphFormat fmt;
                 QList<Content::InlineNode> labelInlines{
-                    Content::TextRun{fn.label + QStringLiteral(". "), fn.numberStyle}};
+                    Content::TextRun{fbox.label + QStringLiteral(". "), fn.numberStyle}};
                 BlockBox labelBox;
                 labelBox.type = BlockBox::ParagraphBlock;
                 labelBox.lines = breakIntoLines(labelInlines, fn.numberStyle, fmt, noteWidth);
@@ -2563,7 +2570,7 @@ void Engine::assignToPages(const QList<PageElement> &elements,
 qreal Engine::measureInlines(const QList<Content::InlineNode> &inlines,
                               const Content::TextStyle &baseStyle)
 {
-    auto collected = collectInlines(inlines, baseStyle);
+    auto collected = collectInlines(inlines, baseStyle, m_footnoteStyle);
     if (collected.text.isEmpty())
         return 0;
 
@@ -2578,7 +2585,7 @@ qreal Engine::measureInlines(const QList<Content::InlineNode> &inlines,
 qreal Engine::measureMinInlines(const QList<Content::InlineNode> &inlines,
                                  const Content::TextStyle &baseStyle)
 {
-    auto collected = collectInlines(inlines, baseStyle);
+    auto collected = collectInlines(inlines, baseStyle, m_footnoteStyle);
     if (collected.text.isEmpty())
         return 0;
 

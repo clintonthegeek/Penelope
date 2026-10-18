@@ -194,7 +194,9 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     const QString processed = fnParser.process(body);
     for (const auto &fn : fnParser.footnotes())
         m_footnotes.append({fn.label, fn.content});
+    m_footnoteRefSites.resize(m_footnotes.size());
 
+    m_doc.footnoteStyle = m_footnoteStyle;
     parseIntoDocument(processed);
     appendFootnoteSection();
     return m_doc;
@@ -224,6 +226,7 @@ void ContentBuilder::resetState()
     m_linkHref.clear();
     m_linkSpanDepth = 0;
     m_footnotes.clear();
+    m_footnoteRefSites.clear();
 
     if (m_styleManager)
         m_currentStyle = resolveTextStyle(QStringLiteral("Default Paragraph Style"));
@@ -297,7 +300,7 @@ void ContentBuilder::appendFootnoteSection()
 
     for (int i = 0; i < m_footnotes.size(); ++i) {
         Content::Footnote fn;
-        fn.label = m_footnoteStyle.formatNumber(m_footnoteStyle.startNumber + i);
+        fn.index = i;
 
         Content::TextStyle numStyle = m_currentStyle;
         numStyle.fontSize = 8.0;
@@ -311,6 +314,7 @@ void ContentBuilder::appendFootnoteSection()
         fn.textStyle = textStyle;
 
         fn.blocks = buildFragment(m_footnotes[i].text);
+        fn.references = m_footnoteRefSites.value(i);
         section.footnotes.append(fn);
     }
 
@@ -978,9 +982,10 @@ int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
 int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
 {
     if (m_cancelled && m_cancelled()) return 1;
+    const int textOffset = m_bufferStart ? static_cast<int>(text - m_bufferStart) : -1;
     // Update all active block trackers with source position
     if (m_bufferStart) {
-        int offset = static_cast<int>(text - m_bufferStart);
+        const int offset = textOffset;
         int end = offset + static_cast<int>(size);
         for (auto &tracker : m_blockTrackers) {
             if (tracker.firstByteOffset < 0)
@@ -998,7 +1003,7 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
 
     switch (type) {
     case MD_TEXT_NORMAL:
-        emitNormalText(str);
+        emitNormalText(str, textOffset);
         break;
 
     case MD_TEXT_CODE:
@@ -1043,7 +1048,7 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
 
 // Footnote references and Obsidian embeds are not MD4C spans, so a normal text
 // run is split for them; #tags are split out of what remains.
-void ContentBuilder::emitNormalText(const QString &text)
+void ContentBuilder::emitNormalText(const QString &text, int textByteOffset)
 {
     static const QRegularExpression specials(
         QStringLiteral(R"((!\[\[[^\]]*\]\])|(\[\^[^\]]+\]))"));
@@ -1053,10 +1058,14 @@ void ContentBuilder::emitNormalText(const QString &text)
         const auto match = it.next();
         if (match.capturedStart() > last)
             emitPlainText(text.mid(last, match.capturedStart() - last));
+        // The match offset is a character index; the line table is byte based.
+        const int byteOffset = textByteOffset < 0
+            ? -1
+            : textByteOffset + text.left(match.capturedStart()).toUtf8().size();
         if (!match.captured(1).isEmpty())
             emitEmbed(match.captured(1));
         else
-            emitFootnoteRef(match.captured(2));
+            emitFootnoteRef(match.captured(2), byteOffset);
         last = match.capturedEnd();
     }
     if (last < text.size())
@@ -1096,7 +1105,7 @@ void ContentBuilder::emitPlainText(const QString &text)
         m_inCodeBlock ? text : processTypography(text), m_currentStyle});
 }
 
-void ContentBuilder::emitFootnoteRef(const QString &reference)
+void ContentBuilder::emitFootnoteRef(const QString &reference, int byteOffset)
 {
     const QString label = reference.mid(2, reference.size() - 3);
     int fnIndex = -1;
@@ -1111,10 +1120,17 @@ void ContentBuilder::emitFootnoteRef(const QString &reference)
         appendInlineNode(Content::TextRun{reference, m_currentStyle});
         return;
     }
-    const int number = m_footnoteStyle.startNumber + fnIndex;
+    bool isRepeat = false;
+    if (fnIndex < m_footnoteRefSites.size()) {
+        Content::FootnoteRefSite site;
+        site.sourceLine = byteOffset >= 0 ? byteOffsetToLine(byteOffset) : 0;
+        site.isRepeat = !m_footnoteRefSites.at(fnIndex).isEmpty();
+        isRepeat = site.isRepeat;
+        m_footnoteRefSites[fnIndex].append(site);
+    }
     Content::FootnoteRef ref;
     ref.index = fnIndex;
-    ref.label = m_footnoteStyle.formatNumber(number);
+    ref.isRepeat = isRepeat;
     ref.style = m_currentStyle;
     ref.style.fontSize = 8.0;
     ref.style.foreground = QColor(0x03, 0x66, 0xd6);

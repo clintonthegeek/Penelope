@@ -17,6 +17,8 @@
 #include <QList>
 #include <QMarginsF>
 #include <QString>
+
+#include "footnotestyle.h"
 #include <QStringList>
 #include <Qt>
 
@@ -101,9 +103,24 @@ struct InlineImage {
     qreal height = 0;
 };
 
+// The marker a note prints with. Numbering restarts are a layout decision, so
+// the layout resolves markers through this helper; exporters use the document
+// order the style describes.
+inline QString footnoteMarker(const FootnoteStyle &style, int index)
+{
+    return style.formatNumber(style.startNumber + index);
+}
+
+// Where a note is cited. Line anchors match the source map; the line-number
+// location survives re-layout, which the note's own rects do not.
+struct FootnoteRefSite {
+    int sourceLine = 0;     // 1-based line in the processed markdown
+    bool isRepeat = false;  // an earlier reference already cited this note
+};
+
 struct FootnoteRef {
-    int index = 0;
-    QString label;
+    int index = 0;          // the note's position in the section
+    bool isRepeat = false;
     TextStyle style;
 };
 
@@ -230,10 +247,11 @@ struct HorizontalRule {
 };
 
 struct Footnote {
-    QString label;
+    int index = 0; // 1-based position in first-reference order (index 0 -> marker 1)
     // The note's own Markdown structure. Note bodies are parsed as their own
     // fragment so a note can hold paragraphs, lists, code and quotes.
     QList<BlockNode> blocks;
+    QList<FootnoteRefSite> references; // in document order, first citation first
     TextStyle numberStyle;
     TextStyle textStyle;
 };
@@ -250,6 +268,10 @@ struct FootnoteSection {
 
 struct Document {
     QList<BlockNode> blocks;
+
+    // How notes number themselves. The builder records it; the layout and the
+    // exporters resolve markers from it.
+    FootnoteStyle footnoteStyle;
 
     // YAML front matter, delimiters stripped. It is metadata, not body text:
     // the lines it occupied stay blank so source ranges keep addressing the

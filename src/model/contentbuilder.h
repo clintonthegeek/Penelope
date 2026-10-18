@@ -71,9 +71,9 @@ private:
     QString processTypography(const QString &text) const;
     // Splits a normal-text run for footnote references and ![[embeds]], then
     // splits the remaining text for #tags.
-    void emitNormalText(const QString &text);
+    void emitNormalText(const QString &text, int textByteOffset);
     void emitPlainText(const QString &text);
-    void emitFootnoteRef(const QString &reference);
+    void emitFootnoteRef(const QString &reference, int byteOffset);
     void emitEmbed(const QString &embed);
 
     // Style resolution
@@ -119,6 +119,7 @@ private:
     // Link tracking (href flows through TextStyle on each TextRun inside the span)
     QString m_linkHref;
     int m_linkSpanDepth = 0;
+    QList<QList<Content::FootnoteRefSite>> m_footnoteRefSites;
 
     // Block routing: adds a completed block to the correct container
     // The innermost entered list/quote owns each completed block.

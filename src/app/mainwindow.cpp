@@ -1141,7 +1141,9 @@ void MainWindow::onFileExportRtf()
     bool success = false;
     if (tab) {
         ContentRtfExporter exporter;
-        const QByteArray data = exporter.exportBlocks(buildCompositionContent(compositionRequest(tab)).blocks);
+        const auto content = buildCompositionContent(compositionRequest(tab));
+        const QByteArray data = exporter.exportBlocks(content.blocks, RtfFilterOptions(),
+                                                    content.footnoteStyle);
         QSaveFile file(path);
         success = file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit();
     }

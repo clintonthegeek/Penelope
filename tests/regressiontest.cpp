@@ -2632,6 +2632,99 @@ private Q_SLOTS:
         }
         QVERIFY2(tail.contains(QStringLiteral("Note 39")), qPrintable(tail));
     }
+    void fn02ReferenceAnchors() {
+        const QString md = QStringLiteral(
+            "# Heading[^a]\n\n"
+            "| cell[^a] | other |\n"
+            "|---|---|\n"
+            "| x | y |\n\n"
+            "Paragraph[^a].\n\n"
+            "[^a]: Note body.\n");
+        ContentBuilder builder;
+        const auto doc = builder.build(md);
+        const Content::FootnoteSection *section = nullptr;
+        for (const auto &block : doc.blocks) {
+            if (const auto *candidate = std::get_if<Content::FootnoteSection>(&block))
+                section = candidate;
+        }
+        QVERIFY(section);
+        QCOMPARE(section->footnotes.size(), 1);
+        const auto &refs = section->footnotes.first().references;
+        QCOMPARE(refs.size(), 3);
+        QCOMPARE(refs.at(0).sourceLine, 1);   // the heading
+        QCOMPARE(refs.at(1).sourceLine, 3);   // the table header row
+        QCOMPARE(refs.at(2).sourceLine, 7);   // the paragraph
+        QCOMPARE(refs.at(0).isRepeat, false);
+        QCOMPARE(refs.at(1).isRepeat, true);
+        QCOMPARE(refs.at(2).isRepeat, true);
+
+        // Every citation renders the same marker, and repeats are flagged on
+        // the reference node itself.
+        QStringList labels;
+        QList<bool> repeats;
+        auto collect = [&](const QList<Content::InlineNode> &inlines) {
+            for (const auto &node : inlines) {
+                if (const auto *ref = std::get_if<Content::FootnoteRef>(&node)) {
+                    labels << Content::footnoteMarker(doc.footnoteStyle, ref->index);
+                    repeats << ref->isRepeat;
+                }
+            }
+        };
+        for (const auto &block : doc.blocks) {
+            std::visit([&](const auto &b) {
+                using T = std::decay_t<decltype(b)>;
+                if constexpr (std::is_same_v<T, Content::Heading> || std::is_same_v<T, Content::Paragraph>)
+                    collect(b.inlines);
+                else if constexpr (std::is_same_v<T, Content::Table>) {
+                    for (const auto &row : b.rows)
+                        for (const auto &cell : row.cells)
+                            collect(cell.inlines);
+                }
+            }, block);
+        }
+        QCOMPARE(labels.size(), 3);
+        QVERIFY(labels.at(0) == labels.at(1) && labels.at(1) == labels.at(2));
+        QCOMPARE(repeats.at(0), false);
+        QCOMPARE(repeats.at(1), true);
+        QCOMPARE(repeats.at(2), true);
+    }
+    void fn03NumberingIsLayoutOwned() {
+        FootnoteStyle style;
+        style.format = FootnoteStyle::RomanLower;
+        style.startNumber = 3;
+        style.prefix = QStringLiteral("[");
+        style.suffix = QStringLiteral("]");
+
+        ContentBuilder builder;
+        builder.setFootnoteStyle(style);
+        const auto doc = builder.build(QStringLiteral(
+            "Cited[^a] and[^b].\n\n[^a]: First.\n[^b]: Second.\n"));
+
+        // The document carries the numbering style, not the markers.
+        QCOMPARE(doc.footnoteStyle.startNumber, 3);
+        QCOMPARE(Content::footnoteMarker(doc.footnoteStyle, 0), QStringLiteral("[iii]"));
+        QCOMPARE(Content::footnoteMarker(doc.footnoteStyle, 1), QStringLiteral("[iv]"));
+
+        // The layout resolves both the reference marker and the note marker.
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+        QString drawn;
+        for (const auto &page : layout.pages)
+            drawn += buildHitIndex(page).lineText.join(QStringLiteral(" ")) + QStringLiteral(" ");
+        QVERIFY2(drawn.contains(QStringLiteral("[iii]")), qPrintable(drawn));
+        QVERIFY2(drawn.contains(QStringLiteral("[iv]")), qPrintable(drawn));
+
+        // Plain text agrees, and never prints a raw index.
+        const QString text = Content::toPlainText(doc);
+        QVERIFY2(text.contains(QStringLiteral("[iii]. First.")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("[iv]. Second.")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("Cited[iii]")), qPrintable(text));
+        QVERIFY(!text.contains(QStringLiteral("Cited0")));
+    }
 };
 
 int main(int argc, char **argv) {

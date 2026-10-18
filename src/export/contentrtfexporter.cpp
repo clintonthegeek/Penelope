@@ -12,9 +12,11 @@
 // --- Public ---
 
 QByteArray ContentRtfExporter::exportBlocks(const QList<Content::BlockNode> &blocks,
-                                             const RtfFilterOptions &filter)
+                                             const RtfFilterOptions &filter,
+                                             const FootnoteStyle &noteStyle)
 {
     m_filter = filter;
+    m_noteStyle = noteStyle;
     m_fonts.clear();
     m_colors.clear();
 
@@ -267,7 +269,7 @@ void ContentRtfExporter::writeBlock(QByteArray &out, const Content::BlockNode &b
                 out.append("\\pard\\ql\\sb60\\sa40 ");
                 out.append("{");
                 writeCharFormat(out, fn.numberStyle);
-                out.append(RtfUtils::escapeText(fn.label));
+                out.append(RtfUtils::escapeText(Content::footnoteMarker(m_noteStyle, fn.index)));
                 out.append(".} ");
                 for (const auto &noteBlock : fn.blocks)
                     writeBlock(out, noteBlock);
@@ -559,7 +561,7 @@ void ContentRtfExporter::writeInlines(QByteArray &out, const QList<Content::Inli
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
                 out.append("{");
                 writeCharFormat(out, useBaseStyle ? baseStyle : n.style);
-                out.append(RtfUtils::escapeText(n.label));
+                out.append(RtfUtils::escapeText(Content::footnoteMarker(m_noteStyle, n.index)));
                 out.append("}");
             } else if constexpr (std::is_same_v<T, Content::InlineImage>) {
                 // Images cannot be inlined in clipboard RTF; emit alt text

@@ -1756,7 +1756,8 @@ void DocumentView::copySelection()
             QList<Content::BlockNode> filteredBlocks = extractSelectedBlocks(minLine, maxLine);
             if (!filteredBlocks.isEmpty()) {
                 ContentRtfExporter rtfExporter;
-                QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks);
+                QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks, RtfFilterOptions(),
+                                                        m_contentDoc.footnoteStyle);
                 mimeData->setData(QStringLiteral("text/rtf"), rtf);
                 mimeData->setData(QStringLiteral("application/rtf"), rtf);
             }
@@ -1784,7 +1785,8 @@ void DocumentView::copySelectionAsRtf()
         return;
 
     ContentRtfExporter rtfExporter;
-    QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks);
+    QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks, RtfFilterOptions(),
+                                             m_contentDoc.footnoteStyle);
 
     auto *mimeData = new QMimeData;
     mimeData->setData(QStringLiteral("text/rtf"), rtf);
@@ -1841,7 +1843,7 @@ void DocumentView::copySelectionWithFilter(const RtfFilterOptions &filter)
         return;
 
     ContentRtfExporter rtfExporter;
-    QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks, filter);
+    QByteArray rtf = rtfExporter.exportBlocks(filteredBlocks, filter, m_contentDoc.footnoteStyle);
 
     auto *mimeData = new QMimeData;
     mimeData->setData(QStringLiteral("text/rtf"), rtf);

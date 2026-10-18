@@ -399,6 +399,7 @@ private:
     TextShaper *m_textShaper;
     bool m_hyphenateJustifiedText = true;
     bool m_markdownDecorations = false;
+    FootnoteStyle m_footnoteStyle;
 };
 
 } // namespace Layout

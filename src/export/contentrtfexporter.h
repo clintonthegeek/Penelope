@@ -26,7 +26,8 @@ class ContentRtfExporter
 {
 public:
     QByteArray exportBlocks(const QList<Content::BlockNode> &blocks,
-                            const RtfFilterOptions &filter = RtfFilterOptions());
+                            const RtfFilterOptions &filter = RtfFilterOptions(),
+                            const FootnoteStyle &noteStyle = FootnoteStyle());
 
 private:
     // Pre-scan to collect fonts and colors
@@ -60,6 +61,7 @@ private:
     QMap<QString, int> m_fonts;
     QMap<QRgb, int> m_colors;
     RtfFilterOptions m_filter;
+    FootnoteStyle m_noteStyle;
 };
 
 #endif // PENELOPE_CONTENTRTFEXPORTER_H

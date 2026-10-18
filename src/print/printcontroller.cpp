@@ -7,8 +7,11 @@
 #include <QProcess>
 #include <QTemporaryFile>
 
+// poppler-qt6.h declares the converters. Splitting them into
+// poppler-converter.h only happened in poppler 25.05; the extra include
+// breaks 24.08 (Ubuntu 24.04 / KDE Neon), and including it here is not
+// needed because the umbrella header includes it where it exists.
 #include <poppler-qt6.h>
-#include <poppler-converter.h>
 
 PrintController::PrintController(QObject *parent) : QObject(parent) {}
 

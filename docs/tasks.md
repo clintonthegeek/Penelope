@@ -123,11 +123,19 @@ the existing `linkHref`. Classify as external, file, wikilink, tag or anchor, in
 the spirit of Markoff's `LinkKind` and `LinkInfo::Type`. Show a title in the
 hover hint when one exists.
 
-**Do not:** implement anchor navigation, wiki-file resolution, or embeds.
+Also recognise `![[Target]]`, which renders today as the literal text
+`![[Target]]`: classify it as an embed and show the target text, the way a
+wikilink renders. Markoff normalises the same syntax to `LinkInfo::Embed`; the
+target is what a reader can act on until embeds are rendered.
+
+**Do not:** implement anchor navigation, wiki-file resolution, or embed
+rendering.
 
 **Test:** slot `al05LinkTargetsAndTitles`. A standard link keeps href and title;
 `[[Page|label]]` records `Page` and renders `label`; `[[Page]]` records `Page`;
-`#tag` classifies as a tag; hovering a titled link reports the title.
+`![[Note]]` records `Note` as an embed and shows `Note` rather than the literal
+brackets; `#tag` classifies as a tag; hovering a titled link reports the
+title.
 
 **Done when:** the slot passes and external links still open.
 
@@ -137,7 +145,7 @@ hover hint when one exists.
 `tests/regressiontest.cpp`.
 
 **Do:** stop discarding `MD_BLOCK_HTML` (which deletes the block *and* its inner
-text) and `MD_TEXT_HTML`. Emit the bytes as visible plain text runs, preserving
+text) and `MD_TEXT_HTML` — `contentbuilder.cpp:521-522` and `:970`. Emit the bytes as visible plain text runs, preserving
 line structure. Markoff keeps `HtmlBlock` as a first-class block kind, so
 keeping the content is the aligned behaviour.
 

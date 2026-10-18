@@ -27,8 +27,8 @@ are worth doing whether or not the rebase ever happens.
 | AL-02 `_emphasis_` | Underline; `MD_FLAG_UNDERLINE` disables `_` emphasis | Emphasis (CommonMark) |
 | AL-03 Unreferenced notes | Printed as notes | Dropped (`fn.number > 0`) |
 | AL-04 Note markers in copy | Plain-text copy prints a 0-based index | 1-based by first reference |
-| AL-05 Link targets | `href` only; titles and wikilink targets discarded | `LinkInfo{Standard, Wiki, Image, Embed}` with a structured target |
-| AL-06 HTML blocks | Block HTML and its inner text are deleted | `HtmlBlock` is a block kind with `<img>` attributes |
+| AL-05 Link targets | `href` only; titles and wikilink targets discarded; `![[Note]]` shown literally | `LinkInfo{Standard, Wiki, Image, Embed}` with a structured `LinkTarget` |
+| AL-06 HTML blocks | Block HTML and its inner text are deleted | `HtmlBlock` is a block kind |
 
 Steps: AL-01 … AL-06 in [tasks.md](tasks.md#interim-alignment).
 
@@ -54,6 +54,10 @@ stand, footnotes regress. Two consequences:
 - note fidelity must land in `markoff-parser`/`markoff-core` too — multi-line
   definition bodies and a read accessor — before the rebase is attempted.
 
+Markoff also renders notes as a trailing endnote section, not at the foot of the
+page, so page-bottom placement is new work in both projects rather than
+something the rebase supplies.
+
 Steps: FN-01 … FN-06 in [tasks.md](tasks.md#footnotes).
 
 ## 3. Markdown dialect
@@ -73,6 +77,9 @@ are downstream of the parse:
 | Fence info strings, `)` list delimiters, tight/loose lists | Discarded | Preserved where they change the rendering |
 | Inline images outside paragraphs | Dropped in headings, table cells, list and quote text, note bodies | Same media rules in every inline context |
 | Definition lists | Not recognised | Not planned: neither Markoff nor MD4C has them |
+| `==highlight==`, `%%comment%%`, `#tags`, `[/]`-style task markers | Not recognised (`#tag` renders as plain text) | Markoff's grammar produces them; decide per construct |
+| `![[embeds]]` | Shown literally as `![[Note]]` | Markoff normalises the same syntax to an embed with a parsed target; embed rendering is a host seam |
+| Bare-URL autolinks | Linked (`MD_FLAG_PERMISSIVEAUTOLINKS`) | Markoff links only `<uri>` and `<email>`; a rebase would drop bare-URL linking unless it is added there |
 
 Steps: MD-01, MD-02, MD-06, MD-07, MD-08 in
 [tasks.md](tasks.md#markdown-dialect), plus the already-decomposed MD-04 and
@@ -98,7 +105,10 @@ Steps: Q-01 … Q-08 in [tasks.md](tasks.md#quality).
 Not interim work. What the two adoption steps actually cost, from the current
 Markoff tree:
 
-- **`markoff-parser` first.** It is the standalone seam: `Markoff::Document`
+- **`markoff-parser` first.** It is the standalone seam, though not a light
+  one: it requires Qt 6.8 (Penelope declares 6.6), links Qt Gui and Widgets for
+  its `QTextDocument` table handler, and needs libtree-sitter and rapidyaml. It
+  is: `Markoff::Document`
   from `fromMarkdown()` is a value snapshot with frontmatter, footnotes, links,
   tags and per-block byte ranges. It needs libtree-sitter, its vendored grammar
   and rapidyaml, all linked privately into the parser library. Adopting it

@@ -163,6 +163,10 @@ struct BlockBox {
     bool isFragmentStart = true;   // first or only fragment (emit opening fence)
     bool isFragmentEnd = true;     // last or only fragment (emit closing fence/separator)
 
+    // Notes cited inside this block, in reference order. A split fragment keeps
+    // the list, so a citation is attributed to the page the block starts on.
+    QList<int> footnoteIndices;
+
     // Source breadcrumb
     Content::SourceRange source;
     quint64 blockId = 0;
@@ -177,6 +181,7 @@ struct TableCellBox {
     QColor background;
     Qt::Alignment alignment = Qt::AlignLeft;
     bool isHeader = false;
+    QList<int> footnoteIndices;
 };
 
 struct TableRowBox {
@@ -302,6 +307,8 @@ struct LayoutCursor {
     int currentPageNumber = 0;
     qreal yOnPage = 0;
     bool prevKeepWithNext = false;
+    // Notes that did not fit in an earlier page's band, oldest first.
+    QList<int> pendingNoteIndices;
     QList<PageElement> queue;
     int queueIndex = 0;
 };
@@ -400,6 +407,16 @@ private:
     bool m_hyphenateJustifiedText = true;
     bool m_markdownDecorations = false;
     FootnoteStyle m_footnoteStyle;
+    bool m_notesAtFoot = false;
+    // A section holding just the notes a page cites, for the page-foot band.
+    Content::FootnoteSection selectNotes(const Content::Document &doc,
+                                         const QList<int> &indices) const;
+    // The notes a page cites, pending notes first, in marker order.
+    static QList<int> pageNotes(const QList<int> &pending, const QList<PageElement> &elements);
+    // A laid-out band for those notes, ready to sit at the foot of a page.
+    FootnoteSectionBox makeNoteBand(const Content::Document &doc, const QList<int> &indices,
+                                    qreal width);
+    static constexpr qreal kNoteBandGap = 6.0;
 };
 
 } // namespace Layout

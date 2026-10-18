@@ -63,8 +63,6 @@ void FootnoteConfigWidget::buildUI()
                              static_cast<int>(FootnoteStyle::PerDocument));
     m_restartCombo->addItem(tr("Per page"),
                              static_cast<int>(FootnoteStyle::PerPage));
-    m_restartCombo->setEnabled(false);
-    m_restartCombo->setToolTip(tr("Notes currently use per-document numbering."));
     startRow->addWidget(m_restartCombo);
     startRow->addStretch();
     numLayout->addLayout(startRow);
@@ -97,8 +95,6 @@ void FootnoteConfigWidget::buildUI()
     appearLayout->addWidget(m_superNoteCheck);
 
     m_endnotesCheck = new QCheckBox(tr("Display as endnotes"));
-    m_endnotesCheck->setEnabled(false);
-    m_endnotesCheck->setToolTip(tr("Notes are currently rendered as endnotes. Page-bottom placement is not available."));
     appearLayout->addWidget(m_endnotesCheck);
 
     appearLayout->addStretch();
@@ -189,14 +185,14 @@ void FootnoteConfigWidget::loadFootnoteStyle(const FootnoteStyle &style)
 
     m_startSpin->setValue(style.startNumber);
 
-    m_restartCombo->setCurrentIndex(0);
+    m_restartCombo->setCurrentIndex(qMax(0, m_restartCombo->findData(static_cast<int>(style.restart))));
 
     m_prefixEdit->setText(style.prefix);
     m_suffixEdit->setText(style.suffix);
 
     m_superRefCheck->setChecked(style.superscriptRef);
     m_superNoteCheck->setChecked(style.superscriptNote);
-    m_endnotesCheck->setChecked(true);
+    m_endnotesCheck->setChecked(style.asEndnotes);
 
     m_separatorCheck->setChecked(style.showSeparator);
     m_sepWidthSpin->setValue(style.separatorWidth);

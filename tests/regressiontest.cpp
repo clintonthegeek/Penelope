@@ -2725,6 +2725,119 @@ private Q_SLOTS:
         QVERIFY2(text.contains(QStringLiteral("Cited[iii]")), qPrintable(text));
         QVERIFY(!text.contains(QStringLiteral("Cited0")));
     }
+    void fn04PageBottomNotes() {
+        FootnoteStyle style;
+        style.asEndnotes = false;
+        ContentBuilder builder;
+        builder.setFootnoteStyle(style);
+        const QString md = QStringLiteral(
+            "# Title\n\n"
+            "First paragraph cites[^a].\n\n"
+            "Second paragraph follows.\n\n"
+            "[^a]: The note text.\n");
+        const auto doc = builder.build(md);
+
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+
+        const Layout::FootnoteSectionBox *band = nullptr;
+        for (const auto &element : layout.pages.first().elements) {
+            if (const auto *candidate = std::get_if<Layout::FootnoteSectionBox>(&element))
+                band = candidate;
+        }
+        QVERIFY2(band, "the cited note prints in a band on its page");
+        QCOMPARE(band->footnotes.size(), 1);
+        const qreal contentHeight = pl.contentSizePoints().height();
+        QVERIFY2(band->y + band->height <= contentHeight + 0.5, "the band stays inside the page");
+        QVERIFY2(band->y + band->height >= contentHeight - 2.0, "the band hugs the page foot");
+        // The body stops above the band.
+        for (const auto &element : layout.pages.first().elements) {
+            if (std::holds_alternative<Layout::FootnoteSectionBox>(element))
+                continue;
+            std::visit([&](const auto &e) {
+                if constexpr (!std::is_same_v<std::decay_t<decltype(e)>, Layout::FootnoteSectionBox>)
+                    QVERIFY2(e.y + e.height <= band->y + 0.5, "the body does not reach into the band");
+            }, element);
+        }
+
+        // In endnote mode the same notes flow after the body instead of being
+        // pinned to the foot of the page.
+        builder.setFootnoteStyle(FootnoteStyle());
+        const auto endnoteDoc = builder.build(md);
+        const auto endnoteLayout = engine.layout(endnoteDoc, pl);
+        const Layout::FootnoteSectionBox *flowed = nullptr;
+        for (const auto &page : endnoteLayout.pages) {
+            for (const auto &element : page.elements) {
+                if (const auto *candidate = std::get_if<Layout::FootnoteSectionBox>(&element))
+                    flowed = candidate;
+            }
+        }
+        QVERIFY(flowed);
+        QVERIFY2(flowed->y + flowed->height < contentHeight - 1.0,
+                 "an endnote section flows after the body, it is not pinned to the page foot");
+
+        // The PDF puts the note text on the page that cites it.
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(layout, pl, QStringLiteral("Foot"));
+        QVERIFY(!pdf.isEmpty());
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        QVERIFY(poppler->numPages() >= 1);
+        std::unique_ptr<Poppler::Page> first(poppler->page(0));
+        QVERIFY(first);
+        const QString firstText = first->text(QRectF());
+        QVERIFY2(firstText.contains(QStringLiteral("First paragraph cites")), qPrintable(firstText));
+        QVERIFY2(firstText.contains(QStringLiteral("The note text.")), qPrintable(firstText));
+    }
+
+    void fn04NoteOverflow() {
+        FootnoteStyle style;
+        style.asEndnotes = false;
+        ContentBuilder builder;
+        builder.setFootnoteStyle(style);
+
+        constexpr int kNotes = 80;
+        QString md = QStringLiteral("Body");
+        for (int i = 0; i < kNotes; ++i)
+            md += QStringLiteral("[^n%1]").arg(i);
+        md += QStringLiteral(".\n\n");
+        for (int i = 0; i < kNotes; ++i)
+            md += QStringLiteral("[^n%1]: Note %1 body.\n").arg(i);
+
+        const auto doc = builder.build(md);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        for (const auto &page : layout.pages) {
+            for (const auto &element : page.elements) {
+                if (const auto *band = std::get_if<Layout::FootnoteSectionBox>(&element))
+                    qWarning("  page %d band notes=%lld height=%.1f y=%.1f",
+                             page.pageNumber, (long long)band->footnotes.size(), band->height, band->y);
+            }
+        }
+        QVERIFY(layout.pages.size() > 1);
+
+        int firstPageNotes = 0;
+        int total = 0;
+        for (const auto &page : layout.pages) {
+            for (const auto &element : page.elements) {
+                if (const auto *band = std::get_if<Layout::FootnoteSectionBox>(&element)) {
+                    total += band->footnotes.size();
+                    if (page.pageNumber == 0)
+                        firstPageNotes = band->footnotes.size();
+                }
+            }
+        }
+        QVERIFY2(firstPageNotes > 0, "page one shows the notes that fit");
+        QVERIFY2(firstPageNotes < kNotes, "the rest are carried to a later page");
+        QCOMPARE(total, kNotes);
+    }
 };
 
 int main(int argc, char **argv) {

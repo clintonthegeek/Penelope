@@ -307,6 +307,7 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
 
 bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage) {
     m_footnoteStyle = doc.footnoteStyle;
+    m_notesAtFoot = !m_footnoteStyle.asEndnotes;
     if (!cursor || cursor->finished || !outPage) return false;
     if (m_breakCancelled) return false;
 
@@ -343,6 +344,13 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             }
             const int bi = pullBlock;
             auto elems = layoutBlockNode(doc.blocks.at(bi), contentWidth);
+            if (m_notesAtFoot) {
+                // The notes are placed per page; the trailing section is not part
+                // of the page body.
+                elems.removeIf([](const PageElement &element) {
+                    return std::holds_alternative<FootnoteSectionBox>(element);
+                });
+            }
             if (m_breakCancelled)
                 return false;
             ++pullBlock;
@@ -359,7 +367,7 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
     QList<quint64> pageIds;
     quint64 pageHash = 0;
 
-    auto finish = [&](bool) {
+    auto finishPage = [&]() {
         currentPage.contentHeight = y;
         currentPage.blockIds = pageIds;
         pageHash = 0;
@@ -411,9 +419,9 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             cursor->queue = cursor->queue.mid(cursor->queueIndex);
             cursor->queueIndex = 0;
         }
-        if (cursor->queue.isEmpty() && cursor->nextBlock >= doc.blocks.size())
+        if (cursor->queue.isEmpty() && cursor->nextBlock >= doc.blocks.size()
+            && cursor->pendingNoteIndices.isEmpty())
             cursor->finished = true;
-        return true;
     };
 
     auto remember = [&](const PageElement &el) {
@@ -428,8 +436,11 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             pageIds.append(id);
     };
 
+    const bool notesAtFoot = m_notesAtFoot;
+    auto fillBody = [&](qreal limit) {
     while (pullUntil(cursor->queueIndex)) {
-        if (m_breakCancelled) return false;
+        if (m_breakCancelled)
+            return;
 
         // pullUntil appends to the queue and can reallocate it. Any reference
         // taken before that call points at a destroyed element (a valueless
@@ -438,7 +449,7 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
 
         if (auto *tablePtr = std::get_if<TableBox>(element)) {
             const TableBox &table = *tablePtr;
-            qreal remaining = pageHeight - y;
+            qreal remaining = limit - y;
             if (table.height <= remaining) {
                 TableBox positioned = table;
                 positioned.y = y;
@@ -453,8 +464,10 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             qreal firstRowsHeight = 0;
             const int firstRows = qMin(int(table.rows.size()), table.headerRowCount + 1);
             for (int i = 0; i < firstRows; ++i) firstRowsHeight += table.rows[i].height;
-            if (firstRowsHeight > remaining && !currentPage.elements.isEmpty())
-                return finish(false);
+            if (firstRowsHeight > remaining && !currentPage.elements.isEmpty()) {
+                finishPage();
+                return;
+            }
             auto slices = splitTable(table, remaining, pageHeight);
             if (!slices.isEmpty()) {
                 slices[0].y = y;
@@ -466,12 +479,16 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
                 ++cursor->queueIndex;
                 for (int si = slices.size() - 1; si >= 1; --si)
                     cursor->queue.insert(cursor->queueIndex, slices[si]);
-                if (slices.size() > 1)
-                    return finish(false);
+                if (slices.size() > 1) {
+                    finishPage();
+                    return;
+                }
                 continue;
             }
-            if (!currentPage.elements.isEmpty())
-                return finish(false);
+            if (!currentPage.elements.isEmpty()) {
+                finishPage();
+                return;
+            }
             TableBox positioned = table;
             positioned.y = y;
             currentPage.elements.append(positioned);
@@ -502,7 +519,7 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
         }, *element);
 
         qreal totalHeight = spaceBefore + elementHeight + spaceAfter;
-        bool needsPageBreak = (y + totalHeight > pageHeight) && !currentPage.elements.isEmpty();
+        bool needsPageBreak = (y + totalHeight > limit) && !currentPage.elements.isEmpty();
 
         if (keepWithNext && !needsPageBreak && !currentPage.elements.isEmpty()) {
             if (pullUntil(cursor->queueIndex + 1)) {
@@ -523,14 +540,14 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
                         nextHeight = 20.0 + ne.height;
                     }
                 }, cursor->queue[cursor->queueIndex + 1]);
-                if (y + totalHeight + nextHeight > pageHeight)
+                if (y + totalHeight + nextHeight > limit)
                     needsPageBreak = true;
             }
             element = &cursor->queue[cursor->queueIndex];
         }
 
         if (needsPageBreak) {
-            qreal remaining = pageHeight - y;
+            qreal remaining = limit - y;
             bool didSplit = false;
             if (auto *bb = std::get_if<BlockBox>(element)) {
                 auto split = splitBlockBox(*bb, remaining);
@@ -561,10 +578,11 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             }
             if (didSplit)
                 continue;
-            return finish(false);
+            finishPage();
+            return;
         }
 
-        if (currentPage.elements.isEmpty() && y + totalHeight > pageHeight) {
+        if (currentPage.elements.isEmpty() && y + totalHeight > limit) {
             bool didSplit = false;
             if (auto *bb = std::get_if<BlockBox>(element)) {
                 auto split = splitBlockBox(*bb, pageHeight);
@@ -609,12 +627,140 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
         y += elementHeight + spaceAfter;
         ++cursor->queueIndex;
     }
+    };
 
     if (m_breakCancelled) return false;
-    if (!currentPage.elements.isEmpty())
-        return finish(true);
-    cursor->finished = true;
-    return false;
+
+    // Notes cited on this page print in a band at its foot. The band is
+    // measured first and, when it would not fit, the page is laid out once
+    // more with the band reserved. The note set can only shrink in that pass,
+    // so one retry is enough; anything that still does not fit is carried to
+    // the next page's band.
+    const LayoutCursor beforeFill = *cursor;
+    const qreal beforeY = cursor->yOnPage;
+    fillBody(pageHeight);
+
+    if (notesAtFoot && !m_breakCancelled) {
+        const QList<int> firstNotes = pageNotes(cursor->pendingNoteIndices, currentPage.elements);
+        if (!firstNotes.isEmpty()) {
+            FootnoteSectionBox probe = makeNoteBand(doc, firstNotes, contentWidth);
+            // A band taller than the page can never be reserved; its notes are
+            // carried instead.
+            if (probe.height + kNoteBandGap < pageHeight
+                && y + kNoteBandGap + probe.height > pageHeight) {
+                const LayoutCursor attemptCursor = *cursor;
+                const Page attemptPage = currentPage;
+                const qreal attemptY = y;
+                const QList<quint64> attemptIds = pageIds;
+
+                *cursor = beforeFill;
+                currentPage = Page{};
+                currentPage.pageNumber = cursor->currentPageNumber;
+                pageIds.clear();
+                y = beforeY;
+                fillBody(pageHeight - probe.height - kNoteBandGap);
+
+                const QList<int> retryNotes = pageNotes(cursor->pendingNoteIndices, currentPage.elements);
+                FootnoteSectionBox retry = makeNoteBand(doc, retryNotes, contentWidth);
+                if (m_breakCancelled || currentPage.elements.isEmpty()
+                    || y + kNoteBandGap + retry.height > pageHeight) {
+                    *cursor = attemptCursor;
+                    currentPage = attemptPage;
+                    pageIds = attemptIds;
+                    y = attemptY;
+                }
+            }
+        }
+    }
+
+    if (notesAtFoot) {
+        QList<int> notes = pageNotes(cursor->pendingNoteIndices, currentPage.elements);
+        cursor->pendingNoteIndices.clear();
+        if (!notes.isEmpty()) {
+            FootnoteSectionBox band = makeNoteBand(doc, notes, contentWidth);
+            qreal bandY = pageHeight - band.height;
+            QList<int> dropped;
+            while (!notes.isEmpty() && bandY < y + kNoteBandGap) {
+                dropped.prepend(notes.takeLast());
+                band = makeNoteBand(doc, notes, contentWidth);
+                bandY = pageHeight - band.height;
+            }
+            cursor->pendingNoteIndices = dropped;
+            if (!notes.isEmpty()) {
+                band.x = 0;
+                band.y = bandY;
+                band.width = contentWidth;
+                currentPage.elements.append(band);
+                currentPage.hasFootnote = true;
+                currentPage.noteCount += notes.size();
+                y = qMax(y, bandY + band.height);
+            }
+        }
+    }
+
+    if (currentPage.elements.isEmpty() && cursor->pendingNoteIndices.isEmpty()) {
+        cursor->finished = true;
+        return false;
+    }
+    finishPage();
+    return true;
+}
+
+
+Content::FootnoteSection Engine::selectNotes(const Content::Document &doc,
+                                             const QList<int> &indices) const
+{
+    Content::FootnoteSection section;
+    for (const auto &block : doc.blocks) {
+        const auto *full = std::get_if<Content::FootnoteSection>(&block);
+        if (!full)
+            continue;
+        section.showSeparator = full->showSeparator;
+        section.separatorLength = full->separatorLength;
+        section.separatorWidth = full->separatorWidth;
+        for (int index : indices) {
+            if (index >= 0 && index < full->footnotes.size())
+                section.footnotes.append(full->footnotes.at(index));
+        }
+        break;
+    }
+    return section;
+}
+
+QList<int> Engine::pageNotes(const QList<int> &pending, const QList<PageElement> &elements)
+{
+    QList<int> notes = pending;
+    for (const auto &element : elements) {
+        QList<int> cited;
+        if (const auto *box = std::get_if<BlockBox>(&element)) {
+            cited = box->footnoteIndices;
+        } else if (const auto *table = std::get_if<TableBox>(&element)) {
+            for (const auto &row : table->rows)
+                for (const auto &cell : row.cells)
+                    for (int index : cell.footnoteIndices)
+                        if (!cited.contains(index))
+                            cited.append(index);
+        }
+        for (int index : cited) {
+            if (!notes.contains(index))
+                notes.append(index);
+        }
+    }
+    std::sort(notes.begin(), notes.end());
+    return notes;
+}
+
+FootnoteSectionBox Engine::makeNoteBand(const Content::Document &doc, const QList<int> &indices,
+                                        qreal width)
+{
+    if (indices.isEmpty())
+        return {};
+    // A band never repeats the endnote section's separator: the rule marks the
+    // start of the note area, which each page's band draws for itself.
+    Content::FootnoteSection section = selectNotes(doc, indices);
+    FootnoteSectionBox band = layoutFootnoteSection(section, width);
+    band.blockId = 0;
+    return band;
 }
 
 QList<PageElement> Engine::layoutBlockNode(const Content::BlockNode &block, qreal availWidth)
@@ -675,6 +821,22 @@ QString stripSoftHyphens(const QString &text, int offset, QSet<int> &positions)
     }
     return clean;
 }
+
+
+namespace {
+// Notes cited inside a block, in reference order.
+QList<int> citedNotes(const QList<Content::InlineNode> &inlines)
+{
+    QList<int> indices;
+    for (const auto &node : inlines) {
+        if (const auto *ref = std::get_if<Content::FootnoteRef>(&node)) {
+            if (!indices.contains(ref->index))
+                indices.append(ref->index);
+        }
+    }
+    return indices;
+}
+} // namespace
 
 CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                               const Content::TextStyle &baseStyle,
@@ -1431,6 +1593,7 @@ BlockBox Engine::layoutParagraph(const Content::Paragraph &para, qreal availWidt
     box.height = h;
     box.x = para.format.leftMargin;
     box.firstLineIndent = para.format.firstLineIndent;
+    box.footnoteIndices = citedNotes(para.inlines);
     box.source = para.source;
 
     return box;
@@ -1445,6 +1608,7 @@ BlockBox Engine::layoutHeading(const Content::Heading &heading, qreal availWidth
     box.width = availWidth;
     box.spaceBefore = heading.format.spaceBefore;
     box.spaceAfter = heading.format.spaceAfter;
+    box.footnoteIndices = citedNotes(heading.inlines);
 
     Content::TextStyle baseStyle;
     if (!heading.inlines.isEmpty()) {
@@ -1763,6 +1927,7 @@ TableBox Engine::layoutTable(const Content::Table &table, qreal availWidth)
             }
             qreal innerWidth = colWidths[ci] - table.cellPadding * 2;
             cbox.lines = breakIntoLines(cell.inlines, cellStyle, cellFmt, innerWidth);
+            cbox.footnoteIndices = citedNotes(cell.inlines);
 
             qreal h = table.cellPadding * 2;
             for (const auto &line : cbox.lines)

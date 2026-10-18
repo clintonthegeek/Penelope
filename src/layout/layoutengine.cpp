@@ -963,6 +963,9 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                                                    QStringLiteral("`"), QStringLiteral("`")});
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
                 const QString marker = numbering.markerFor(n.index);
+                Content::TextStyle refStyle = n.style;
+                refStyle.linkHref = Content::footnoteRefUrl(n.index);
+                refStyle.linkKind = Content::LinkKind::Anchor;
                 StyleRun sr;
                 sr.start = result.text.size();
                 sr.length = marker.size();
@@ -972,7 +975,7 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                 sr.fontSize = n.style.fontSize;
                 sr.fontFeatures = n.style.fontFeatures;
                 result.styleRuns.append(sr);
-                result.textStyles.append(n.style);
+                result.textStyles.append(refStyle);
                 result.text.append(marker);
             } else if constexpr (std::is_same_v<T, Content::SoftBreak>) {
                 // Treat as space
@@ -2305,6 +2308,8 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
     for (const auto &fn : fs.footnotes) {
         if (m_cancelled && m_cancelled()) return {};
         FootnoteBox fbox;
+        fbox.index = fn.index;
+        fbox.references = fn.references;
         fbox.label = m_noteLabelOverrides.contains(fn.index)
             ? m_noteLabelOverrides.value(fn.index)
             : Content::footnoteMarker(m_footnoteStyle, fn.index);
@@ -2333,8 +2338,11 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
                     Content::ParagraphFormat fmt = paragraph->format;
                     fmt.leftMargin = kIndent;
                     fmt.firstLineIndent = -kIndent;
+                    Content::TextStyle markerStyle = fn.numberStyle;
+                    markerStyle.linkHref = Content::footnoteBacklinkUrl(fn.index);
+                    markerStyle.linkKind = Content::LinkKind::Anchor;
                     QList<Content::InlineNode> inlines = paragraph->inlines;
-                    inlines.prepend(Content::TextRun{fbox.label + QStringLiteral(". "), fn.numberStyle});
+                    inlines.prepend(Content::TextRun{fbox.label + QStringLiteral(". "), markerStyle});
 
                     BlockBox box;
                     box.type = BlockBox::ParagraphBlock;
@@ -2354,8 +2362,11 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
                 }
                 // A list, table or fence puts the marker on its own line.
                 Content::ParagraphFormat fmt;
+                Content::TextStyle markerStyle = fn.numberStyle;
+                markerStyle.linkHref = Content::footnoteBacklinkUrl(fn.index);
+                markerStyle.linkKind = Content::LinkKind::Anchor;
                 QList<Content::InlineNode> labelInlines{
-                    Content::TextRun{fbox.label + QStringLiteral(". "), fn.numberStyle}};
+                    Content::TextRun{fbox.label + QStringLiteral(". "), markerStyle}};
                 BlockBox labelBox;
                 labelBox.type = BlockBox::ParagraphBlock;
                 labelBox.lines = breakIntoLines(labelInlines, fn.numberStyle, fmt, noteWidth);

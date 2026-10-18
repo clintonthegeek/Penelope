@@ -2919,6 +2919,60 @@ private Q_SLOTS:
         QCOMPARE(reloaded.format, FootnoteStyle::RomanLower);
         QCOMPARE(reloaded.startNumber, 2);
     }
+    void fn06FootnoteHoverAndBacklink() {
+        QString md = QStringLiteral("# Start\n\nFirst[^a].\n\n");
+        for (int i = 0; i < 30; ++i)
+            md += QStringLiteral("Filler paragraph %1 with enough words to fill a narrow page.\n\n").arg(i);
+        md += QStringLiteral("[^a]: The note text.\n");
+
+        ContentBuilder builder; // default style: endnotes at the end
+        const auto doc = builder.build(md);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        pl.pageSizeId = QPageSize::A6;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(layout.pages.size() >= 2);
+
+        // The hit index reports the citation and the note's marker separately.
+        bool sawCitation = false;
+        bool sawMarker = false;
+        for (const auto &page : layout.pages) {
+            const HitIndex index = buildHitIndex(page);
+            sawCitation |= index.linkHrefs.contains(Content::footnoteRefUrl(0));
+            sawMarker |= index.linkHrefs.contains(Content::footnoteBacklinkUrl(0));
+        }
+        QVERIFY2(sawCitation, "a citation is an interactive region");
+        QVERIFY2(sawMarker, "a note's marker is an interactive region");
+
+        // A view follows both ends of the link.
+        DocumentView view;
+        QList<std::shared_ptr<const Layout::Page>> pages;
+        for (const auto &page : layout.pages)
+            pages.append(std::make_shared<const Layout::Page>(page));
+        std::shared_ptr<FontManager> fontsOwner(&fonts, [](FontManager *) {});
+        view.resize(500, 500);
+        view.setBoxPages(pages, fontsOwner, pl, false, QStringLiteral("notes.md"),
+                         QStringLiteral("Notes"));
+        view.setSourceData(QString(), layout.sourceMap, doc);
+        view.show();
+        QTRY_VERIFY(view.verticalScrollBar()->maximum() > 0);
+
+        QCOMPARE(view.currentPage(), 0);
+        QVERIFY2(view.activateInternalLink(Content::footnoteRefUrl(0)),
+                 "a citation leads to its note");
+        QCOMPARE(view.currentPage(), layout.pages.size() - 1);
+        QVERIFY2(view.activateInternalLink(Content::footnoteBacklinkUrl(0)),
+                 "a note's marker leads back to its reference");
+        QCOMPARE(view.currentPage(), 0);
+
+        // Hovering a citation shows the note's text.
+        QCOMPARE(view.linkHint(Content::footnoteRefUrl(0)), QStringLiteral("The note text."));
+        QVERIFY(!view.linkHint(Content::footnoteBacklinkUrl(0)).isEmpty());
+        QCOMPARE(view.linkHint(QStringLiteral("https://example.com")),
+                 QStringLiteral("https://example.com"));
+    }
 };
 
 int main(int argc, char **argv) {

@@ -111,6 +111,40 @@ inline QString footnoteMarker(const FootnoteStyle &style, int index)
     return style.formatNumber(style.startNumber + index);
 }
 
+// Internal links the reader follows inside a document: a note's marker points
+// back at the page that cites it, a reference points at its note. The renderers
+// collect them like any link rectangle; DocumentView resolves them instead of
+// handing them to the desktop.
+inline QString footnoteBacklinkUrl(int noteIndex)
+{
+    return QStringLiteral("penelope-footnote-ref:%1").arg(noteIndex);
+}
+
+inline QString footnoteRefUrl(int noteIndex)
+{
+    return QStringLiteral("penelope-footnote:%1").arg(noteIndex);
+}
+
+inline bool isFootnoteInternalUrl(const QString &url, int *noteIndex = nullptr)
+{
+    static const QString back = QStringLiteral("penelope-footnote-ref:");
+    static const QString fwd = QStringLiteral("penelope-footnote:");
+    QString tail;
+    if (url.startsWith(back))
+        tail = url.mid(back.size());
+    else if (url.startsWith(fwd))
+        tail = url.mid(fwd.size());
+    else
+        return false;
+    bool ok = false;
+    const int index = tail.toInt(&ok);
+    if (!ok)
+        return false;
+    if (noteIndex)
+        *noteIndex = index;
+    return true;
+}
+
 // Where a note is cited. Line anchors match the source map; the line-number
 // location survives re-layout, which the note's own rects do not.
 struct FootnoteRefSite {

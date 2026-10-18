@@ -52,8 +52,18 @@ HitIndex buildHitIndex(const Layout::Page &page)
 {
     HitIndex index;
     for (const auto &element : page.elements) {
-        if (const auto *block = std::get_if<Layout::BlockBox>(&element))
+        if (const auto *block = std::get_if<Layout::BlockBox>(&element)) {
             addBlock(index, *block);
+        } else if (const auto *section = std::get_if<Layout::FootnoteSectionBox>(&element)) {
+            // A page's note band is part of the page: its markers are hit
+            // regions like any other text.
+            for (const auto &note : section->footnotes) {
+                for (const auto &noteElement : note.elements) {
+                    if (const auto *noteBlock = std::get_if<Layout::BlockBox>(&noteElement))
+                        addBlock(index, *noteBlock);
+                }
+            }
+        }
     }
     return index;
 }

@@ -25,6 +25,7 @@ public:
     QSizeF pageSize() const { return m_pageSize; }
     int pageNumber() const { return m_page ? m_page->pageNumber : 0; }
     const HitIndex &hitIndex() const { return m_hitIndex; }
+    QPointF contentOrigin() const;
 
     void setPageChrome(const PageLayout &layout, int totalPages,
                        const QString &fileName, const QString &title);
@@ -35,7 +36,6 @@ public:
     QString textInRect(const QRectF &itemRect) const;
 
 private:
-    QPointF contentOrigin() const;
     QPointF toContent(QPointF itemPos) const;
 
     std::shared_ptr<const Layout::Page> m_page;

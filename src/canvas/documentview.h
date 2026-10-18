@@ -159,6 +159,13 @@ public:
         m_webFontManager = owner.get(); m_webFontOwner = std::move(owner);
     }
 
+    // Internal reading links: a citation points at its note, a note's marker at
+    // the page that cites it. Both are collected as link rectangles, so the
+    // reader resolves them instead of the desktop.
+    bool activateInternalLink(const QString &href);
+    // What the status hint should say for a link, internal or not.
+    QString linkHint(const QString &href) const;
+
     bool isPdfMode() const { return m_pdfMode; }
     bool hasPageItems() const { return m_pdfMode || !m_boxPageItems.isEmpty(); }
     bool isPrintMode() const { return m_renderMode == PrintMode && hasPageItems(); }
@@ -204,6 +211,8 @@ private:
     void requestMoreLayout();
     bool headingSceneY(const HeadingPosition &hp, qreal *sceneY) const;
     bool sourceMapEntrySceneRect(const Layout::SourceMapEntry &entry, QRectF *rect) const;
+    bool scrollToHrefRect(const QString &href);
+    QString noteText(int index) const;
     // Maps an anchor line onto the installed revision's line numbering.
     int resolveAnchorLine(const ScrollAnchor &anchor) const;
     QString anchorContext(const Layout::SourceMapEntry &entry) const;

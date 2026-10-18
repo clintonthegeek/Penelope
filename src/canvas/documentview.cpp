@@ -1202,7 +1202,8 @@ void DocumentView::mousePressEvent(QMouseEvent *event)
         QPointF itemPos = m_webViewItem->mapFromScene(scenePos);
         QString href = m_webViewItem->linkAt(itemPos);
         if (!href.isEmpty()) {
-            QDesktopServices::openUrl(QUrl(href));
+            if (!activateInternalLink(href))
+                QDesktopServices::openUrl(QUrl(href));
             event->accept();
             return;
         }
@@ -1971,6 +1972,104 @@ void DocumentView::ensureLinkCacheForPage(int pageNum)
     m_linkCache.insert(pageNum, links);
 }
 
+
+bool DocumentView::scrollToHrefRect(const QString &href)
+{
+    if (m_webViewItem) {
+        for (const auto &link : m_webViewItem->linkHitRects()) {
+            if (link.href != href)
+                continue;
+            m_applyingScroll = true;
+            centerOn(m_webViewItem->pos() + link.rect.center());
+            m_applyingScroll = false;
+            updateCurrentPage();
+            return true;
+        }
+        return false;
+    }
+    for (auto *item : m_boxPageItems) {
+        const HitIndex &index = item->hitIndex();
+        for (int i = 0; i < index.linkHrefs.size(); ++i) {
+            if (index.linkHrefs.at(i) != href)
+                continue;
+            const QPointF center = item->pos() + item->contentOrigin()
+                + index.linkBounds.at(i).center();
+            m_applyingScroll = true;
+            centerOn(center);
+            m_applyingScroll = false;
+            updateCurrentPage();
+            return true;
+        }
+    }
+    return false;
+}
+
+QString DocumentView::noteText(int index) const
+{
+    for (const auto &block : m_contentDoc.blocks) {
+        const auto *section = std::get_if<Content::FootnoteSection>(&block);
+        if (!section || index < 0 || index >= section->footnotes.size())
+            continue;
+        Content::Document document;
+        document.blocks = section->footnotes.at(index).blocks;
+        return Content::toPlainText(document).simplified();
+    }
+    return {};
+}
+
+bool DocumentView::activateInternalLink(const QString &href)
+{
+    int noteIndex = -1;
+    if (!Content::isFootnoteInternalUrl(href, &noteIndex))
+        return false;
+
+    if (href.startsWith(QStringLiteral("penelope-footnote-ref:"))) {
+        // A note's marker: go back to the first page that cites it.
+        for (const auto &block : m_contentDoc.blocks) {
+            const auto *section = std::get_if<Content::FootnoteSection>(&block);
+            if (!section || noteIndex < 0 || noteIndex >= section->footnotes.size())
+                continue;
+            const auto &references = section->footnotes.at(noteIndex).references;
+            if (references.isEmpty())
+                return false;
+            const int line = references.first().sourceLine;
+            for (const auto &entry : m_sourceMap) {
+                if (line < entry.startLine || line > entry.endLine)
+                    continue;
+                scrollToPosition(m_renderMode == WebMode ? 0 : entry.pageNumber, entry.rect.top());
+                return true;
+            }
+            // Without a source map the citation's own rectangle is the anchor.
+            return scrollToHrefRect(Content::footnoteRefUrl(noteIndex));
+        }
+        return false;
+    }
+
+    // A citation: go to its note, wherever the layout put it.
+    if (scrollToHrefRect(Content::footnoteBacklinkUrl(noteIndex)))
+        return true;
+    // The notes are an endnote section in the continuous reader: they are at the
+    // end of the column.
+    if (m_webViewItem && verticalScrollBar()) {
+        m_applyingScroll = true;
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+        m_applyingScroll = false;
+        updateCurrentPage();
+        return true;
+    }
+    return false;
+}
+
+QString DocumentView::linkHint(const QString &href) const
+{
+    int noteIndex = -1;
+    if (!Content::isFootnoteInternalUrl(href, &noteIndex))
+        return href;
+    if (href.startsWith(QStringLiteral("penelope-footnote:")))
+        return noteText(noteIndex);
+    return tr("Go to the reference", "footnote back-link hover hint");
+}
+
 void DocumentView::checkLinkHover(const QPointF &scenePos)
 {
     // Web mode: use WebViewItem link hit-testing
@@ -1982,7 +2081,7 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
                 m_currentHoverLink = href;
                 viewport()->setCursor(Qt::PointingHandCursor);
                 const QString title = m_webViewItem->linkTitleAt(itemPos);
-                Q_EMIT statusHintChanged(title.isEmpty() ? href : title);
+                Q_EMIT statusHintChanged(title.isEmpty() ? linkHint(href) : title);
             }
         } else {
             if (!m_currentHoverLink.isEmpty()) {
@@ -2007,7 +2106,7 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
                     m_currentHoverLink = href;
                     viewport()->setCursor(Qt::PointingHandCursor);
                     const QString title = item->linkTitleAt(itemPos);
-                    Q_EMIT statusHintChanged(title.isEmpty() ? href : title);
+                    Q_EMIT statusHintChanged(title.isEmpty() ? linkHint(href) : title);
                 }
             } else if (!m_currentHoverLink.isEmpty()) {
                 m_currentHoverLink.clear();

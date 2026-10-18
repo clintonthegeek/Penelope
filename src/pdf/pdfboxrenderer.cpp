@@ -577,6 +577,9 @@ void PdfBoxRenderer::popState()
 void PdfBoxRenderer::collectLink(const QRectF &rect, const QString &href,
                                 const QString & /*title*/)
 {
+    // Internal reading links only mean something inside the reader.
+    if (Content::isFootnoteInternalUrl(href))
+        return;
     if (href.isEmpty()) return;
 
     // Convert from layout coordinates to PDF coordinates.

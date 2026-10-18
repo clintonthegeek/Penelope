@@ -221,6 +221,8 @@ using NoteElement = std::variant<BlockBox, TableBox>;
 
 struct FootnoteBox {
     QString label;
+    int index = 0; // the note's index in the section
+    QList<Content::FootnoteRefSite> references;
     QList<NoteElement> elements;
     Content::TextStyle numberStyle;
     qreal y = 0;

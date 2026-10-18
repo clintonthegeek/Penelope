@@ -2,6 +2,7 @@
 
 #include <KActionCollection>
 #include <KActionMenu>
+#include <KHelpMenu>
 #include <KLocalizedString>
 #include <KRecentFilesAction>
 #include <KStandardAction>
@@ -490,6 +491,12 @@ void MainWindow::setupActions()
     // Standard actions
     KStandardAction::quit(qApp, &QApplication::quit, ac);
     KStandardAction::preferences(this, &MainWindow::showPreferences, ac);
+
+    // Help menu. KHelpMenu builds both dialogs from the KAboutData set in
+    // main(), so the version shown there comes from CMake.
+    auto *helpMenu = new KHelpMenu(this);
+    KStandardAction::aboutApp(helpMenu, &KHelpMenu::aboutApplication, ac);
+    KStandardAction::aboutKDE(helpMenu, &KHelpMenu::aboutKDE, ac);
 
     // File > Open
     auto *openAction = KStandardAction::open(this, &MainWindow::onFileOpen, ac);

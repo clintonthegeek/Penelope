@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.19)
 project(Penelope VERSION 0.1.0 LANGUAGES CXX)
 
+# The project version above is the only place the application version is
+# defined. The About dialog and --version read this definition, CPack names
+# packages from it, and the release workflow rejects a tag that disagrees.
+add_compile_definitions(PENELOPE_VERSION="${PROJECT_VERSION}")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)

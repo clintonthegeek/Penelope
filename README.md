@@ -72,6 +72,17 @@ pacman -S qt6-base extra-cmake-modules ki18n kcoreaddons kxmlgui kiconthemes \
   harfbuzz harfbuzz-icu icu fontconfig hyphen md4c zlib
 ```
 
+## Versioning
+
+`project(Penelope VERSION …)` at the top of `CMakeLists.txt` is the single
+source of truth. CMake passes it to the code as `PENELOPE_VERSION`, so the
+Help → About dialog and `penelope --version` show it, and CPack names the
+`.deb` from it. The release workflow reads the same line and refuses a tag
+whose name (without `v`) differs from it.
+
+To release: change the version in `CMakeLists.txt`, commit, then tag
+`v<version>` and push the tag.
+
 ## License
 
 GPLv3. See [COPYING](COPYING) and the third-party notices in [LICENSES](LICENSES).

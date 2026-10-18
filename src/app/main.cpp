@@ -22,11 +22,11 @@ int main(int argc, char *argv[])
     KAboutData aboutData(
         QStringLiteral("penelope"),
         i18n("Penelope"),
-        QStringLiteral("0.1.0"),
+        QStringLiteral(PENELOPE_VERSION),
         i18n("A beautiful paginated markdown reader"),
         KAboutLicense::GPL_V3,
         i18n("(c) 2025-2026"),
-        QString(),
+        QStringLiteral("https://github.com/clintonthegeek/Penelope/issues"),
         QStringLiteral("https://github.com/clintonthegeek/Penelope")
     );
     aboutData.addAuthor(i18n("Clinton Ignatov"), i18n("Developer"), QString());

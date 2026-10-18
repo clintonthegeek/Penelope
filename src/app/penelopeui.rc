@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="penelope" version="21">
+<gui name="penelope" version="22">
 
   <MenuBar>
     <Menu name="file">
@@ -68,6 +68,8 @@
 
     <Menu name="help">
       <text>&amp;Help</text>
+      <Action name="help_about_app"/>
+      <Action name="help_about_kde"/>
     </Menu>
   </MenuBar>
 

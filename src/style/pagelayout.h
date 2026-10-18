@@ -12,6 +12,14 @@
 
 #include "masterpage.h"
 
+// The page sizes the UI offers and the tokens they are saved as.
+namespace PageSizes {
+QList<QPageSize::PageSizeId> offered();
+QString label(QPageSize::PageSizeId id);
+QString token(QPageSize::PageSizeId id);
+QPageSize::PageSizeId fromToken(const QString &token);
+} // namespace PageSizes
+
 struct PageLayout
 {
     // JSON serialization
@@ -21,6 +29,9 @@ struct PageLayout
     QJsonObject toMasterPagesJson() const;
 
     QPageSize::PageSizeId pageSizeId = QPageSize::A4;
+    // The page's own size in mm, used when pageSizeId is Custom. Empty means
+    // "no custom size has been given".
+    QSizeF customSizeMm;
     QPageLayout::Orientation orientation = QPageLayout::Portrait;
     QMarginsF margins{25.0, 25.0, 25.0, 25.0}; // mm
     QColor pageBackground = Qt::white;
@@ -54,10 +65,7 @@ struct PageLayout
     // Subtracts margins and header/footer heights from the full page size.
     QSizeF contentSizePoints() const
     {
-        QPageSize ps(pageSizeId);
-        QSizeF full = ps.size(QPageSize::Point);
-        if (orientation == QPageLayout::Landscape)
-            full.transpose();
+        const QSizeF full = pageSizePoints();
 
         // Convert mm margins to points (1mm = 2.8346pt)
         constexpr qreal mmToPt = 72.0 / 25.4;
@@ -71,11 +79,28 @@ struct PageLayout
                           - headerTotalHeight() - footerTotalHeight());
     }
 
+    bool hasCustomSize() const
+    {
+        return pageSizeId == QPageSize::Custom
+            && customSizeMm.isValid()
+            && customSizeMm.width() > 0 && customSizeMm.height() > 0;
+    }
+
     // Return the full page size in points
     QSizeF pageSizePoints() const
     {
-        QPageSize ps(pageSizeId);
-        QSizeF full = ps.size(QPageSize::Point);
+        constexpr qreal mmToPt = 72.0 / 25.4;
+        QSizeF full;
+        if (hasCustomSize()) {
+            full = QSizeF(customSizeMm.width() * mmToPt, customSizeMm.height() * mmToPt);
+        } else {
+            // An unknown id (or Custom without dimensions) falls back to A4
+            // rather than to a zero-sized page.
+            QPageSize ps(pageSizeId);
+            full = ps.size(QPageSize::Point);
+            if (full.width() <= 0 || full.height() <= 0)
+                full = QPageSize(QPageSize::A4).size(QPageSize::Point);
+        }
         if (orientation == QPageLayout::Landscape)
             full.transpose();
         return full;

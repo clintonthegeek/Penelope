@@ -67,6 +67,8 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QLayout>
+#include <QComboBox>
+#include <QDoubleSpinBox>
 #include "printcontroller.h"
 #include "themecomposer.h"
 #include "thememanager.h"
@@ -3894,6 +3896,112 @@ private Q_SLOTS:
                  || !HeaderFooterRenderer::resolveField(QStringLiteral("{date:nonsense}"), meta)
                          .contains(QStringLiteral("{date:")),
                  "a format Qt cannot render leaves nothing behind");
+    }
+    void pageSizesSurviveASave() {
+        for (QPageSize::PageSizeId id : PageSizes::offered()) {
+            if (id == QPageSize::Custom)
+                continue;
+            PageLayout pl; pl.pageSizeId = id;
+            const PageLayout back = PageLayout::fromJson(pl.toPageLayoutJson(), {});
+            QCOMPARE(int(back.pageSizeId), int(id));
+            QCOMPARE(back.pageSizePoints(), pl.pageSizePoints());
+        }
+        // Sizes the UI does not list still survive a template round trip.
+        for (QPageSize::PageSizeId id : {QPageSize::A3, QPageSize::Tabloid, QPageSize::B4}) {
+            PageLayout pl; pl.pageSizeId = id;
+            const PageLayout back = PageLayout::fromJson(pl.toPageLayoutJson(), {});
+            QCOMPARE(int(back.pageSizeId), int(id));
+            QCOMPARE(back.pageSizePoints(), QPageSize(id).size(QPageSize::Point));
+        }
+        // A custom size keeps its dimensions.
+        PageLayout custom; custom.pageSizeId = QPageSize::Custom;
+        custom.customSizeMm = QSizeF(150.0, 200.0);
+        QVERIFY(custom.hasCustomSize());
+        const PageLayout back = PageLayout::fromJson(custom.toPageLayoutJson(), {});
+        QVERIFY(back.hasCustomSize());
+        QCOMPARE(back.customSizeMm, QSizeF(150.0, 200.0));
+        constexpr qreal mmToPt = 72.0 / 25.4;
+        QCOMPARE(back.pageSizePoints(), QSizeF(150.0 * mmToPt, 200.0 * mmToPt));
+        QCOMPARE(back.contentSizePoints().width(),
+                 custom.pageSizePoints().width() - 2 * 25.0 * mmToPt + 0.0);
+
+        // Custom without dimensions falls back to A4 rather than collapsing.
+        PageLayout empty; empty.pageSizeId = QPageSize::Custom;
+        QVERIFY(!empty.hasCustomSize());
+        QCOMPARE(empty.pageSizePoints(), QPageSize(QPageSize::A4).size(QPageSize::Point));
+    }
+
+    void pageSizeWidgetDrivesTheLayout() {
+        PageLayoutWidget widget;
+        PageLayout pl; pl.pageSizeId = QPageSize::A4;
+        widget.setPageLayout(pl);
+
+        QComboBox *sizeCombo = nullptr;
+        for (auto *combo : widget.findChildren<QComboBox *>()) {
+            if (combo->count() > 8)
+                sizeCombo = combo;
+        }
+        QVERIFY(sizeCombo);
+        const int a3 = sizeCombo->findData(static_cast<int>(QPageSize::A3));
+        const int custom = sizeCombo->findData(static_cast<int>(QPageSize::Custom));
+        QVERIFY(a3 >= 0);
+        QVERIFY(custom >= 0);
+
+        QSignalSpy changed(&widget, &PageLayoutWidget::pageLayoutChanged);
+        sizeCombo->setCurrentIndex(a3);
+        QVERIFY(changed.count() >= 1);
+        QCOMPARE(int(widget.currentPageLayout().pageSizeId), int(QPageSize::A3));
+
+        // Custom reveals its dimension fields and reports them.
+        sizeCombo->setCurrentIndex(custom);
+        QList<QDoubleSpinBox *> spins = widget.findChildren<QDoubleSpinBox *>();
+        QCOMPARE(spins.size(), 6);
+        // Creation order: the custom page fields, then the four margins.
+        QDoubleSpinBox *width = spins.at(0);
+        QDoubleSpinBox *height = spins.at(1);
+        QVERIFY(width && height);
+        QVERIFY2(width->maximum() > 500.0, "the page fields are the roomy ones");
+        QVERIFY2(width->isVisible() || !widget.isVisible(), "the page fields are shown for Custom");
+        width->setValue(148.0);
+        height->setValue(210.0);
+        const PageLayout out = widget.currentPageLayout();
+        QCOMPARE(int(out.pageSizeId), int(QPageSize::Custom));
+        QVERIFY(out.hasCustomSize());
+        constexpr qreal mmToPt = 72.0 / 25.4;
+        QCOMPARE(out.pageSizePoints().width(), 148.0 * mmToPt);
+        QCOMPARE(out.pageSizePoints().height(), 210.0 * mmToPt);
+    }
+
+    void pageUnitsConvertAndKeepMillimetres() {
+        PageLayoutWidget widget;
+        PageLayout pl; pl.pageSizeId = QPageSize::Letter;
+        pl.margins = QMarginsF(25.4, 25.4, 25.4, 25.4);
+        widget.setPageLayout(pl);
+        QCOMPARE(widget.currentPageLayout().margins.left(), 25.4);
+
+        QComboBox *unitsCombo = nullptr;
+        for (auto *combo : widget.findChildren<QComboBox *>()) {
+            if (combo->count() == 2 && combo->itemText(0) == QStringLiteral("Millimetres"))
+                unitsCombo = combo;
+        }
+        QVERIFY(unitsCombo);
+        // Creation order: the two custom page fields, then the four margins.
+        const QList<QDoubleSpinBox *> spins = widget.findChildren<QDoubleSpinBox *>();
+        QCOMPARE(spins.size(), 6);
+        QDoubleSpinBox *top = spins.at(2);
+        unitsCombo->setCurrentIndex(1); // inches
+        QCOMPARE(widget.currentPageLayout().margins.left(), 25.4); // still millimetres
+        QVERIFY2(qAbs(top->value() - 1.0) < 0.01, qPrintable(QString::number(top->value())));
+        QVERIFY(top->suffix().contains(QStringLiteral("in")));
+
+        unitsCombo->setCurrentIndex(0); // back to millimetres
+        QCOMPARE(widget.currentPageLayout().margins.left(), 25.4);
+        QVERIFY2(qAbs(top->value() - 25.4) < 0.2, qPrintable(QString::number(top->value())));
+
+        // A page may have no margin at all now.
+        QCOMPARE(top->minimum(), 0.0);
+        top->setValue(0.0);
+        QCOMPARE(widget.currentPageLayout().margins.top(), 0.0);
     }
 };
 

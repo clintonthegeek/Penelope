@@ -31,6 +31,11 @@ private Q_SLOTS:
 
 private:
     void saveCurrentPageTypeState();
+    void applyUnits();
+    qreal toMillimetres(qreal displayed) const;
+    qreal fromMillimetres(qreal millimetres) const;
+    bool isCustomSizeSelected() const;
+    void updateCustomSizeVisibility();
     void loadPageTypeState(const QString &type);
     void blockAllSignals(bool block);
 
@@ -39,6 +44,10 @@ private:
     QComboBox *m_orientationCombo = nullptr;
     QWidget *m_pageSizeRow = nullptr;
     QWidget *m_orientationRow = nullptr;
+    QWidget *m_customSizeRow = nullptr;
+    QDoubleSpinBox *m_customWidthSpin = nullptr;
+    QDoubleSpinBox *m_customHeightSpin = nullptr;
+    QComboBox *m_unitsCombo = nullptr;
     QDoubleSpinBox *m_marginTopSpin = nullptr;
     QDoubleSpinBox *m_marginBottomSpin = nullptr;
     QDoubleSpinBox *m_marginLeftSpin = nullptr;
@@ -54,6 +63,7 @@ private:
     QHash<QString, MasterPage> m_masterPages;
     QString m_currentPageType;  // empty = "All Pages"
     PageLayout m_baseLayout;    // base layout for inherit reference
+    bool m_inches = false;      // display unit for the margin and size spin boxes
 };
 
 #endif // PENELOPE_PAGELAYOUTWIDGET_H

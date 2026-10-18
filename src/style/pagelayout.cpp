@@ -12,17 +12,63 @@
 // fromJson / toJson for page layout
 // ---------------------------------------------------------------------------
 
+// The tokens a saved page size is written as, and read back from. They are
+// stable: a template written by an older Penelope keeps its size.
+struct PageSizeToken {
+    const char *token;
+    QPageSize::PageSizeId id;
+};
+
+static const PageSizeToken kPageSizeTokens[] = {
+    {"A0", QPageSize::A0}, {"A1", QPageSize::A1}, {"A2", QPageSize::A2},
+    {"A3", QPageSize::A3}, {"A4", QPageSize::A4}, {"A5", QPageSize::A5},
+    {"A6", QPageSize::A6}, {"A7", QPageSize::A7}, {"A8", QPageSize::A8},
+    {"A9", QPageSize::A9}, {"A10", QPageSize::A10},
+    {"B0", QPageSize::B0}, {"B1", QPageSize::B1}, {"B2", QPageSize::B2},
+    {"B3", QPageSize::B3}, {"B4", QPageSize::B4}, {"B5", QPageSize::B5},
+    {"B6", QPageSize::B6}, {"B7", QPageSize::B7}, {"B8", QPageSize::B8},
+    {"B9", QPageSize::B9}, {"B10", QPageSize::B10},
+    {"C5E", QPageSize::C5E}, {"Comm10E", QPageSize::Comm10E},
+    {"DLE", QPageSize::DLE}, {"Executive", QPageSize::Executive},
+    {"Folio", QPageSize::Folio}, {"Ledger", QPageSize::Ledger},
+    {"Legal", QPageSize::Legal}, {"Letter", QPageSize::Letter},
+    {"Tabloid", QPageSize::Tabloid}, {"Custom", QPageSize::Custom},
+};
+
+static QString pageSizeToString(QPageSize::PageSizeId id)
+{
+    for (const auto &entry : kPageSizeTokens) {
+        if (entry.id == id)
+            return QString::fromLatin1(entry.token);
+    }
+    return QStringLiteral("A4");
+}
+
+static QPageSize::PageSizeId pageSizeFromString(const QString &token, bool *known = nullptr)
+{
+    for (const auto &entry : kPageSizeTokens) {
+        if (token == QLatin1String(entry.token)) {
+            if (known)
+                *known = true;
+            return entry.id;
+        }
+    }
+    if (known)
+        *known = false;
+    return QPageSize::A4;
+}
+
+
 PageLayout PageLayout::fromJson(const QJsonObject &plObj, const QJsonObject &mpObj)
 {
     PageLayout pl;
 
-    if (plObj.contains(QLatin1String("pageSize"))) {
-        QString sizeStr = plObj.value(QLatin1String("pageSize")).toString();
-        if (sizeStr == QLatin1String("Letter"))      pl.pageSizeId = QPageSize::Letter;
-        else if (sizeStr == QLatin1String("A5"))      pl.pageSizeId = QPageSize::A5;
-        else if (sizeStr == QLatin1String("Legal"))   pl.pageSizeId = QPageSize::Legal;
-        else if (sizeStr == QLatin1String("B5"))      pl.pageSizeId = QPageSize::B5;
-        else                                           pl.pageSizeId = QPageSize::A4;
+    if (plObj.contains(QLatin1String("pageSize")))
+        pl.pageSizeId = pageSizeFromString(plObj.value(QLatin1String("pageSize")).toString());
+    if (plObj.contains(QLatin1String("pageSizeCustom"))) {
+        const QJsonObject c = plObj.value(QLatin1String("pageSizeCustom")).toObject();
+        pl.customSizeMm = QSizeF(c.value(QLatin1String("width")).toDouble(),
+                                 c.value(QLatin1String("height")).toDouble());
     }
     if (plObj.contains(QLatin1String("orientation"))) {
         QString orient = plObj.value(QLatin1String("orientation")).toString();
@@ -104,22 +150,18 @@ PageLayout PageLayout::fromJson(const QJsonObject &plObj, const QJsonObject &mpO
     return pl;
 }
 
-static QString pageSizeToString(QPageSize::PageSizeId id)
-{
-    switch (id) {
-    case QPageSize::Letter: return QStringLiteral("Letter");
-    case QPageSize::A5:     return QStringLiteral("A5");
-    case QPageSize::Legal:  return QStringLiteral("Legal");
-    case QPageSize::B5:     return QStringLiteral("B5");
-    default:                return QStringLiteral("A4");
-    }
-}
-
 QJsonObject PageLayout::toPageLayoutJson() const
 {
     QJsonObject obj;
 
     obj[QLatin1String("pageSize")] = pageSizeToString(pageSizeId);
+    if (pageSizeId == QPageSize::Custom && customSizeMm.isValid()) {
+        QJsonObject c;
+        c[QLatin1String("width")]  = customSizeMm.width();
+        c[QLatin1String("height")] = customSizeMm.height();
+        c[QLatin1String("unit")]   = QStringLiteral("mm");
+        obj[QLatin1String("pageSizeCustom")] = c;
+    }
     obj[QLatin1String("orientation")] = (orientation == QPageLayout::Landscape)
         ? QStringLiteral("landscape") : QStringLiteral("portrait");
 
@@ -185,3 +227,40 @@ QJsonObject PageLayout::toMasterPagesJson() const
 
     return result;
 }
+
+namespace PageSizes {
+
+QList<QPageSize::PageSizeId> offered()
+{
+    // A4 first: it is the default, and the list stays short enough to scan.
+    return {QPageSize::A4, QPageSize::A3, QPageSize::A5, QPageSize::A6,
+            QPageSize::B5, QPageSize::B4, QPageSize::Letter, QPageSize::Legal,
+            QPageSize::Ledger, QPageSize::Tabloid, QPageSize::Executive,
+            QPageSize::Folio, QPageSize::C5E, QPageSize::Comm10E,
+            QPageSize::DLE, QPageSize::Custom};
+}
+
+QString label(QPageSize::PageSizeId id)
+{
+    if (id == QPageSize::Custom)
+        return QStringLiteral("Custom");
+    const QSizeF mm = QPageSize(id).size(QPageSize::Millimeter);
+    if (mm.width() <= 0 || mm.height() <= 0)
+        return token(id);
+    return QStringLiteral("%1 (%2 \u00d7 %3 mm)")
+        .arg(token(id))
+        .arg(QString::number(mm.width(), 'g', 5))
+        .arg(QString::number(mm.height(), 'g', 5));
+}
+
+QString token(QPageSize::PageSizeId id)
+{
+    return pageSizeToString(id);
+}
+
+QPageSize::PageSizeId fromToken(const QString &token)
+{
+    return pageSizeFromString(token);
+}
+
+} // namespace PageSizes

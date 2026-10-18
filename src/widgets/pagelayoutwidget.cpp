@@ -38,13 +38,37 @@ PageLayoutWidget::PageLayoutWidget(QWidget *parent)
     sizeRowLayout->setContentsMargins(0, 0, 0, 0);
     sizeRowLayout->addWidget(new QLabel(tr("Size:")));
     m_pageSizeCombo = new QComboBox;
-    m_pageSizeCombo->addItem(QStringLiteral("A4"), static_cast<int>(QPageSize::A4));
-    m_pageSizeCombo->addItem(QStringLiteral("Letter"), static_cast<int>(QPageSize::Letter));
-    m_pageSizeCombo->addItem(QStringLiteral("A5"), static_cast<int>(QPageSize::A5));
-    m_pageSizeCombo->addItem(QStringLiteral("Legal"), static_cast<int>(QPageSize::Legal));
-    m_pageSizeCombo->addItem(QStringLiteral("B5"), static_cast<int>(QPageSize::B5));
-    sizeRowLayout->addWidget(m_pageSizeCombo);
+    for (QPageSize::PageSizeId id : PageSizes::offered())
+        m_pageSizeCombo->addItem(PageSizes::label(id), static_cast<int>(id));
+    sizeRowLayout->addWidget(m_pageSizeCombo, 1);
+    sizeRowLayout->addWidget(new QLabel(tr("Units:")));
+    m_unitsCombo = new QComboBox;
+    m_unitsCombo->addItem(tr("Millimetres"));
+    m_unitsCombo->addItem(tr("Inches"));
+    sizeRowLayout->addWidget(m_unitsCombo);
     layout->addWidget(m_pageSizeRow);
+
+    // Custom page dimensions, shown only while "Custom" is chosen.
+    m_customSizeRow = new QWidget;
+    auto *customRow = new QHBoxLayout(m_customSizeRow);
+    customRow->setContentsMargins(0, 0, 0, 0);
+    customRow->addWidget(new QLabel(tr("Page:")));
+    m_customWidthSpin = new QDoubleSpinBox;
+    m_customWidthSpin->setRange(40.0, 2000.0);
+    m_customWidthSpin->setDecimals(1);
+    m_customWidthSpin->setValue(210.0);
+    m_customWidthSpin->setSuffix(QStringLiteral(" mm"));
+    customRow->addWidget(m_customWidthSpin);
+    customRow->addWidget(new QLabel(tr("\u00d7")));
+    m_customHeightSpin = new QDoubleSpinBox;
+    m_customHeightSpin->setRange(40.0, 2000.0);
+    m_customHeightSpin->setDecimals(1);
+    m_customHeightSpin->setValue(297.0);
+    m_customHeightSpin->setSuffix(QStringLiteral(" mm"));
+    customRow->addWidget(m_customHeightSpin);
+    customRow->addStretch();
+    layout->addWidget(m_customSizeRow);
+    m_customSizeRow->setVisible(false);
 
     // Orientation (wrapped in a widget for show/hide)
     m_orientationRow = new QWidget;
@@ -62,7 +86,7 @@ PageLayoutWidget::PageLayoutWidget(QWidget *parent)
 
     auto makeMarginSpin = []() {
         auto *spin = new QDoubleSpinBox;
-        spin->setRange(-1.0, 50.0);
+        spin->setRange(0.0, 200.0);
         spin->setSuffix(QStringLiteral(" mm"));
         spin->setDecimals(1);
         spin->setValue(25.0);
@@ -110,8 +134,35 @@ PageLayoutWidget::PageLayoutWidget(QWidget *parent)
     layout->addStretch();
 
     // Connect signals
-    connect(m_pageSizeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, &PageLayoutWidget::pageLayoutChanged);
+    connect(m_pageSizeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+        updateCustomSizeVisibility();
+        Q_EMIT pageLayoutChanged();
+    });
+    connect(m_unitsCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+        const bool toInches = (index == 1);
+        if (toInches == m_inches)
+            return;
+        const qreal factor = toInches ? 1.0 / 25.4 : 25.4;
+        const QList<QDoubleSpinBox *> spins{m_marginTopSpin, m_marginBottomSpin,
+                                            m_marginLeftSpin, m_marginRightSpin,
+                                            m_customWidthSpin, m_customHeightSpin};
+        // Widen the range first: converting 25 mm to inches inside a range that
+        // still stops at 8 in would silently clamp the value.
+        for (auto *spin : spins)
+            spin->setRange(spin->minimum() < 0 ? -1.0 : 0.0, 100000.0);
+        for (auto *spin : spins) {
+            const bool inherited = spin->minimum() < 0 && spin->value() < 0;
+            if (!inherited)
+                spin->setValue(spin->value() * factor);
+        }
+        m_inches = toInches;
+        applyUnits(); // tightens the ranges for the new unit
+        Q_EMIT pageLayoutChanged();
+    });
+    connect(m_customWidthSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this]() { m_marginDebounce->start(); });
+    connect(m_customHeightSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this]() { m_marginDebounce->start(); });
     connect(m_orientationCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &PageLayoutWidget::pageLayoutChanged);
     m_marginDebounce = new QTimer(this);
@@ -143,6 +194,9 @@ void PageLayoutWidget::blockAllSignals(bool block)
 {
     m_pageSizeCombo->blockSignals(block);
     m_orientationCombo->blockSignals(block);
+    m_customWidthSpin->blockSignals(block);
+    m_customHeightSpin->blockSignals(block);
+    m_unitsCombo->blockSignals(block);
     m_marginTopSpin->blockSignals(block);
     m_marginBottomSpin->blockSignals(block);
     m_marginLeftSpin->blockSignals(block);
@@ -174,6 +228,10 @@ void PageLayoutWidget::saveCurrentPageTypeState()
         // Saving base layout
         m_baseLayout.pageSizeId = static_cast<QPageSize::PageSizeId>(
             m_pageSizeCombo->currentData().toInt());
+        if (isCustomSizeSelected()) {
+            m_baseLayout.customSizeMm = QSizeF(toMillimetres(m_customWidthSpin->value()),
+                                               toMillimetres(m_customHeightSpin->value()));
+        }
         m_baseLayout.orientation = static_cast<QPageLayout::Orientation>(
             m_orientationCombo->currentData().toInt());
         m_baseLayout.margins = QMarginsF(m_marginLeftSpin->value(),
@@ -191,10 +249,13 @@ void PageLayoutWidget::saveCurrentPageTypeState()
         Qt::CheckState fState = m_footerCheck->checkState();
         mp.footerEnabled = (fState == Qt::PartiallyChecked) ? -1 : (fState == Qt::Checked ? 1 : 0);
 
-        mp.marginTop = m_marginTopSpin->value();
-        mp.marginBottom = m_marginBottomSpin->value();
-        mp.marginLeft = m_marginLeftSpin->value();
-        mp.marginRight = m_marginRightSpin->value();
+        auto storeMargin = [this](qreal displayed) {
+            return displayed < 0 ? -1.0 : toMillimetres(displayed);
+        };
+        mp.marginTop = storeMargin(m_marginTopSpin->value());
+        mp.marginBottom = storeMargin(m_marginBottomSpin->value());
+        mp.marginLeft = storeMargin(m_marginLeftSpin->value());
+        mp.marginRight = storeMargin(m_marginRightSpin->value());
 
         // Preserve text overrides managed by the dialog
         auto existingIt = m_masterPages.find(m_currentPageType);
@@ -246,16 +307,23 @@ void PageLayoutWidget::loadPageTypeState(const QString &type)
         m_orientationCombo->setCurrentIndex(
             m_baseLayout.orientation == QPageLayout::Landscape ? 1 : 0);
 
-        // Restore normal margin range
-        m_marginTopSpin->setMinimum(5.0);
-        m_marginBottomSpin->setMinimum(5.0);
-        m_marginLeftSpin->setMinimum(5.0);
-        m_marginRightSpin->setMinimum(5.0);
+        // A page may have no margin at all; the master page types keep the
+        // (inherit) sentinel instead.
+        m_marginTopSpin->setMinimum(fromMillimetres(0.0));
+        m_marginBottomSpin->setMinimum(fromMillimetres(0.0));
+        m_marginLeftSpin->setMinimum(fromMillimetres(0.0));
+        m_marginRightSpin->setMinimum(fromMillimetres(0.0));
 
-        m_marginTopSpin->setValue(m_baseLayout.margins.top());
-        m_marginBottomSpin->setValue(m_baseLayout.margins.bottom());
-        m_marginLeftSpin->setValue(m_baseLayout.margins.left());
-        m_marginRightSpin->setValue(m_baseLayout.margins.right());
+        m_marginTopSpin->setValue(fromMillimetres(m_baseLayout.margins.top()));
+        m_marginBottomSpin->setValue(fromMillimetres(m_baseLayout.margins.bottom()));
+        m_marginLeftSpin->setValue(fromMillimetres(m_baseLayout.margins.left()));
+        m_marginRightSpin->setValue(fromMillimetres(m_baseLayout.margins.right()));
+
+        if (m_baseLayout.hasCustomSize()) {
+            m_customWidthSpin->setValue(fromMillimetres(m_baseLayout.customSizeMm.width()));
+            m_customHeightSpin->setValue(fromMillimetres(m_baseLayout.customSizeMm.height()));
+        }
+        updateCustomSizeVisibility();
 
         m_headerCheck->setChecked(m_baseLayout.headerEnabled);
         m_footerCheck->setChecked(m_baseLayout.footerEnabled);
@@ -287,10 +355,14 @@ void PageLayoutWidget::loadPageTypeState(const QString &type)
             m_footerCheck->setCheckState(mp.footerEnabled ? Qt::Checked : Qt::Unchecked);
 
         // Margins: -1 = inherit
-        m_marginTopSpin->setValue(mp.marginTop);
-        m_marginBottomSpin->setValue(mp.marginBottom);
-        m_marginLeftSpin->setValue(mp.marginLeft);
-        m_marginRightSpin->setValue(mp.marginRight);
+        auto loadMargin = [this](qreal millimetres) {
+            return millimetres < 0 ? -1.0 : fromMillimetres(millimetres);
+        };
+        m_marginTopSpin->setValue(loadMargin(mp.marginTop));
+        m_marginBottomSpin->setValue(loadMargin(mp.marginBottom));
+        m_marginLeftSpin->setValue(loadMargin(mp.marginLeft));
+        m_marginRightSpin->setValue(loadMargin(mp.marginRight));
+        m_customSizeRow->setVisible(false);
     }
 
     blockAllSignals(false);
@@ -308,8 +380,14 @@ PageLayout PageLayoutWidget::currentPageLayout() const
     if (m_currentPageType.isEmpty()) {
         pl.pageSizeId = static_cast<QPageSize::PageSizeId>(m_pageSizeCombo->currentData().toInt());
         pl.orientation = static_cast<QPageLayout::Orientation>(m_orientationCombo->currentData().toInt());
-        pl.margins = QMarginsF(m_marginLeftSpin->value(), m_marginTopSpin->value(),
-                                m_marginRightSpin->value(), m_marginBottomSpin->value());
+        pl.margins = QMarginsF(toMillimetres(m_marginLeftSpin->value()),
+                               toMillimetres(m_marginTopSpin->value()),
+                               toMillimetres(m_marginRightSpin->value()),
+                               toMillimetres(m_marginBottomSpin->value()));
+        if (isCustomSizeSelected()) {
+            pl.customSizeMm = QSizeF(toMillimetres(m_customWidthSpin->value()),
+                                     toMillimetres(m_customHeightSpin->value()));
+        }
         pl.headerEnabled = m_headerCheck->isChecked();
         pl.footerEnabled = m_footerCheck->isChecked();
     }
@@ -357,5 +435,48 @@ void PageLayoutWidget::onEditHeadersFooters()
         m_masterPages = result.masterPages;
 
         Q_EMIT pageLayoutChanged();
+    }
+}
+
+bool PageLayoutWidget::isCustomSizeSelected() const
+{
+    return static_cast<QPageSize::PageSizeId>(m_pageSizeCombo->currentData().toInt())
+           == QPageSize::Custom;
+}
+
+void PageLayoutWidget::updateCustomSizeVisibility()
+{
+    m_customSizeRow->setVisible(m_currentPageType.isEmpty() && isCustomSizeSelected());
+}
+
+qreal PageLayoutWidget::toMillimetres(qreal displayed) const
+{
+    return m_inches ? displayed * 25.4 : displayed;
+}
+
+qreal PageLayoutWidget::fromMillimetres(qreal millimetres) const
+{
+    return m_inches ? millimetres / 25.4 : millimetres;
+}
+
+// The spin boxes show millimetres or inches; the model is always millimetres.
+void PageLayoutWidget::applyUnits()
+{
+    const QString suffix = m_inches ? QStringLiteral(" in") : QStringLiteral(" mm");
+    const int decimals = m_inches ? 2 : 1;
+    const qreal marginMax = m_inches ? 200.0 / 25.4 : 200.0;
+    const qreal pageMin = m_inches ? 40.0 / 25.4 : 40.0;
+    const qreal pageMax = m_inches ? 2000.0 / 25.4 : 2000.0;
+
+    for (auto *spin : {m_marginTopSpin, m_marginBottomSpin, m_marginLeftSpin, m_marginRightSpin}) {
+        spin->setSuffix(suffix);
+        spin->setDecimals(decimals);
+        // A master page type may still inherit (-1); the base layout may not.
+        spin->setRange(spin->minimum() < 0 ? -1.0 : 0.0, marginMax);
+    }
+    for (auto *spin : {m_customWidthSpin, m_customHeightSpin}) {
+        spin->setSuffix(suffix);
+        spin->setDecimals(decimals);
+        spin->setRange(pageMin, pageMax);
     }
 }

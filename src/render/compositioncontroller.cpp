@@ -193,8 +193,10 @@ Q_SIGNALS:
     void completed(quint64 id, CompositionResultPtr result, const QString &error);
 private:
     static QString pageGeometryKey(const CompositionRequest &r) {
+        // Everything that can move a line: the page, the margins, the chrome,
+        // and the per-page-type (master page) overrides.
         const QSizeF size = r.pageLayout.pageSizePoints();
-        return QString::number(size.width(), 'f', 2) + QLatin1Char('x')
+        QString key = QString::number(size.width(), 'f', 2) + QLatin1Char('x')
             + QString::number(size.height(), 'f', 2)
             + QString::number(r.pageLayout.margins.left(), 'f', 2)
             + QString::number(r.pageLayout.margins.top(), 'f', 2)
@@ -204,6 +206,22 @@ private:
             + (r.pageLayout.footerEnabled ? QStringLiteral("F") : QStringLiteral("f"))
             + r.pageLayout.headerLeft + r.pageLayout.headerCenter + r.pageLayout.headerRight
             + r.pageLayout.footerLeft + r.pageLayout.footerCenter + r.pageLayout.footerRight;
+        QStringList types = r.pageLayout.masterPages.keys();
+        types.sort();
+        for (const QString &type : types) {
+            const MasterPage &mp = r.pageLayout.masterPages.value(type);
+            key += type
+                + QString::number(mp.headerEnabled) + QString::number(mp.footerEnabled)
+                + QString::number(mp.marginTop, 'f', 2) + QString::number(mp.marginBottom, 'f', 2)
+                + QString::number(mp.marginLeft, 'f', 2) + QString::number(mp.marginRight, 'f', 2)
+                + (mp.hasHeaderLeft ? mp.headerLeft : QString())
+                + (mp.hasHeaderCenter ? mp.headerCenter : QString())
+                + (mp.hasHeaderRight ? mp.headerRight : QString())
+                + (mp.hasFooterLeft ? mp.footerLeft : QString())
+                + (mp.hasFooterCenter ? mp.footerCenter : QString())
+                + (mp.hasFooterRight ? mp.footerRight : QString());
+        }
+        return key;
     }
     static QString pageCursorKey(const CompositionRequest &r) {
         return r.markdown + QLatin1Char('\n') + pageGeometryKey(r);

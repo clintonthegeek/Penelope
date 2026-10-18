@@ -11,6 +11,7 @@ QString inlineText(const QList<InlineNode> &inlines, const FootnoteStyle &noteSt
             if constexpr (std::is_same_v<T, TextRun> || std::is_same_v<T, InlineCode>
                           || std::is_same_v<T, Link>) text += n.text;
             else if constexpr (std::is_same_v<T, InlineImage>) text += n.altText;
+            else if constexpr (std::is_same_v<T, Math>) text += n.source;
             else if constexpr (std::is_same_v<T, FootnoteRef>) text += footnoteMarker(noteStyle, n.index);
             else if constexpr (std::is_same_v<T, SoftBreak>) text += QLatin1Char(' ');
             else if constexpr (std::is_same_v<T, HardBreak>) text += QLatin1Char('\n');

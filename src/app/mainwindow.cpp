@@ -1043,6 +1043,8 @@ void MainWindow::onFileExportPdf()
                         substituteStyle(n.style);
                     else if constexpr (std::is_same_v<T, Content::Link>)
                         substituteStyle(n.style);
+                    else if constexpr (std::is_same_v<T, Content::Math>)
+                        substituteStyle(n.style);
                     else if constexpr (std::is_same_v<T, Content::FootnoteRef>)
                         substituteStyle(n.style);
                 }, node);

@@ -119,6 +119,8 @@ private:
     // Link tracking (href flows through TextStyle on each TextRun inside the span)
     QString m_linkHref;
     int m_linkSpanDepth = 0;
+    bool m_inMath = false;
+    bool m_mathDisplay = false;
     QList<QList<Content::FootnoteRefSite>> m_footnoteRefSites;
 
     // Block routing: adds a completed block to the correct container

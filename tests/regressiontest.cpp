@@ -3068,6 +3068,71 @@ private Q_SLOTS:
         }
         QVERIFY2(literalInCode, "a code span is not entity-decoded");
     }
+    void md01MathSpans() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "Inline $x^2 + y^2$ math and\n\n$$\\int_0^1 x\\,dx = \\frac{1}{2}$$\n\n"
+            "after the formula.\n"));
+        const auto *para = std::get_if<Content::Paragraph>(&doc.blocks.first());
+        QVERIFY(para);
+        const Content::Math *inlineMath = nullptr;
+        for (const auto &node : para->inlines) {
+            if (const auto *math = std::get_if<Content::Math>(&node))
+                inlineMath = math;
+        }
+        QVERIFY2(inlineMath, "an inline math span becomes a model node");
+        QVERIFY(!inlineMath->display);
+        QVERIFY(inlineMath->source.contains(QStringLiteral("x^2")));
+        QVERIFY(!inlineMath->source.startsWith(QLatin1Char('$')));
+
+        const Content::Math *displayMath = nullptr;
+        for (const auto &block : doc.blocks) {
+            const auto *candidate = std::get_if<Content::Paragraph>(&block);
+            if (!candidate)
+                continue;
+            for (const auto &node : candidate->inlines) {
+                if (const auto *math = std::get_if<Content::Math>(&node)) {
+                    if (math->display)
+                        displayMath = math;
+                }
+            }
+        }
+        QVERIFY2(displayMath, "display math becomes a model node");
+
+        // Inline math stays in the flow; display math gets its own centred line.
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+        bool sawInline = false;
+        bool sawCentredFormula = false;
+        for (const auto &page : layout.pages) {
+            for (const auto &element : page.elements) {
+                const auto *box = std::get_if<Layout::BlockBox>(&element);
+                if (!box)
+                    continue;
+                for (const auto &line : box->lines) {
+                    QString text;
+                    for (const auto &glyph : line.glyphs)
+                        text += glyph.text;
+                    sawInline |= text.contains(QStringLiteral("x^2"));
+                    if (text.contains(QStringLiteral("dx"))) {
+                        sawCentredFormula |= line.alignment == Qt::AlignCenter;
+                    }
+                }
+            }
+        }
+        QVERIFY2(sawInline, "inline math flows with the text");
+        QVERIFY2(sawCentredFormula, "display math is centred on its own line");
+
+        // Markdown copy keeps the delimiters.
+        QString copied;
+        for (const auto &page : layout.pages)
+            copied += buildHitIndex(page).lineText.join(QLatin1Char(' '));
+        QVERIFY(!copied.contains(QStringLiteral("$$")));
+    }
 };
 
 int main(int argc, char **argv) {

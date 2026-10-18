@@ -961,6 +961,30 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                 if (markdownMode)
                     result.markdownRanges.append({sr.start, sr.start + sr.length,
                                                    QStringLiteral("`"), QStringLiteral("`")});
+            } else if constexpr (std::is_same_v<T, Content::Math>) {
+                Content::TextStyle mathStyle = n.style;
+                mathStyle.fontFamily = QStringLiteral("Noto Serif");
+                mathStyle.italic = true;
+                mathStyle.fontFeatures.clear();
+                const int startPos = result.text.size();
+                result.text.append(n.source);
+                StyleRun sr;
+                sr.start = startPos;
+                sr.length = n.source.size();
+                sr.fontFamily = mathStyle.fontFamily;
+                sr.fontWeight = mathStyle.fontWeight;
+                sr.fontItalic = true;
+                sr.fontSize = mathStyle.fontSize;
+                result.styleRuns.append(sr);
+                result.textStyles.append(mathStyle);
+                if (markdownMode) {
+                    MarkdownRange range;
+                    range.textStart = startPos;
+                    range.textEnd = startPos + n.source.size();
+                    range.prefix = n.display ? QStringLiteral("$$") : QStringLiteral("$");
+                    range.suffix = range.prefix;
+                    result.markdownRanges.append(range);
+                }
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
                 const QString marker = numbering.markerFor(n.index);
                 Content::TextStyle refStyle = n.style;
@@ -1141,6 +1165,19 @@ QList<LineBox> Engine::breakIntoLines(const QList<Content::InlineNode> &inlines,
         segment.clear();
     };
     for (const auto &node : inlines) {
+        if (const auto *math = std::get_if<Content::Math>(&node)) {
+            if (!math->display) {
+                segment.append(node);
+                continue;
+            }
+            // Display math is a formula line of its own, centred.
+            flushSegment();
+            Content::ParagraphFormat centred = format;
+            centred.alignment = Qt::AlignCenter;
+            const QList<Content::InlineNode> formula{node};
+            result += breakTextIntoLines(formula, baseStyle, centred, availWidth, markdownRanges);
+            continue;
+        }
         const auto *image = std::get_if<Content::InlineImage>(&node);
         if (!image) {
             segment.append(node);

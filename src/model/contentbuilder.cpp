@@ -226,6 +226,8 @@ void ContentBuilder::resetState()
     m_altText.clear();
     m_linkHref.clear();
     m_linkSpanDepth = 0;
+    m_inMath = false;
+    m_mathDisplay = false;
     m_footnotes.clear();
     m_footnoteRefSites.clear();
 
@@ -908,6 +910,8 @@ int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
     case MD_SPAN_LATEXMATH:
     case MD_SPAN_LATEXMATH_DISPLAY:
         m_styleStack.push(m_currentStyle);
+        m_inMath = true;
+        m_mathDisplay = (type == MD_SPAN_LATEXMATH_DISPLAY);
         break;
     }
     return 0;
@@ -964,6 +968,14 @@ int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
         if (!m_styleStack.isEmpty())
             m_currentStyle = m_styleStack.pop();
         if (m_linkSpanDepth > 0) --m_linkSpanDepth;
+        break;
+
+    case MD_SPAN_LATEXMATH:
+    case MD_SPAN_LATEXMATH_DISPLAY:
+        if (!m_styleStack.isEmpty())
+            m_currentStyle = m_styleStack.pop();
+        m_inMath = false;
+        m_mathDisplay = false;
         break;
 
     default:
@@ -1039,9 +1051,14 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
         appendInlineNode(Content::TextRun{str, m_currentStyle});
         break;
 
-    case MD_TEXT_LATEXMATH:
-        appendInlineNode(Content::TextRun{str, m_currentStyle});
+    case MD_TEXT_LATEXMATH: {
+        Content::Math math;
+        math.source = str;
+        math.display = m_mathDisplay;
+        math.style = m_currentStyle;
+        appendInlineNode(std::move(math));
         break;
+    }
     }
     return 0;
 }

@@ -49,6 +49,8 @@ void TocWidget::buildFromContentModel(const Content::Document &doc,
                     text += n.text;
                 else if constexpr (std::is_same_v<T, Content::Link>)
                     text += n.text;
+                else if constexpr (std::is_same_v<T, Content::Math>)
+                    text += n.source;
             }, node);
         }
         text = text.trimmed();

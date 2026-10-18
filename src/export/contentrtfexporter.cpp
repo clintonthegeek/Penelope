@@ -108,6 +108,8 @@ void ContentRtfExporter::scanInlines(const QList<Content::InlineNode> &inlines)
                 scanTextStyle(n.style);
             } else if constexpr (std::is_same_v<T, Content::Link>) {
                 scanTextStyle(n.style);
+            } else if constexpr (std::is_same_v<T, Content::Math>) {
+                scanTextStyle(n.style);
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
                 scanTextStyle(n.style);
             }
@@ -557,6 +559,13 @@ void ContentRtfExporter::writeInlines(QByteArray &out, const QList<Content::Inli
                 out.append("{");
                 writeCharFormat(out, useBaseStyle ? baseStyle : n.style);
                 out.append(RtfUtils::escapeText(n.text));
+                out.append("}");
+            } else if constexpr (std::is_same_v<T, Content::Math>) {
+                Content::TextStyle mathStyle = n.style;
+                mathStyle.italic = true;
+                out.append("{");
+                writeCharFormat(out, mathStyle);
+                out.append(RtfUtils::escapeText(n.source));
                 out.append("}");
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
                 out.append("{");

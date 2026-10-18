@@ -158,6 +158,14 @@ struct FootnoteRef {
     TextStyle style;
 };
 
+// A LaTeX math span. The source is kept as written; display math is set on its
+// own centred line, inline math stays in the text flow.
+struct Math {
+    QString source;
+    bool display = false;
+    TextStyle style;
+};
+
 struct SoftBreak {};
 struct HardBreak {};
 
@@ -167,6 +175,7 @@ using InlineNode = std::variant<
     InlineCode,
     Link,
     InlineImage,
+    Math,
     FootnoteRef,
     SoftBreak,
     HardBreak

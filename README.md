@@ -38,7 +38,8 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
 
 - Headings, emphasis, links, code blocks with themeable syntax highlighting,
   lists and task lists, quotes, and images with transparency.
-- Tables whose header rows repeat on every page.
+- Tables whose header rows repeat on each page (a header block taller than half
+  a page is not repeated).
 - PHP Markdown Extra footnotes and endnotes, with number format, start value,
   prefix/suffix and separator options.
 

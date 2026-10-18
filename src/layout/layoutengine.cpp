@@ -2306,7 +2306,8 @@ QList<PageElement> Engine::layoutList(const Content::List &list, qreal availWidt
                         // Bullet/number prefix: measure width, then use hanging indent
                         QString prefix;
                         if (list.type == Content::ListType::Ordered)
-                            prefix = QString::number(list.startNumber + i) + QStringLiteral(". ");
+                            prefix = QString::number(list.startNumber + i)
+                                + QString(list.delimiter) + QLatin1Char(' ');
                         else
                             prefix = QStringLiteral("\u2022 ");
                         prefixLen = prefix.size();
@@ -2338,6 +2339,10 @@ QList<PageElement> Engine::layoutList(const Content::List &list, qreal availWidt
                     if (paragraphElements.isEmpty()) return;
                     auto box = std::get<BlockBox>(paragraphElements.takeFirst());
                     box.isListItem = true;
+                    if (list.tight)
+                        box.spaceAfter = 0; // a tight list has no gap between items
+                    else if (i > 0)
+                        box.spaceBefore = qMax(box.spaceBefore, 6.0); // loose lists separate items
 
                     // Mark bullet/number glyph boxes so justify skips them
                     if (prefixLen > 0 && !box.lines.isEmpty()) {

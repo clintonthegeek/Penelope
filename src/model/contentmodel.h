@@ -202,6 +202,7 @@ struct Heading {
 struct CodeBlock {
     quint64 blockId = 0;
     QString language;
+    QString info;       // the fence's whole info string
     QString code;
     TextStyle style;
     QColor background = QColor(0xf6, 0xf8, 0xfa);
@@ -245,6 +246,11 @@ struct List {
     quint64 blockId = 0;
     ListType type = ListType::Unordered;
     int startNumber = 1;
+    // The ordered marker's delimiter as written: '.' or ')'.
+    QChar delimiter = QLatin1Char('.');
+    // A tight list has no blank line between items, so its items print without
+    // paragraph spacing.
+    bool tight = true;
     QList<ListItem> items;
     SourceRange source;
 };

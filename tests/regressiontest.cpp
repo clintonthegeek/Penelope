@@ -3225,6 +3225,68 @@ private Q_SLOTS:
             sawTitle |= call.at(0).toString().contains(QStringLiteral("A titled picture"));
         QVERIFY2(sawTitle, "hovering an image reports its title");
     }
+    void md08ListAndFenceDetails() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "1) paren one\n"
+            "2) paren two\n\n"
+            "3. dot one\n"
+            "4. dot two\n\n"
+            "- tight one\n"
+            "- tight two\n\n"
+            "- loose one\n\n"
+            "- loose two\n\n"
+            "```cpp title=\"example.h\"\nint x = 1;\n```\n"));
+
+        QChar parenDelimiter;
+        QChar dotDelimiter;
+        bool sawTight = false;
+        bool sawLoose = false;
+        QString fenceInfo;
+        QString fenceLanguage;
+        for (const auto &block : doc.blocks) {
+            if (const auto *list = std::get_if<Content::List>(&block)) {
+                if (list->delimiter == QLatin1Char(')'))
+                    parenDelimiter = list->delimiter;
+                else if (list->delimiter == QLatin1Char('.'))
+                    dotDelimiter = list->delimiter;
+                sawTight |= list->tight;
+                sawLoose |= !list->tight;
+            } else if (const auto *code = std::get_if<Content::CodeBlock>(&block)) {
+                fenceInfo = code->info;
+                fenceLanguage = code->language;
+            }
+        }
+        QCOMPARE(parenDelimiter, QLatin1Char(')'));
+        QCOMPARE(dotDelimiter, QLatin1Char('.'));
+        QVERIFY2(sawTight, "a list without blank lines is tight");
+        QVERIFY2(sawLoose, "a list with blank lines is loose");
+        QCOMPARE(fenceLanguage, QStringLiteral("cpp"));
+        QCOMPARE(fenceInfo, QStringLiteral("cpp title=\"example.h\""));
+
+        // The marker the reader draws follows the source.
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QString drawn;
+        for (const auto &page : layout.pages)
+            drawn += buildHitIndex(page).lineText.join(QLatin1Char(' ')) + QLatin1Char(' ');
+        QVERIFY2(drawn.contains(QStringLiteral("1)")), qPrintable(drawn));
+        QVERIFY2(drawn.contains(QStringLiteral("3.")), qPrintable(drawn));
+
+        // A loose list is taller than the same tight list.
+        ContentBuilder measure;
+        const auto tightDoc = measure.build(QStringLiteral("- one\n- two\n"));
+        const auto looseDoc = measure.build(QStringLiteral("- one\n\n- two\n"));
+        const auto tightLayout = engine.layout(tightDoc, pl);
+        const auto looseLayout = engine.layout(looseDoc, pl);
+        QVERIFY(!tightLayout.pages.isEmpty());
+        QVERIFY(!looseLayout.pages.isEmpty());
+        QVERIFY2(looseLayout.pages.first().contentHeight > tightLayout.pages.first().contentHeight,
+                 "a loose list spends height between items");
+    }
 };
 
 int main(int argc, char **argv) {

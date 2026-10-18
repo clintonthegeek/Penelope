@@ -138,12 +138,15 @@ private:
     bool m_inCodeBlock = false;
     bool m_codeFenced = true;
     QString m_codeLanguage;
+    QString m_codeInfo;
     QString m_codeText;
 
     // List tracking
     struct ListInfo {
         Content::ListType type;
         int startNumber;
+        QChar delimiter = QLatin1Char('.');
+        bool tight = true;
         QList<Content::ListItem> items;
         bool hasImplicitParagraph = false; // current item has implicit para on inline stack
     };

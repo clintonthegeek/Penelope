@@ -218,6 +218,7 @@ void ContentBuilder::resetState()
     m_blockQuoteStack.clear();
     m_inCodeBlock = false;
     m_codeLanguage.clear();
+    m_codeInfo.clear();
     m_codeText.clear();
     m_inTable = false;
     m_inTableHeader = false;
@@ -447,9 +448,11 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
                 m_inlineStack.pop();
             m_listStack.top().hasImplicitParagraph = false;
         }
+        auto *d = static_cast<MD_BLOCK_UL_DETAIL *>(detail);
         ListInfo info;
         info.type = Content::ListType::Unordered;
         info.startNumber = 1;
+        info.tight = d->is_tight;
         m_listStack.push(info);
         m_containers.push(type);
         break;
@@ -466,6 +469,8 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
         ListInfo info;
         info.type = Content::ListType::Ordered;
         info.startNumber = static_cast<int>(d->start);
+        info.delimiter = (d->mark_delimiter == ')') ? QLatin1Char(')') : QLatin1Char('.');
+        info.tight = d->is_tight;
         m_listStack.push(info);
         m_containers.push(type);
         break;
@@ -494,6 +499,7 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
     case MD_BLOCK_CODE: {
         auto *d = static_cast<MD_BLOCK_CODE_DETAIL *>(detail);
         m_codeLanguage = extractAttribute(d->lang);
+        m_codeInfo = extractAttribute(d->info);
         m_codeFenced = (d->fence_char != 0);
         m_inCodeBlock = true;
         m_codeText.clear();
@@ -673,6 +679,8 @@ int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
             Content::List list;
             list.type = info.type;
             list.startNumber = info.startNumber;
+            list.delimiter = info.delimiter;
+            list.tight = info.tight;
             list.items = info.items;
             list.source = range;
 
@@ -686,6 +694,7 @@ int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
         m_inCodeBlock = false;
         Content::CodeBlock cb;
         cb.language = m_codeLanguage;
+        cb.info = m_codeInfo;
         cb.isFenced = m_codeFenced;
         cb.code = m_codeText;
         if (m_styleManager) {

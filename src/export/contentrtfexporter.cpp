@@ -367,7 +367,8 @@ void ContentRtfExporter::writeList(QByteArray &out, const Content::List &list, i
         // Generate bullet/number text
         QByteArray pnText;
         if (list.type == Content::ListType::Ordered) {
-            pnText = QByteArray::number(itemNumber) + ".\\tab";
+            pnText = QByteArray::number(itemNumber)
+                + QString(list.delimiter).toLatin1() + "\\tab";
             ++itemNumber;
         } else {
             if (item.isTask) {

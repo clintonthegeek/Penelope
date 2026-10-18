@@ -1229,6 +1229,7 @@ ImageBox Engine::makeInlineImageBox(const Content::InlineImage &image, qreal ava
     box.image = loaded;
     box.width = width;
     box.height = height;
+    box.title = image.title;
     box.imageId = QString::number(qHashBits(image.resolvedImageData.constData(),
                                              image.resolvedImageData.size()), 16);
     return box;
@@ -2175,6 +2176,7 @@ BlockBox Engine::layoutImage(const Content::InlineImage &img, qreal availWidth)
     box.image = qimg;
     box.imageWidth = imgW;
     box.imageHeight = imgH;
+    box.imageTitle = img.title;
     box.height = imgH;
     // Generate unique image ID based on data hash
     box.imageId = QStringLiteral("Img%1").arg(

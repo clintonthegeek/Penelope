@@ -936,6 +936,7 @@ int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
         Content::InlineImage img;
         img.src = src;
         img.altText = m_altText;
+        img.title = m_imageTitle;
         if (!(m_renderImages ? *m_renderImages : PenelopeSettings::self()->renderImages())) {
             appendInlineNode(Content::TextRun{m_altText, m_currentStyle});
             m_imageSrc.clear(); m_imageTitle.clear(); m_altText.clear();

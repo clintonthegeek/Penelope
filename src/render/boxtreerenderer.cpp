@@ -214,7 +214,14 @@ void BoxTreeRenderer::renderLineImage(const Layout::ImageBox &image, qreal x, qr
 {
     if (image.image.isNull() || image.width <= 0 || image.height <= 0)
         return;
-    drawImage(QRectF(x, y, image.width, image.height), image.image);
+    const QRectF rect(x, y, image.width, image.height);
+    if (!image.title.isEmpty())
+        collectImageHint(rect, image.title);
+    drawImage(rect, image.image);
+}
+
+void BoxTreeRenderer::collectImageHint(const QRectF &, const QString &)
+{
 }
 
 void BoxTreeRenderer::renderLineBox(const Layout::LineBox &line,
@@ -444,6 +451,9 @@ void BoxTreeRenderer::renderCheckbox(const Layout::GlyphBox &gbox,
 
 void BoxTreeRenderer::renderImageBlock(const Layout::BlockBox &box)
 {
+    if (!box.imageTitle.isEmpty() && box.imageWidth > 0 && box.imageHeight > 0)
+        collectImageHint(QRectF(box.x, box.y, box.imageWidth, box.imageHeight), box.imageTitle);
+
     if (box.image.isNull())
         return;
 

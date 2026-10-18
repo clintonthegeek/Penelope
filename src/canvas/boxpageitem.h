@@ -32,6 +32,7 @@ public:
 
     QString linkAt(QPointF itemPos) const;
     QString linkTitleAt(QPointF itemPos) const;
+    QString imageTitleAt(QPointF itemPos) const;
     QRectF lineRect(int index) const;
     QString textInRect(const QRectF &itemRect) const;
 

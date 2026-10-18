@@ -20,8 +20,10 @@ void WebViewItem::setLayoutResult(Layout::ContinuousLayoutResult &&result)
     prepareGeometryChange();
     m_result = std::move(result);
     m_renderer.clearLinkHitRects();
+    m_renderer.clearImageHintRects();
     m_linksByElement.clear();
     m_paintedLinks.clear();
+    m_imageHints.clear();
     update();
 }
 
@@ -90,15 +92,26 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
             break;
 
         m_renderer.clearLinkHitRects();
+    m_renderer.clearImageHintRects();
         m_renderer.renderElement(element);
         m_linksByElement.insert(i, m_renderer.linkHitRects());
         m_paintedLinks.append(m_renderer.linkHitRects());
+        m_imageHints = m_renderer.imageHintRects();
     }
     QColor color = QApplication::palette().color(QPalette::Highlight);
     color.setAlpha(80);
     m_renderer.setLineClip(QRectF());
     for (const auto &rect : m_selectionRects) painter->fillRect(rect, color);
     painter->restore();
+}
+
+QString WebViewItem::imageTitleAt(const QPointF &pos) const
+{
+    for (const auto &hint : m_imageHints) {
+        if (hint.rect.contains(pos))
+            return hint.title;
+    }
+    return {};
 }
 
 QString WebViewItem::linkTitleAt(const QPointF &pos) const

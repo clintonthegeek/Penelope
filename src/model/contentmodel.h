@@ -99,6 +99,7 @@ struct InlineImage {
     QString src;
     QByteArray resolvedImageData; // raw image bytes (PNG/JPEG)
     QString altText;
+    QString title;      // hover title from ![alt](src "title")
     qreal width = 0;   // 0 = auto
     qreal height = 0;
 };

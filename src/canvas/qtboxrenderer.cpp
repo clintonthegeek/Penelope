@@ -188,6 +188,11 @@ void QtBoxRenderer::drawHersheyStrokes(const QVector<QVector<QPointF>> &strokes,
     m_painter->restore();
 }
 
+void QtBoxRenderer::collectImageHint(const QRectF &rect, const QString &title)
+{
+    m_imageHintRects.append({rect, title});
+}
+
 void QtBoxRenderer::drawImage(const QRectF &destRect, const QImage &image)
 {
     m_painter->drawImage(destRect, image);

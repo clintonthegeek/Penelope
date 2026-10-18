@@ -89,6 +89,7 @@ struct ImageBox {
     qreal width = 0;
     qreal height = 0;
     QString altText;
+    QString title;   // hover title from the Markdown source
     QString imageId; // resource name for the PDF writer
 };
 
@@ -150,6 +151,7 @@ struct BlockBox {
     QImage image;
     qreal imageWidth = 0;
     qreal imageHeight = 0;
+    QString imageTitle; // hover title from the Markdown source
     QString imageId;    // unique ID for PDF XObject reference
 
     // Blockquote visual indicator

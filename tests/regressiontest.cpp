@@ -3170,6 +3170,61 @@ private Q_SLOTS:
         QVERIFY(codeBlock);
         QCOMPARE(codeBlock->code.trimmed(), QStringLiteral("\"quoted\" -- ..."));
     }
+    void md07ImageTitles() {
+        QTemporaryDir dir;
+        const QString png = dir.filePath(QStringLiteral("pic.png"));
+        QImage picture(20, 12, QImage::Format_ARGB32_Premultiplied);
+        picture.fill(QColor(40, 120, 200, 255));
+        QVERIFY(picture.save(png));
+
+        ContentBuilder builder;
+        const auto doc = builder.build(
+            QStringLiteral("![alt](%1 \"A titled picture\")\n").arg(png));
+        const auto *para = std::get_if<Content::Paragraph>(&doc.blocks.first());
+        QVERIFY(para);
+        const Content::InlineImage *image = nullptr;
+        for (const auto &node : para->inlines) {
+            if (const auto *candidate = std::get_if<Content::InlineImage>(&node))
+                image = candidate;
+        }
+        QVERIFY(image);
+        QCOMPARE(image->title, QStringLiteral("A titled picture"));
+
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+        const HitIndex index = buildHitIndex(layout.pages.first());
+        QVERIFY(index.imageTitles.contains(QStringLiteral("A titled picture")));
+        QVERIFY(!index.imageBounds.isEmpty());
+        QVERIFY(index.imageBounds.first().height() > 0);
+
+        // The view reports the title while the pointer is over the picture.
+        DocumentView view;
+        QList<std::shared_ptr<const Layout::Page>> pages;
+        for (const auto &page : layout.pages)
+            pages.append(std::make_shared<const Layout::Page>(page));
+        std::shared_ptr<FontManager> fontsOwner(&fonts, [](FontManager *) {});
+        view.resize(500, 500);
+        view.setBoxPages(pages, fontsOwner, pl, false, QStringLiteral("pictures.md"),
+                         QStringLiteral("Pictures"));
+        view.show();
+        QTRY_VERIFY(view.verticalScrollBar());
+
+        QSignalSpy hints(&view, &DocumentView::statusHintChanged);
+        const QRectF bounds = index.imageBounds.first();
+        auto *pageItem = qgraphicsitem_cast<BoxPageItem *>(view.scene()->items().first());
+        QVERIFY(pageItem);
+        const QPointF scenePoint = pageItem->pos() + pageItem->contentOrigin() + bounds.center();
+        QTest::mouseMove(view.viewport(), view.mapFromScene(scenePoint));
+        QTRY_VERIFY_WITH_TIMEOUT(!hints.isEmpty(), 2000);
+        bool sawTitle = false;
+        for (const auto &call : hints)
+            sawTitle |= call.at(0).toString().contains(QStringLiteral("A titled picture"));
+        QVERIFY2(sawTitle, "hovering an image reports its title");
+    }
 };
 
 int main(int argc, char **argv) {

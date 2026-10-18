@@ -67,6 +67,16 @@ QString BoxPageItem::linkTitleAt(QPointF itemPos) const
     return {};
 }
 
+QString BoxPageItem::imageTitleAt(QPointF itemPos) const
+{
+    const QPointF contentPos = toContent(itemPos);
+    for (int i = 0; i < m_hitIndex.imageBounds.size(); ++i) {
+        if (m_hitIndex.imageBounds.at(i).contains(contentPos))
+            return m_hitIndex.imageTitles.at(i);
+    }
+    return {};
+}
+
 QRectF BoxPageItem::lineRect(int index) const
 {
     if (index < 0 || index >= m_hitIndex.lineBounds.size())

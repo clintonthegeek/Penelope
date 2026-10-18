@@ -32,6 +32,10 @@ DocumentView::DocumentView(QWidget *parent)
     m_scene = new QGraphicsScene(this);
     setScene(m_scene);
 
+    // Hover hints (links, image titles) need move events without a button held.
+    setMouseTracking(true);
+    viewport()->setMouseTracking(true);
+
     setBackgroundBrush(QBrush(QColor(0x3c, 0x3c, 0x3c)));
     setRenderHint(QPainter::Antialiasing);
     setRenderHint(QPainter::TextAntialiasing);
@@ -2084,6 +2088,15 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
                 Q_EMIT statusHintChanged(title.isEmpty() ? linkHint(href) : title);
             }
         } else {
+            const QString title = m_webViewItem->imageTitleAt(itemPos);
+            if (!title.isEmpty()) {
+                if (m_currentHoverLink != title) {
+                    m_currentHoverLink = title;
+                    viewport()->setCursor(Qt::ArrowCursor);
+                    Q_EMIT statusHintChanged(title);
+                }
+                return;
+            }
             if (!m_currentHoverLink.isEmpty()) {
                 m_currentHoverLink.clear();
                 viewport()->setCursor(Qt::ArrowCursor);
@@ -2107,6 +2120,13 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
                     viewport()->setCursor(Qt::PointingHandCursor);
                     const QString title = item->linkTitleAt(itemPos);
                     Q_EMIT statusHintChanged(title.isEmpty() ? linkHint(href) : title);
+                }
+            } else if (!item->imageTitleAt(item->mapFromScene(scenePos)).isEmpty()) {
+                const QString title = item->imageTitleAt(item->mapFromScene(scenePos));
+                if (m_currentHoverLink != title) {
+                    m_currentHoverLink = title;
+                    viewport()->setCursor(Qt::ArrowCursor);
+                    Q_EMIT statusHintChanged(title);
                 }
             } else if (!m_currentHoverLink.isEmpty()) {
                 m_currentHoverLink.clear();

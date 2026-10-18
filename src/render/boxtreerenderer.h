@@ -70,6 +70,8 @@ public:
                                 qreal x, qreal baselineY);
     virtual void renderImageBlock(const Layout::BlockBox &box);
     virtual void renderLineImage(const Layout::ImageBox &image, qreal x, qreal y);
+    // An image that declares a title is a hover region, like a link.
+    virtual void collectImageHint(const QRectF &rect, const QString &title);
 
     void setLineClip(const QRectF &clip);
     int lastPaintedLineCount() const { return m_lastPaintedLineCount; }

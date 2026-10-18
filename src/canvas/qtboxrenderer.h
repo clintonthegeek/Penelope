@@ -30,6 +30,12 @@ struct LinkHitRect {
     QString title;
 };
 
+// An image that declares a title is a hover region too.
+struct ImageHintRect {
+    QRectF rect;
+    QString title;
+};
+
 class QtBoxRenderer : public BoxTreeRenderer
 {
 public:
@@ -41,6 +47,8 @@ public:
 
     /// Link hit-test rectangles collected during the last render pass.
     const QList<LinkHitRect> &linkHitRects() const { return m_linkHitRects; }
+    const QList<ImageHintRect> &imageHintRects() const { return m_imageHintRects; }
+    void clearImageHintRects() { m_imageHintRects.clear(); }
 
     /// Clear accumulated link hit rectangles (call before each render pass).
     void clearLinkHitRects() { m_linkHitRects.clear(); }
@@ -76,6 +84,7 @@ public:
                             qreal strokeWidth) override;
 
     void drawImage(const QRectF &destRect, const QImage &image) override;
+    void collectImageHint(const QRectF &rect, const QString &title) override;
 
     void pushState() override;
     void popState() override;
@@ -96,6 +105,7 @@ private:
     QPainter *m_painter = nullptr;
     QHash<QPair<FontFace *, int>, QRawFont> m_rawFontCache; // key: (face, size*100)
     QList<LinkHitRect> m_linkHitRects;
+    QList<ImageHintRect> m_imageHintRects;
 };
 
 #endif // PENELOPE_QTBOXRENDERER_H

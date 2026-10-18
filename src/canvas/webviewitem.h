@@ -35,6 +35,7 @@ public:
     void setSelectionRects(const QList<QRectF> &rects) { m_selectionRects = rects; update(); }
     QString linkAt(const QPointF &pos) const;
     QString linkTitleAt(const QPointF &pos) const;
+    QString imageTitleAt(const QPointF &pos) const;
 
 private:
     int firstVisibleElement(qreal top) const;
@@ -45,6 +46,7 @@ private:
     // A repaint may expose just a scrolling stripe. Retain hit rectangles
     // for previously painted elements until the immutable layout changes.
     QHash<int, QList<LinkHitRect>> m_linksByElement;
+    QList<ImageHintRect> m_imageHints;
     QList<LinkHitRect> m_paintedLinks;
     QList<QRectF> m_selectionRects;
     QColor m_pageBackground = Qt::white;

@@ -39,8 +39,19 @@ void addLine(HitIndex &index, const Layout::BlockBox &box, const Layout::LineBox
 
 void addBlock(HitIndex &index, const Layout::BlockBox &box)
 {
+    if (box.type == Layout::BlockBox::ImageBlock && !box.imageTitle.isEmpty()) {
+        index.imageBounds.append(QRectF(box.x, box.y, box.width, box.height));
+        index.imageTitles.append(box.imageTitle);
+    }
     qreal lineY = 0;
     for (const auto &line : box.lines) {
+        for (const auto &image : line.images) {
+            if (image.title.isEmpty())
+                continue;
+            index.imageBounds.append(QRectF(box.x + line.x, box.y + lineY,
+                                            image.width, image.height));
+            index.imageTitles.append(image.title);
+        }
         addLine(index, box, line, lineY);
         lineY += line.height;
     }

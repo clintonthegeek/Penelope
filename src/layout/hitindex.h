@@ -16,6 +16,9 @@ struct HitIndex {
     QVector<QRectF> linkBounds;
     QVector<QString> linkHrefs;
     QVector<QString> linkTitles;
+    // Images that declare a title, so hovering one can say what it is.
+    QVector<QRectF> imageBounds;
+    QVector<QString> imageTitles;
 };
 
 HitIndex buildHitIndex(const Layout::Page &page);

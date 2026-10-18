@@ -7,6 +7,7 @@
 #include "contentrtfexporter.h"
 #include "contentbuilder.h"
 #include "contentplaintext.h"
+#include "readeraccessible.h"
 
 #include <climits>
 
@@ -31,6 +32,10 @@ DocumentView::DocumentView(QWidget *parent)
 {
     m_scene = new QGraphicsScene(this);
     setScene(m_scene);
+
+    // The reader paints its own pages, so it tells assistive technology what it
+    // holds rather than leaving an empty graphics view.
+    ReaderAccessible::installFactory();
 
     // Hover hints (links, image titles) need move events without a button held.
     setMouseTracking(true);

@@ -176,6 +176,8 @@ public:
     bool isPrintMode() const { return m_renderMode == PrintMode && hasPageItems(); }
     QByteArray pdfData() const { return m_pdfData; }
     const QList<Layout::SourceMapEntry> &sourceMap() const { return m_sourceMap; }
+    // What assistive technology reads: the semantic document, not the pages.
+    const Content::Document &contentDocument() const { return m_contentDoc; }
 
 Q_SIGNALS:
     void zoomChanged(int percent);

@@ -24,6 +24,8 @@ add_library(PenelopeCore STATIC
     canvas/pdfpageitem.h
     canvas/boxpageitem.cpp
     canvas/boxpageitem.h
+    canvas/readeraccessible.cpp
+    canvas/readeraccessible.h
     canvas/rendercache.cpp
     canvas/rendercache.h
     canvas/qtboxrenderer.cpp

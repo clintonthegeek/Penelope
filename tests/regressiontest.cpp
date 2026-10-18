@@ -74,6 +74,7 @@
 #include <QJsonObject>
 #include <QScrollBar>
 #include <QSignalSpy>
+#include <QAccessible>
 #include <QTreeWidget>
 
 class RegressionTest : public QObject {
@@ -3575,6 +3576,50 @@ private Q_SLOTS:
         QVERIFY2(rtf.contains("beta"), rtf.constData());
         QVERIFY2(!rtf.contains("gamma"), rtf.constData());
         QVERIFY2(!rtf.contains("Alpha"), rtf.constData());
+    }
+    void q03ReaderIsAccessible() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "# A heading\n\nA paragraph with words.\n\n- one\n- two\n\n```\ncode line\n```\n"));
+        DocumentView view;
+        view.resize(600, 400);
+        view.setSourceData(builder.processedMarkdown(), {}, doc);
+        view.show();
+
+        QAccessibleInterface *reader = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY2(reader, "the reader answers assistive technology");
+        QCOMPARE(reader->role(), QAccessible::Document);
+        QVERIFY(reader->state().readOnly);
+
+        // The whole document is readable as text.
+        QAccessibleTextInterface *text = reader->textInterface();
+        QVERIFY(text);
+        QVERIFY(text->characterCount() > 0);
+        QVERIFY2(text->text(0, 9).contains(QStringLiteral("A heading")),
+                 qPrintable(text->text(0, 40)));
+
+        // One child per top-level block, with its role and its own text.
+        QCOMPARE(reader->childCount(), doc.blocks.size());
+        QAccessibleInterface *first = reader->child(0);
+        QVERIFY(first);
+        QCOMPARE(first->role(), QAccessible::Heading);
+        QCOMPARE(first->text(QAccessible::Name), QStringLiteral("A heading"));
+        QCOMPARE(first->parent(), reader);
+        QAccessibleTextInterface *blockText = first->textInterface();
+        QVERIFY(blockText);
+        QCOMPARE(blockText->characterCount(), 9);
+
+        bool sawTable = false;
+        bool sawList = false;
+        for (int i = 0; i < reader->childCount(); ++i) {
+            const QAccessible::Role role = reader->child(i)->role();
+            sawTable |= role == QAccessible::Table;
+            sawList |= role == QAccessible::List;
+        }
+        QVERIFY2(sawList, "a list says it is a list");
+        QVERIFY(!sawTable);
+        view.setAccessibleName(QStringLiteral("notes.md"));
+        QCOMPARE(reader->text(QAccessible::Name), QStringLiteral("notes.md"));
     }
 };
 

@@ -3043,6 +3043,31 @@ private Q_SLOTS:
         QVERIFY(first);
         QVERIFY(first->text(QRectF()).contains(QStringLiteral("Heading")));
     }
+    void md05NamedEntities() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "&alpha; &eacute; &hellip; &notin; &#8230; &#x1D537; "
+            "&nosuchentity; &Alpha; and `&alpha;` in code\n"));
+        const QString text = Content::toPlainText(doc);
+        QVERIFY2(text.contains(QStringLiteral("\u03B1")), qPrintable(text));       // &alpha;
+        QVERIFY2(text.contains(QStringLiteral("\u00E9")), qPrintable(text));       // &eacute;
+        QVERIFY2(text.contains(QStringLiteral("\u2026")), qPrintable(text));       // &hellip;
+        QVERIFY2(text.contains(QStringLiteral("\u2209")), qPrintable(text));       // &notin;
+        QVERIFY2(text.contains(QStringLiteral("\U0001D537")), qPrintable(text));   // numeric astral
+        QVERIFY2(text.contains(QStringLiteral("&nosuchentity;")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("\u0391")), qPrintable(text));       // &Alpha; is distinct
+        // Code spans keep their literal text.
+        QVERIFY2(text.contains(QStringLiteral("`&alpha;`")) || text.contains(QStringLiteral("&alpha;")),
+                 qPrintable(text));
+        const auto *para = std::get_if<Content::Paragraph>(&doc.blocks.first());
+        QVERIFY(para);
+        bool literalInCode = false;
+        for (const auto &node : para->inlines) {
+            if (const auto *code = std::get_if<Content::InlineCode>(&node))
+                literalInCode |= code->text.contains(QStringLiteral("&alpha;"));
+        }
+        QVERIFY2(literalInCode, "a code span is not entity-decoded");
+    }
 };
 
 int main(int argc, char **argv) {

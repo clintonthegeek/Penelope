@@ -14,6 +14,8 @@ add_library(PenelopeCore STATIC
     markdown/footnoteparser.h
     markdown/frontmatterparser.cpp
     markdown/frontmatterparser.h
+    markdown/entitytable.cpp
+    markdown/entitytable.h
     canvas/documentview.cpp
     canvas/documentview.h
     canvas/pdfpageitem.cpp

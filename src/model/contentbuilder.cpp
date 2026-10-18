@@ -13,6 +13,7 @@
 #include "shortwords.h"
 #include "footnoteparser.h"
 #include "frontmatterparser.h"
+#include "entitytable.h"
 
 #include <algorithm>
 
@@ -1178,30 +1179,6 @@ QString ContentBuilder::extractAttribute(const MD_ATTRIBUTE &attr)
 
 QString ContentBuilder::resolveEntity(const QString &entity)
 {
-    static const QHash<QString, QString> entities = {
-        {QStringLiteral("&amp;"),    QStringLiteral("&")},
-        {QStringLiteral("&lt;"),     QStringLiteral("<")},
-        {QStringLiteral("&gt;"),     QStringLiteral(">")},
-        {QStringLiteral("&quot;"),   QStringLiteral("\"")},
-        {QStringLiteral("&apos;"),   QStringLiteral("'")},
-        {QStringLiteral("&nbsp;"),   QString(QChar(0x00A0))},
-        {QStringLiteral("&mdash;"),  QString(QChar(0x2014))},
-        {QStringLiteral("&ndash;"),  QString(QChar(0x2013))},
-        {QStringLiteral("&lsquo;"),  QString(QChar(0x2018))},
-        {QStringLiteral("&rsquo;"),  QString(QChar(0x2019))},
-        {QStringLiteral("&ldquo;"),  QString(QChar(0x201C))},
-        {QStringLiteral("&rdquo;"),  QString(QChar(0x201D))},
-        {QStringLiteral("&hellip;"), QString(QChar(0x2026))},
-        {QStringLiteral("&copy;"),   QString(QChar(0x00A9))},
-        {QStringLiteral("&reg;"),    QString(QChar(0x00AE))},
-        {QStringLiteral("&trade;"),  QString(QChar(0x2122))},
-        {QStringLiteral("&deg;"),    QString(QChar(0x00B0))},
-        {QStringLiteral("&times;"),  QString(QChar(0x00D7))},
-        {QStringLiteral("&divide;"), QString(QChar(0x00F7))},
-    };
-    auto it = entities.constFind(entity);
-    if (it != entities.constEnd())
-        return it.value();
     if (entity.startsWith(QLatin1String("&#"))) {
         QString num = entity.mid(2, entity.size() - 3);
         bool ok;
@@ -1214,6 +1191,14 @@ QString ContentBuilder::resolveEntity(const QString &entity)
             const char32_t cp = code;
             return QString::fromUcs4(&cp, 1);
         }
+        return entity;
+    }
+    // Named references: MD4C only matches the terminated spelling.
+    if (entity.size() > 2 && entity.startsWith(QLatin1Char('&'))
+        && entity.endsWith(QLatin1Char(';'))) {
+        const QString decoded = decodeNamedEntity(entity.mid(1, entity.size() - 2));
+        if (!decoded.isNull())
+            return decoded;
     }
     return entity;
 }

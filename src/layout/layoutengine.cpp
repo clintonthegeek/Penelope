@@ -48,6 +48,7 @@ Engine::Engine(FontManager *fontManager, TextShaper *textShaper)
 LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &pageLayout)
 {
     m_footnoteStyle = doc.footnoteStyle;
+    m_perPageNumbering = false;
     m_breakCancelled = false;
     LayoutResult result;
     result.pageSize = pageLayout.pageSizePoints();
@@ -73,6 +74,7 @@ LayoutResult Engine::layoutReusing(const Content::Document &doc, const PageLayou
                                    const LayoutResult *previous, bool geometryChanged)
 {
     m_footnoteStyle = doc.footnoteStyle;
+    m_perPageNumbering = false;
     auto fresh = [&]() { return layout(doc, pageLayout); };
     if (!previous || geometryChanged || previous->pages.isEmpty())
         return fresh();
@@ -180,6 +182,7 @@ void Engine::buildSourceMap(LayoutResult &result, const PageLayout &pageLayout) 
 ContinuousLayoutResult Engine::layoutContinuous(const Content::Document &doc, qreal availWidth)
 {
     m_footnoteStyle = doc.footnoteStyle;
+    m_perPageNumbering = false;
     m_breakCancelled = false;
     ContinuousLayoutResult result;
     result.contentWidth = availWidth;
@@ -209,6 +212,7 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
                                                   LayoutCursor *cursor, const LayoutBudget &budget)
 {
     m_footnoteStyle = doc.footnoteStyle;
+    m_perPageNumbering = false;
     ContinuousLayoutResult result;
     result.contentWidth = width;
 
@@ -308,6 +312,10 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
 bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage) {
     m_footnoteStyle = doc.footnoteStyle;
     m_notesAtFoot = !m_footnoteStyle.asEndnotes;
+    // A restart only means something when the notes sit on their own page.
+    m_perPageNumbering = m_notesAtFoot && m_footnoteStyle.restart == FootnoteStyle::PerPage;
+    m_pendingNoteSeed = cursor->pendingNoteIndices;
+    beginPageNumbering();
     if (!cursor || cursor->finished || !outPage) return false;
     if (m_breakCancelled) return false;
 
@@ -322,18 +330,23 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
     // nextBlock is the first block not yet placed. The queue may already hold
     // its shaped elements (and later prefetched blocks). pullBlock is the first
     // block that still has to be shaped, so a carried-over block is not laid out twice.
-    int pullBlock = cursor->nextBlock;
-    if (!cursor->queue.isEmpty()) {
+    // The first block that still has to be shaped for a given cursor state.
+    auto initialPullBlock = [&](const LayoutCursor &state) {
+        int pull = state.nextBlock;
+        if (state.queue.isEmpty())
+            return pull;
         QSet<quint64> queuedIds;
-        for (int qi = cursor->queueIndex; qi < cursor->queue.size(); ++qi) {
+        for (int qi = state.queueIndex; qi < state.queue.size(); ++qi) {
             quint64 id = 0;
-            std::visit([&](const auto &element) { id = element.blockId; }, cursor->queue.at(qi));
+            std::visit([&](const auto &element) { id = element.blockId; }, state.queue.at(qi));
             if (id != 0)
                 queuedIds.insert(id);
         }
-        while (pullBlock < doc.blocks.size() && queuedIds.contains(blockIdOf(doc.blocks.at(pullBlock))))
-            ++pullBlock;
-    }
+        while (pull < doc.blocks.size() && queuedIds.contains(blockIdOf(doc.blocks.at(pull))))
+            ++pull;
+        return pull;
+    };
+    int pullBlock = initialPullBlock(*cursor);
     auto pullUntil = [&](int index) -> bool {
         while (cursor->queue.size() <= index) {
             if (pullBlock >= doc.blocks.size())
@@ -419,6 +432,12 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             cursor->queue = cursor->queue.mid(cursor->queueIndex);
             cursor->queueIndex = 0;
         }
+        if (m_perPageNumbering) {
+            // Markers were assigned for this page; anything unplaced has to be
+            // shaped again with the next page's numbering.
+            cursor->queue.clear();
+            cursor->queueIndex = 0;
+        }
         if (cursor->queue.isEmpty() && cursor->nextBlock >= doc.blocks.size()
             && cursor->pendingNoteIndices.isEmpty())
             cursor->finished = true;
@@ -465,7 +484,6 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             const int firstRows = qMin(int(table.rows.size()), table.headerRowCount + 1);
             for (int i = 0; i < firstRows; ++i) firstRowsHeight += table.rows[i].height;
             if (firstRowsHeight > remaining && !currentPage.elements.isEmpty()) {
-                finishPage();
                 return;
             }
             auto slices = splitTable(table, remaining, pageHeight);
@@ -480,13 +498,11 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
                 for (int si = slices.size() - 1; si >= 1; --si)
                     cursor->queue.insert(cursor->queueIndex, slices[si]);
                 if (slices.size() > 1) {
-                    finishPage();
                     return;
                 }
                 continue;
             }
             if (!currentPage.elements.isEmpty()) {
-                finishPage();
                 return;
             }
             TableBox positioned = table;
@@ -578,7 +594,6 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             }
             if (didSplit)
                 continue;
-            finishPage();
             return;
         }
 
@@ -653,11 +668,18 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
                 const qreal attemptY = y;
                 const QList<quint64> attemptIds = pageIds;
 
+                const QHash<int, int> attemptMarkers = m_pageNoteMarkers;
+                const int attemptCounter = m_pageNoteCounter;
+
+                const int attemptPull = pullBlock;
+
                 *cursor = beforeFill;
+                pullBlock = initialPullBlock(*cursor);
                 currentPage = Page{};
                 currentPage.pageNumber = cursor->currentPageNumber;
                 pageIds.clear();
                 y = beforeY;
+                beginPageNumbering();
                 fillBody(pageHeight - probe.height - kNoteBandGap);
 
                 const QList<int> retryNotes = pageNotes(cursor->pendingNoteIndices, currentPage.elements);
@@ -668,6 +690,9 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
                     currentPage = attemptPage;
                     pageIds = attemptIds;
                     y = attemptY;
+                    m_pageNoteMarkers = attemptMarkers;
+                    m_pageNoteCounter = attemptCounter;
+                    pullBlock = attemptPull;
                 }
             }
         }
@@ -676,6 +701,11 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
     if (notesAtFoot) {
         QList<int> notes = pageNotes(cursor->pendingNoteIndices, currentPage.elements);
         cursor->pendingNoteIndices.clear();
+        if (m_perPageNumbering) {
+            std::sort(notes.begin(), notes.end(), [this](int a, int b) {
+                return pageMarker(a) < pageMarker(b);
+            });
+        }
         if (!notes.isEmpty()) {
             FootnoteSectionBox band = makeNoteBand(doc, notes, contentWidth);
             qreal bandY = pageHeight - band.height;
@@ -706,6 +736,41 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
     return true;
 }
 
+
+
+FootnoteNumbering Engine::numberingContext() const
+{
+    FootnoteNumbering numbering;
+    numbering.style = m_footnoteStyle;
+    numbering.perPage = m_perPageNumbering;
+    if (m_perPageNumbering) {
+        numbering.pageMarkers = const_cast<QHash<int, int> *>(&m_pageNoteMarkers);
+        numbering.pageCounter = const_cast<int *>(&m_pageNoteCounter);
+    }
+    return numbering;
+}
+
+void Engine::beginPageNumbering()
+{
+    m_pageNoteMarkers.clear();
+    m_pageNoteCounter = 0;
+    if (!m_perPageNumbering)
+        return;
+    // Notes carried from an earlier page keep the first markers of this page.
+    for (int index : m_pendingNoteSeed)
+        m_pageNoteMarkers.insert(index, ++m_pageNoteCounter);
+    m_pendingNoteSeed.clear();
+}
+
+QString Engine::pageMarker(int index)
+{
+    if (!m_perPageNumbering)
+        return Content::footnoteMarker(m_footnoteStyle, index);
+    auto it = m_pageNoteMarkers.constFind(index);
+    if (it == m_pageNoteMarkers.constEnd())
+        it = m_pageNoteMarkers.insert(index, ++m_pageNoteCounter);
+    return m_footnoteStyle.formatNumber(m_footnoteStyle.startNumber + it.value() - 1);
+}
 
 Content::FootnoteSection Engine::selectNotes(const Content::Document &doc,
                                              const QList<int> &indices) const
@@ -758,7 +823,13 @@ FootnoteSectionBox Engine::makeNoteBand(const Content::Document &doc, const QLis
     // A band never repeats the endnote section's separator: the rule marks the
     // start of the note area, which each page's band draws for itself.
     Content::FootnoteSection section = selectNotes(doc, indices);
+    m_noteLabelOverrides.clear();
+    if (m_perPageNumbering) {
+        for (int index : indices)
+            m_noteLabelOverrides.insert(index, pageMarker(index));
+    }
     FootnoteSectionBox band = layoutFootnoteSection(section, width);
+    m_noteLabelOverrides.clear();
     band.blockId = 0;
     return band;
 }
@@ -840,7 +911,7 @@ QList<int> citedNotes(const QList<Content::InlineNode> &inlines)
 
 CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                               const Content::TextStyle &baseStyle,
-                              const FootnoteStyle &noteStyle,
+                              const FootnoteNumbering &numbering,
                               bool markdownMode = false)
 {
     CollectedText result;
@@ -891,7 +962,7 @@ CollectedText collectInlines(const QList<Content::InlineNode> &inlines,
                     result.markdownRanges.append({sr.start, sr.start + sr.length,
                                                    QStringLiteral("`"), QStringLiteral("`")});
             } else if constexpr (std::is_same_v<T, Content::FootnoteRef>) {
-                const QString marker = Content::footnoteMarker(noteStyle, n.index);
+                const QString marker = numbering.markerFor(n.index);
                 StyleRun sr;
                 sr.start = result.text.size();
                 sr.length = marker.size();
@@ -1059,7 +1130,7 @@ QList<LineBox> Engine::breakIntoLines(const QList<Content::InlineNode> &inlines,
     // For code blocks: still set glyph text fields (m_markdownDecorations)
     // but suppress markdown range creation (bold/italic from syntax highlighting
     // should not produce ** markers in the ActualText).
-    auto collected = collectInlines(inlines, baseStyle, m_footnoteStyle,
+    auto collected = collectInlines(inlines, baseStyle, numberingContext(),
                                     m_markdownDecorations && markdownRanges);
     if (collected.text.isEmpty())
         return lines;
@@ -1552,7 +1623,7 @@ BlockBox Engine::layoutParagraph(const Content::Paragraph &para, qreal availWidt
     qreal effectiveWidth = availWidth - para.format.leftMargin - para.format.rightMargin;
 
     bool cacheHit = false;
-    auto collected = collectInlines(para.inlines, baseStyle, m_footnoteStyle, m_markdownDecorations);
+    auto collected = collectInlines(para.inlines, baseStyle, numberingContext(), m_markdownDecorations);
     quint64 contentHash = qHash(collected.text);
     contentHash = qHashMulti(contentHash, int(para.format.alignment));
     for (const auto &sr : collected.styleRuns)
@@ -1621,7 +1692,7 @@ BlockBox Engine::layoutHeading(const Content::Heading &heading, qreal availWidth
     }
 
     bool cacheHit = false;
-    auto collected = collectInlines(heading.inlines, baseStyle, m_footnoteStyle, m_markdownDecorations);
+    auto collected = collectInlines(heading.inlines, baseStyle, numberingContext(), m_markdownDecorations);
     quint64 contentHash = qHash(collected.text);
     contentHash = qHashMulti(contentHash, int(heading.format.alignment));
     for (const auto &sr : collected.styleRuns)
@@ -2234,7 +2305,9 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
     for (const auto &fn : fs.footnotes) {
         if (m_cancelled && m_cancelled()) return {};
         FootnoteBox fbox;
-        fbox.label = Content::footnoteMarker(m_footnoteStyle, fn.index);
+        fbox.label = m_noteLabelOverrides.contains(fn.index)
+            ? m_noteLabelOverrides.value(fn.index)
+            : Content::footnoteMarker(m_footnoteStyle, fn.index);
         fbox.numberStyle = fn.numberStyle;
         fbox.y = y;
 
@@ -2735,7 +2808,7 @@ void Engine::assignToPages(const QList<PageElement> &elements,
 qreal Engine::measureInlines(const QList<Content::InlineNode> &inlines,
                               const Content::TextStyle &baseStyle)
 {
-    auto collected = collectInlines(inlines, baseStyle, m_footnoteStyle);
+    auto collected = collectInlines(inlines, baseStyle, numberingContext());
     if (collected.text.isEmpty())
         return 0;
 
@@ -2750,7 +2823,7 @@ qreal Engine::measureInlines(const QList<Content::InlineNode> &inlines,
 qreal Engine::measureMinInlines(const QList<Content::InlineNode> &inlines,
                                  const Content::TextStyle &baseStyle)
 {
-    auto collected = collectInlines(inlines, baseStyle, m_footnoteStyle);
+    auto collected = collectInlines(inlines, baseStyle, numberingContext());
     if (collected.text.isEmpty())
         return 0;
 

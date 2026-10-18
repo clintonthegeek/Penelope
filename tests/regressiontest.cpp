@@ -2838,6 +2838,87 @@ private Q_SLOTS:
         QVERIFY2(firstPageNotes < kNotes, "the rest are carried to a later page");
         QCOMPARE(total, kNotes);
     }
+    void fn05PerPageNumbering() {
+        // A citation on the first page and another further on.
+        QString md = QStringLiteral("# Start\n\nFirst[^a].\n\n");
+        for (int i = 0; i < 40; ++i)
+            md += QStringLiteral("Filler paragraph %1 with enough words to fill space.\n\n").arg(i);
+        md += QStringLiteral("Second[^b].\n\n[^a]: Note A.\n[^b]: Note B.\n");
+
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        pl.pageSizeId = QPageSize::A6; // small pages, so the two citations split
+
+        auto markersByPage = [&](FootnoteStyle::RestartMode mode) {
+            FootnoteStyle style;
+            style.asEndnotes = false;
+            style.restart = mode;
+            ContentBuilder builder;
+            builder.setFootnoteStyle(style);
+            const auto doc = builder.build(md);
+            const auto layout = engine.layout(doc, pl);
+            QMap<int, QString> bandLabels;
+            QMap<int, QString> refText;
+            for (const auto &page : layout.pages) {
+                refText.insert(page.pageNumber, buildHitIndex(page).lineText.join(QLatin1Char(' ')));
+                for (const auto &element : page.elements) {
+                    if (const auto *band = std::get_if<Layout::FootnoteSectionBox>(&element)) {
+                        QStringList labels;
+                        for (const auto &note : band->footnotes)
+                            labels << note.label;
+                        bandLabels.insert(page.pageNumber, labels.join(QLatin1Char(',')));
+                    }
+                }
+            }
+            return std::make_tuple(layout.pages.size(), bandLabels, refText);
+        };
+
+        const auto [perDocPages, perDocBands, perDocRefs] =
+            markersByPage(FootnoteStyle::PerDocument);
+        QVERIFY(perDocPages >= 2);
+        QCOMPARE(perDocBands.size(), 2);
+        QCOMPARE(perDocBands.values().at(0), QStringLiteral("1"));
+        QCOMPARE(perDocBands.values().at(1), QStringLiteral("2"));
+        {
+            const int firstPage = perDocBands.keys().at(0);
+            const int secondPage = perDocBands.keys().at(1);
+            QVERIFY2(perDocRefs.value(firstPage).contains(QStringLiteral("First1")),
+                     qPrintable(perDocRefs.value(firstPage)));
+            QVERIFY2(perDocRefs.value(secondPage).contains(QStringLiteral("Second2")),
+                     qPrintable(perDocRefs.value(secondPage)));
+        }
+
+        const auto [perPagePages, perPageBands, perPageRefs] =
+            markersByPage(FootnoteStyle::PerPage);
+        QVERIFY(perPagePages >= 2);
+        QCOMPARE(perPageBands.size(), 2);
+        // Each page restarts, so the note on either page is marker 1.
+        QCOMPARE(perPageBands.values().at(0), QStringLiteral("1"));
+        QCOMPARE(perPageBands.values().at(1), QStringLiteral("1"));
+        {
+            const int firstPage = perPageBands.keys().at(0);
+            const int secondPage = perPageBands.keys().at(1);
+            QVERIFY2(perPageRefs.value(firstPage).contains(QStringLiteral("First1")),
+                     qPrintable(perPageRefs.value(firstPage)));
+            QVERIFY2(perPageRefs.value(secondPage).contains(QStringLiteral("Second1")),
+                     qPrintable(perPageRefs.value(secondPage)));
+        }
+
+        // The mode survives the theme representation.
+        FootnoteStyle authored;
+        authored.restart = FootnoteStyle::PerPage;
+        authored.asEndnotes = false;
+        authored.format = FootnoteStyle::RomanLower;
+        authored.startNumber = 2;
+        FootnoteStyle reloaded;
+        reloaded.applyJson(authored.toJson());
+        QCOMPARE(reloaded.restart, FootnoteStyle::PerPage);
+        QCOMPARE(reloaded.asEndnotes, false);
+        QCOMPARE(reloaded.format, FootnoteStyle::RomanLower);
+        QCOMPARE(reloaded.startNumber, 2);
+    }
 };
 
 int main(int argc, char **argv) {

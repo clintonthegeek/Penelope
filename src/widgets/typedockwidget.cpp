@@ -451,6 +451,15 @@ void TypeDockWidget::onFootnoteStyleChanged()
     if (!m_editingStyles)
         return;
 
-    m_editingStyles->setFootnoteStyle(m_footnoteConfig->currentFootnoteStyle());
+    const FootnoteStyle style = m_footnoteConfig->currentFootnoteStyle();
+    m_editingStyles->setFootnoteStyle(style);
+
+    // Keep the type set in step so the choice survives a save and a reload.
+    const QString id = m_selectorBar->currentId();
+    if (!id.isEmpty() && !m_typeSetManager->isBuiltin(id)) {
+        TypeSet ts = m_typeSetManager->typeSet(id);
+        ts.footnoteStyle = style.toJson();
+        m_themeComposer->setTypeSet(ts);
+    }
     Q_EMIT styleOverrideChanged();
 }

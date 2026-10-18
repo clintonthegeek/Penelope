@@ -1,6 +1,7 @@
 #ifndef PENELOPE_FOOTNOTESTYLE_H
 #define PENELOPE_FOOTNOTESTYLE_H
 
+#include <QJsonObject>
 #include <QString>
 
 struct FootnoteStyle
@@ -22,6 +23,11 @@ struct FootnoteStyle
     qreal separatorLength = 72.0;    // pt
 
     QString formatNumber(int n) const;
+
+    // The theme/type-set representation. One implementation, so a style a user
+    // edits in the dialog survives a save and a reload.
+    QJsonObject toJson() const;
+    void applyJson(const QJsonObject &obj);
 };
 
 #endif // PENELOPE_FOOTNOTESTYLE_H

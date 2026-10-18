@@ -189,42 +189,8 @@ void ThemeManager::applyStyleOverrides(const QJsonObject &root, StyleManager *sm
 
     // Footnote style
     if (root.contains(QLatin1String("footnoteStyle"))) {
-        QJsonObject fnObj = root.value(QLatin1String("footnoteStyle")).toObject();
         FootnoteStyle fs = sm->footnoteStyle();
-
-        if (fnObj.contains(QLatin1String("format"))) {
-            QString fmt = fnObj.value(QLatin1String("format")).toString();
-            if (fmt == QLatin1String("roman_lower"))       fs.format = FootnoteStyle::RomanLower;
-            else if (fmt == QLatin1String("roman_upper"))  fs.format = FootnoteStyle::RomanUpper;
-            else if (fmt == QLatin1String("alpha_lower"))  fs.format = FootnoteStyle::AlphaLower;
-            else if (fmt == QLatin1String("alpha_upper"))  fs.format = FootnoteStyle::AlphaUpper;
-            else if (fmt == QLatin1String("asterisk"))     fs.format = FootnoteStyle::Asterisk;
-            else                                            fs.format = FootnoteStyle::Arabic;
-        }
-        if (fnObj.contains(QLatin1String("startNumber")))
-            fs.startNumber = fnObj.value(QLatin1String("startNumber")).toInt(1);
-        if (fnObj.contains(QLatin1String("restart"))) {
-            QString r = fnObj.value(QLatin1String("restart")).toString();
-            fs.restart = (r == QLatin1String("per_page"))
-                ? FootnoteStyle::PerPage : FootnoteStyle::PerDocument;
-        }
-        if (fnObj.contains(QLatin1String("prefix")))
-            fs.prefix = fnObj.value(QLatin1String("prefix")).toString();
-        if (fnObj.contains(QLatin1String("suffix")))
-            fs.suffix = fnObj.value(QLatin1String("suffix")).toString();
-        if (fnObj.contains(QLatin1String("superscriptRef")))
-            fs.superscriptRef = fnObj.value(QLatin1String("superscriptRef")).toBool(true);
-        if (fnObj.contains(QLatin1String("superscriptNote")))
-            fs.superscriptNote = fnObj.value(QLatin1String("superscriptNote")).toBool(false);
-        if (fnObj.contains(QLatin1String("asEndnotes")))
-            fs.asEndnotes = fnObj.value(QLatin1String("asEndnotes")).toBool(true);
-        if (fnObj.contains(QLatin1String("showSeparator")))
-            fs.showSeparator = fnObj.value(QLatin1String("showSeparator")).toBool(true);
-        if (fnObj.contains(QLatin1String("separatorWidth")))
-            fs.separatorWidth = fnObj.value(QLatin1String("separatorWidth")).toDouble(0.5);
-        if (fnObj.contains(QLatin1String("separatorLength")))
-            fs.separatorLength = fnObj.value(QLatin1String("separatorLength")).toDouble(72.0);
-
+        fs.applyJson(root.value(QLatin1String("footnoteStyle")).toObject());
         sm->setFootnoteStyle(fs);
     }
 }

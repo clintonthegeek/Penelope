@@ -298,6 +298,26 @@ struct ContinuousLayoutResult {
     QList<CodeBlockRegion> codeBlockRegions;
 };
 
+// Marker resolution for footnote references. Per-document numbering derives the
+// marker from the note index; per-page numbering assigns it on first citation
+// within the page being laid out.
+struct FootnoteNumbering {
+    FootnoteStyle style;
+    bool perPage = false;
+    QHash<int, int> *pageMarkers = nullptr;
+    int *pageCounter = nullptr;
+
+    QString markerFor(int index) const
+    {
+        if (!perPage || !pageMarkers || !pageCounter)
+            return style.formatNumber(style.startNumber + index);
+        auto it = pageMarkers->constFind(index);
+        if (it == pageMarkers->constEnd())
+            it = pageMarkers->insert(index, ++(*pageCounter));
+        return style.formatNumber(style.startNumber + it.value() - 1);
+    }
+};
+
 // --- Layout Engine ---
 
 struct LayoutCursor {
@@ -416,6 +436,15 @@ private:
     // A laid-out band for those notes, ready to sit at the foot of a page.
     FootnoteSectionBox makeNoteBand(const Content::Document &doc, const QList<int> &indices,
                                     qreal width);
+    // Per-page restart: the marker a note takes on the page being laid out.
+    QString pageMarker(int index);
+    void beginPageNumbering();
+    FootnoteNumbering numberingContext() const;
+    QList<int> m_pendingNoteSeed;        // carried notes, seeded at page start
+    QHash<int, int> m_pageNoteMarkers;   // note index -> marker number on this page
+    QHash<int, QString> m_noteLabelOverrides;
+    int m_pageNoteCounter = 0;
+    bool m_perPageNumbering = false;
     static constexpr qreal kNoteBandGap = 6.0;
 };
 

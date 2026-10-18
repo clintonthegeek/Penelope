@@ -17,6 +17,9 @@
 #include <QColor>
 #include <QImage>
 #include <QList>
+
+#include <memory>
+#include <unicode/brkiter.h>
 #include <QRectF>
 #include <QSizeF>
 #include <QString>
@@ -347,6 +350,10 @@ class Engine {
 public:
     Engine(FontManager *fontManager, TextShaper *textShaper);
 
+    // Structural instrumentation for the tests: one ICU line-break iterator per
+    // engine instead of one per paragraph.
+    int breakIteratorCreations() const { return m_breakIteratorCreations; }
+
     LayoutResult layout(const Content::Document &doc, const PageLayout &pageLayout);
     LayoutResult layoutReusing(const Content::Document &doc, const PageLayout &pageLayout,
                                const LayoutResult *previous, bool geometryChanged);
@@ -395,6 +402,10 @@ private:
                                       qreal availWidth,
                                       bool markdownRanges);
     ImageBox makeInlineImageBox(const Content::InlineImage &image, qreal availWidth) const;
+    // Break opportunities for a run of text. One iterator is created per engine
+    // and re-pointed at each call: the locale and the dictionary behind it are
+    // expensive to build.
+    icu::BreakIterator *lineBreakIterator();
 
     QList<LineBox> shapeAndBreak(const QString &text,
                                  const Content::TextStyle &style,
@@ -433,6 +444,8 @@ private:
     QString m_codeTheme;
     std::function<bool()> m_cancelled;
     bool m_breakCancelled = false;
+    std::unique_ptr<icu::BreakIterator> m_lineBreakIterator;
+    int m_breakIteratorCreations = 0;
     FragmentCache *m_fragmentCache = nullptr;
     FontManager *m_fontManager;
     TextShaper *m_textShaper;

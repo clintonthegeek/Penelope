@@ -3327,6 +3327,22 @@ private Q_SLOTS:
             }
         }
     }
+    void q04BreakIteratorIsReused() {
+        QString md;
+        for (int i = 0; i < 40; ++i)
+            md += QStringLiteral("Paragraph %1 with several words in it.\n\n").arg(i);
+        ContentBuilder builder;
+        const auto doc = builder.build(md);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+        // One ICU line-break iterator for the whole document, not one per
+        // paragraph: the locale's dictionary is expensive to build.
+        QCOMPARE(engine.breakIteratorCreations(), 1);
+    }
 };
 
 int main(int argc, char **argv) {

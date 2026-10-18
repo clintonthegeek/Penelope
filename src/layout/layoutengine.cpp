@@ -738,6 +738,19 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
 
 
 
+icu::BreakIterator *Engine::lineBreakIterator()
+{
+    if (!m_lineBreakIterator) {
+        UErrorCode err = U_ZERO_ERROR;
+        m_lineBreakIterator.reset(icu::BreakIterator::createLineInstance(
+            icu::Locale::getDefault(), err));
+        if (U_FAILURE(err))
+            m_lineBreakIterator.reset();
+        ++m_breakIteratorCreations;
+    }
+    return m_lineBreakIterator.get();
+}
+
 FootnoteNumbering Engine::numberingContext() const
 {
     FootnoteNumbering numbering;
@@ -1253,14 +1266,10 @@ QList<LineBox> Engine::breakTextIntoLines(const QList<Content::InlineNode> &inli
     // Shape all text
     QList<ShapedRun> shapedRuns = m_textShaper->shape(collected.text, collected.styleRuns);
 
-    // Use ICU BreakIterator to find line break opportunities
-    UErrorCode err = U_ZERO_ERROR;
+    // Use the engine's ICU BreakIterator to find line break opportunities.
     icu::UnicodeString ustr(reinterpret_cast<const UChar *>(collected.text.utf16()),
                             collected.text.length());
-    std::unique_ptr<icu::BreakIterator> lineBreakIter(
-        icu::BreakIterator::createLineInstance(icu::Locale::getDefault(), err));
-    if (U_FAILURE(err))
-        lineBreakIter.reset();
+    icu::BreakIterator *lineBreakIter = lineBreakIterator();
 
     QSet<int> breakPositions;
     if (lineBreakIter) {
@@ -2958,15 +2967,13 @@ qreal Engine::measureMinInlines(const QList<Content::InlineNode> &inlines,
 
     QList<ShapedRun> runs = m_textShaper->shape(collected.text, collected.styleRuns);
 
-    // Find ICU line break opportunities
-    UErrorCode err = U_ZERO_ERROR;
+    // Find line break opportunities with the engine's iterator.
     icu::UnicodeString ustr(reinterpret_cast<const UChar *>(collected.text.utf16()),
                             collected.text.length());
-    std::unique_ptr<icu::BreakIterator> lineBreakIter(
-        icu::BreakIterator::createLineInstance(icu::Locale::getDefault(), err));
+    icu::BreakIterator *lineBreakIter = lineBreakIterator();
 
     QSet<int> breakPositions;
-    if (lineBreakIter && U_SUCCESS(err)) {
+    if (lineBreakIter) {
         lineBreakIter->setText(ustr);
         for (int32_t pos = lineBreakIter->first();
              pos != icu::BreakIterator::DONE;

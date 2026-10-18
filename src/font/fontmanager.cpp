@@ -299,6 +299,22 @@ QByteArray FontManager::rawFontData(FontFace *face) const
     return face->rawData;
 }
 
+const QRawFont &FontManager::rawFont(FontFace *face, qreal sizePoints)
+{
+    static const QRawFont empty;
+    if (!face || sizePoints <= 0)
+        return empty;
+    const auto key = qMakePair(face, int(qRound(sizePoints * 100)));
+    auto it = m_rawFonts.find(key);
+    if (it != m_rawFonts.end())
+        return it.value();
+
+    QRawFont font(face->rawData, sizePoints);
+    ++m_rawFontCreations;
+    auto inserted = m_rawFonts.insert(key, font);
+    return inserted.value();
+}
+
 QString FontManager::postScriptName(FontFace *face) const
 {
     if (!face || !face->ftFace) return {};

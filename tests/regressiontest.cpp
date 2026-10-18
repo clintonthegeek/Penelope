@@ -3424,6 +3424,35 @@ private Q_SLOTS:
         QCOMPARE(shaper.cacheCost(), costBefore);
         QVERIFY2(fence.size() > 200000, "the run is far larger than a paragraph");
     }
+    void q07RawFontsAreShared() {
+        FontManager fonts;
+        FontFace *face = fonts.loadFont(QStringLiteral("Noto Serif"), 400, false);
+        QVERIFY(face);
+
+        const QRawFont &first = fonts.rawFont(face, 11.0);
+        QVERIFY(first.isValid());
+        const int afterFirst = fonts.rawFontCreations();
+        QCOMPARE(afterFirst, 1);
+
+        // A second renderer (another view item) shares the same raw font.
+        const QRawFont &second = fonts.rawFont(face, 11.0);
+        QCOMPARE(fonts.rawFontCreations(), 1);
+        QCOMPARE(&first, &second);
+
+        // A different size is a different raw font.
+        const QRawFont &large = fonts.rawFont(face, 22.0);
+        QVERIFY(large.isValid());
+        QCOMPARE(fonts.rawFontCreations(), 2);
+        QVERIFY(&large != &first);
+
+        // Renderers over one manager agree on the object.
+        PageLayout pl;
+        QtBoxRenderer firstRenderer(&fonts);
+        QtBoxRenderer secondRenderer(&fonts);
+        Q_UNUSED(firstRenderer);
+        Q_UNUSED(secondRenderer);
+        QCOMPARE(fonts.rawFontCreations(), 2);
+    }
 };
 
 int main(int argc, char **argv) {

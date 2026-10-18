@@ -11,6 +11,7 @@
 #define PENELOPE_FONTMANAGER_H
 
 #include <QHash>
+#include <QRawFont>
 
 #include <QSet>
 #include <QString>
@@ -21,6 +22,7 @@
 #include <hb.h>
 
 class HersheyFont;
+class QPainterPath;
 
 struct FontFace {
     FT_Face ftFace = nullptr;
@@ -72,6 +74,12 @@ public:
     // Font info
     qreal unitsPerEm(FontFace *face) const;
     QByteArray rawFontData(FontFace *face) const;
+
+    // One QRawFont per face and size, shared by every renderer that uses this
+    // manager, so a document with many view items builds each raw font once.
+    const QRawFont &rawFont(FontFace *face, qreal sizePoints);
+    // Structural instrumentation for the tests.
+    int rawFontCreations() const { return m_rawFontCreations; }
     QString postScriptName(FontFace *face) const;
     int fontFlags(FontFace *face) const;
     qreal capHeight(FontFace *face, qreal sizePoints) const;
@@ -98,6 +106,9 @@ private:
     QHash<QString, FontFace *> m_facesByPath;
 
     QString resolveFontPath(const QString &family, int weight, bool italic) const;
+
+    QHash<QPair<FontFace *, int>, QRawFont> m_rawFonts; // key: (face, size * 100)
+    int m_rawFontCreations = 0;
 };
 
 #endif // PENELOPE_FONTMANAGER_H

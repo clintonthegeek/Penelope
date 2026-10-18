@@ -103,7 +103,6 @@ private:
     qreal painterScale() const;
 
     QPainter *m_painter = nullptr;
-    QHash<QPair<FontFace *, int>, QRawFont> m_rawFontCache; // key: (face, size*100)
     QList<LinkHitRect> m_linkHitRects;
     QList<ImageHintRect> m_imageHintRects;
 };

@@ -24,19 +24,13 @@ void QtBoxRenderer::setPainter(QPainter *painter)
     m_painter = painter;
 }
 
-// --- QRawFont cache ---
+// --- QRawFont ---
+// The manager owns the cache, so every view item sharing one shows the same
+// face at the same size from one QRawFont.
 
 const QRawFont &QtBoxRenderer::rawFontFor(FontFace *face, qreal sizePoints)
 {
-    int sizeKey = qRound(sizePoints * 100);
-    auto key = qMakePair(face, sizeKey);
-    auto it = m_rawFontCache.find(key);
-    if (it != m_rawFontCache.end())
-        return it.value();
-
-    QByteArray data = m_fontManager->rawFontData(face);
-    auto inserted = m_rawFontCache.insert(key, QRawFont(data, sizePoints));
-    return inserted.value();
+    return m_fontManager->rawFont(face, sizePoints);
 }
 
 // --- Drawing primitives ---

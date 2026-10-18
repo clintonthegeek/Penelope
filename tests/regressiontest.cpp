@@ -3287,6 +3287,46 @@ private Q_SLOTS:
         QVERIFY2(looseLayout.pages.first().contentHeight > tightLayout.pages.first().contentHeight,
                  "a loose list spends height between items");
     }
+    void md02RawHtmlIsMarkedUp() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "Prose before.\n\n<div class=\"note\">\nblock html\n</div>\n\n"
+            "Inline <span>x</span> after.\n"));
+        int htmlRuns = 0;
+        int proseRuns = 0;
+        for (const auto &block : doc.blocks) {
+            const auto *paragraph = std::get_if<Content::Paragraph>(&block);
+            if (!paragraph)
+                continue;
+            for (const auto &node : paragraph->inlines) {
+                const auto *run = std::get_if<Content::TextRun>(&node);
+                if (!run)
+                    continue;
+                const bool isMarkup = run->style.fontFamily.contains(QStringLiteral("Mono"))
+                    && run->style.foreground == QColor(0x6b, 0x6b, 0x6b);
+                const bool isProse = !run->text.trimmed().isEmpty()
+                    && (run->text.contains(QStringLiteral("Prose"))
+                        || run->text.contains(QStringLiteral("after")));
+                if (isProse)
+                    ++proseRuns;
+                if (isMarkup)
+                    ++htmlRuns;
+            }
+        }
+        QVERIFY2(htmlRuns > 0, "raw HTML is set as markup");
+        QVERIFY2(proseRuns > 0, "prose keeps its style");
+        for (const auto &block : doc.blocks) {
+            const auto *paragraph = std::get_if<Content::Paragraph>(&block);
+            if (!paragraph)
+                continue;
+            for (const auto &node : paragraph->inlines) {
+                const auto *run = std::get_if<Content::TextRun>(&node);
+                if (run && run->text.contains(QStringLiteral("Prose")))
+                    QVERIFY2(!run->style.fontFamily.contains(QStringLiteral("Mono")),
+                             "prose is not mistaken for markup");
+            }
+        }
+    }
 };
 
 int main(int argc, char **argv) {

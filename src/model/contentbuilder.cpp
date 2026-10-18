@@ -1058,11 +1058,16 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
         appendInlineNode(Content::TextRun{QString(QChar(0xFFFD)), m_currentStyle});
         break;
 
-    case MD_TEXT_HTML:
+    case MD_TEXT_HTML: {
         // Literal HTML: no typography pass and no tag scan, the characters are
-        // the content.
-        appendInlineNode(Content::TextRun{str, m_currentStyle});
+        // the content. It is set as markup so a reader can tell it from prose.
+        Content::TextStyle style = m_currentStyle;
+        style.fontFamily = QStringLiteral("JetBrains Mono");
+        style.fontSize = qMax<qreal>(8.0, m_currentStyle.fontSize * 0.9);
+        style.foreground = QColor(0x6b, 0x6b, 0x6b);
+        appendInlineNode(Content::TextRun{str, style});
         break;
+    }
 
     case MD_TEXT_LATEXMATH: {
         Content::Math math;

@@ -2489,6 +2489,33 @@ private Q_SLOTS:
         QVERIFY(index.linkHrefs.contains(QStringLiteral("https://example.com")));
         QVERIFY(index.linkTitles.contains(QStringLiteral("Tip")));
     }
+    void al06HtmlIsKept() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "Before.\n\n<div class=\"note\">\nblock html\n</div>\n\n"
+            "Inline <span class=\"x\">inline html</span> after.\n"));
+        const QString text = Content::toPlainText(doc);
+        QVERIFY2(text.contains(QStringLiteral("block html")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("inline html")), qPrintable(text));
+        QVERIFY(text.contains(QStringLiteral("Before.")));
+        // The literal bytes stay visible: neither project has an HTML renderer.
+        QVERIFY(text.contains(QStringLiteral("<div")));
+        QVERIFY(text.contains(QStringLiteral("</div>")));
+
+        // The block keeps a source range like any other content block.
+        bool htmlHasSource = false;
+        for (const auto &block : doc.blocks) {
+            const auto *paragraph = std::get_if<Content::Paragraph>(&block);
+            if (!paragraph)
+                continue;
+            for (const auto &node : paragraph->inlines) {
+                const auto *run = std::get_if<Content::TextRun>(&node);
+                if (run && run->text.contains(QStringLiteral("block html")))
+                    htmlHasSource = paragraph->source.startLine > 0;
+            }
+        }
+        QVERIFY(htmlHasSource);
+    }
 };
 
 int main(int argc, char **argv) {

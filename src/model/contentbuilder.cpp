@@ -321,7 +321,7 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
     // Push source tracker for block types that produce content blocks
     if (type == MD_BLOCK_LI || type == MD_BLOCK_P || type == MD_BLOCK_H || type == MD_BLOCK_CODE
         || type == MD_BLOCK_TABLE || type == MD_BLOCK_UL || type == MD_BLOCK_OL
-        || type == MD_BLOCK_HR || type == MD_BLOCK_QUOTE) {
+        || type == MD_BLOCK_HR || type == MD_BLOCK_QUOTE || type == MD_BLOCK_HTML) {
         m_blockTrackers.push(BlockTracker{});
     }
 
@@ -530,8 +530,19 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
         break;
     }
 
-    case MD_BLOCK_HTML:
+    case MD_BLOCK_HTML: {
+        // Keep the block: dropping it also dropped its inner text.
+        Content::ParagraphFormat fmt;
+        if (m_styleManager)
+            fmt = resolveParagraphFormat(QStringLiteral("BodyText"));
+        else
+            fmt.spaceAfter = 6.0;
+        auto &children = currentBlocks();
+        children.append(Content::Paragraph{0, fmt, {}});
+        auto *paragraph = std::get_if<Content::Paragraph>(&children.last());
+        m_inlineStack.push(&paragraph->inlines);
         break;
+    }
     }
 
     return 0;
@@ -721,6 +732,25 @@ int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
             m_inlineStack.pop();
         m_tableCol++;
         break;
+
+    case MD_BLOCK_HTML: {
+        if (!m_inlineStack.isEmpty())
+            m_inlineStack.pop();
+        if (!m_blockTrackers.isEmpty()) {
+            auto tracker = m_blockTrackers.pop();
+            Content::SourceRange range;
+            if (tracker.firstByteOffset >= 0) {
+                range.startLine = byteOffsetToLine(tracker.firstByteOffset);
+                range.endLine = byteOffsetToLine(tracker.lastByteEnd - 1);
+            }
+            auto &children = currentBlocks();
+            if (!children.isEmpty()) {
+                if (auto *node = std::get_if<Content::Paragraph>(&children.last()))
+                    node->source = range;
+            }
+        }
+        break;
+    }
 
     case MD_BLOCK_HR:
         if (!m_blockTrackers.isEmpty()) {
@@ -969,6 +999,9 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
         break;
 
     case MD_TEXT_HTML:
+        // Literal HTML: no typography pass and no tag scan, the characters are
+        // the content.
+        appendInlineNode(Content::TextRun{str, m_currentStyle});
         break;
 
     case MD_TEXT_LATEXMATH:

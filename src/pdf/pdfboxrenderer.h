@@ -146,7 +146,8 @@ public:
     void pushState() override;
     void popState() override;
 
-    void collectLink(const QRectF &rect, const QString &href) override;
+    void collectLink(const QRectF &rect, const QString &href,
+                     const QString &title) override;
 
     // --- Traversal overrides ---
 

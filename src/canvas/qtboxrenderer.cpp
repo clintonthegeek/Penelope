@@ -203,7 +203,8 @@ void QtBoxRenderer::popState()
     m_painter->restore();
 }
 
-void QtBoxRenderer::collectLink(const QRectF &rect, const QString &href)
+void QtBoxRenderer::collectLink(const QRectF &rect, const QString &href,
+                                const QString &title)
 {
-    m_linkHitRects.append({rect, href});
+    m_linkHitRects.append({rect, href, title});
 }

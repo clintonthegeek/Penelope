@@ -34,6 +34,7 @@ public:
     const QList<LinkHitRect> &linkHitRects() const { return m_paintedLinks; }
     void setSelectionRects(const QList<QRectF> &rects) { m_selectionRects = rects; update(); }
     QString linkAt(const QPointF &pos) const;
+    QString linkTitleAt(const QPointF &pos) const;
 
 private:
     int firstVisibleElement(qreal top) const;

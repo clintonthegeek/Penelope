@@ -390,7 +390,7 @@ void BoxTreeRenderer::renderGlyphDecorations(const Layout::GlyphBox &gbox,
     if (!gbox.style.linkHref.isEmpty()) {
         collectLink(QRectF(x, baselineY - gbox.ascent,
                             endX - x, gbox.ascent + gbox.descent),
-                    gbox.style.linkHref);
+                    gbox.style.linkHref, gbox.style.linkTitle);
     }
 }
 

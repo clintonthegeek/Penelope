@@ -2334,6 +2334,161 @@ private Q_SLOTS:
         QVERIFY(bad.isEmpty());
         QVERIFY(!badError.isEmpty());
     }
+    // --- Interim alignment with markoff-core (AL-01 …) ---
+
+    void al01FrontmatterIsMetadata() {
+        ContentBuilder builder;
+        const QString md = QStringLiteral("---\ntitle: X\nauthor: Y\n---\n\n# Body\n\nText.\n");
+        const auto doc = builder.build(md);
+        QVERIFY(doc.hasFrontmatter);
+        QCOMPARE(doc.frontmatterRaw, QStringLiteral("title: X\nauthor: Y"));
+        const QString text = Content::toPlainText(doc);
+        QVERIFY2(!text.contains(QStringLiteral("title:")), qPrintable(text));
+        QVERIFY(text.contains(QStringLiteral("Body")));
+        // Blanked lines keep source line numbers addressing the file.
+        const auto *heading = std::get_if<Content::Heading>(&doc.blocks.first());
+        QVERIFY(heading);
+        QCOMPARE(heading->source.startLine, 6);
+
+        // A thematic break in the body is still a rule, and a document with no
+        // front matter is untouched.
+        const auto rule = builder.build(QStringLiteral("Text.\n\n---\n\nMore.\n"));
+        QVERIFY(!rule.hasFrontmatter);
+        bool hasRule = false;
+        for (const auto &block : rule.blocks)
+            hasRule |= std::holds_alternative<Content::HorizontalRule>(block);
+        QVERIFY(hasRule);
+        QVERIFY(Content::toPlainText(rule).contains(QStringLiteral("More.")));
+
+        // CRLF front matter, and the EOF-close form with no trailing newline.
+        const auto crlf = builder.build(QStringLiteral("---\r\ntitle: X\r\n---\r\n\r\nBody.\r\n"));
+        QVERIFY(crlf.hasFrontmatter);
+        QCOMPARE(crlf.frontmatterRaw, QStringLiteral("title: X"));
+        QVERIFY(Content::toPlainText(crlf).contains(QStringLiteral("Body.")));
+
+        const auto eofClose = builder.build(QStringLiteral("---\ntitle: X\n---"));
+        QVERIFY(eofClose.hasFrontmatter);
+        QCOMPARE(eofClose.frontmatterRaw, QStringLiteral("title: X"));
+        QVERIFY(eofClose.blocks.isEmpty());
+
+        // An opening --- without a closing line is body text, not metadata.
+        const auto unterminated = builder.build(QStringLiteral("---\ntitle: X\n"));
+        QVERIFY(!unterminated.hasFrontmatter);
+    }
+    void al02UnderscoreIsEmphasis() {
+        ContentBuilder builder;
+        const auto doc = builder.build(
+            QStringLiteral("_one_ and *two* and __three__ and **four** and _five six_\n"));
+        const auto *para = std::get_if<Content::Paragraph>(&doc.blocks.first());
+        QVERIFY(para);
+        auto runStyled = [para](const QString &text, bool italic, bool underline, bool bold) {
+            for (const auto &node : para->inlines) {
+                const auto *run = std::get_if<Content::TextRun>(&node);
+                if (!run || run->text.trimmed() != text)
+                    continue;
+                return run->style.italic == italic && run->style.underline == underline
+                    && (bold ? run->style.fontWeight >= 600 : run->style.fontWeight < 600);
+            }
+            return false;
+        };
+        QVERIFY2(runStyled(QStringLiteral("one"), true, false, false),
+                 "underscore emphasis should be italic, not underline");
+        QVERIFY(runStyled(QStringLiteral("two"), true, false, false));
+        QVERIFY(runStyled(QStringLiteral("three"), false, false, true));
+        QVERIFY(runStyled(QStringLiteral("four"), false, false, true));
+        QVERIFY(runStyled(QStringLiteral("five six"), true, false, false));
+        for (const auto &node : para->inlines) {
+            const auto *run = std::get_if<Content::TextRun>(&node);
+            if (run)
+                QVERIFY2(!run->style.underline, qPrintable(run->text));
+        }
+        QCOMPARE(Content::toPlainText(doc).trimmed(),
+                 QStringLiteral("one and two and three and four and five six"));
+    }
+    void al03UnreferencedNotesAreDropped() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "Cited[^a] here.\n\n[^a]: Used note.\n[^b]: Never cited.\n"));
+        const Content::FootnoteSection *section = nullptr;
+        for (const auto &block : doc.blocks) {
+            if (const auto *candidate = std::get_if<Content::FootnoteSection>(&block))
+                section = candidate;
+        }
+        QVERIFY(section);
+        QCOMPARE(section->footnotes.size(), 1);
+        QVERIFY(!Content::toPlainText(doc).contains(QStringLiteral("Never cited")));
+        QVERIFY(Content::toPlainText(doc).contains(QStringLiteral("Used note")));
+    }
+    void al04CopyUsesNoteMarkers() {
+        ContentBuilder builder;
+        FootnoteStyle style;
+        style.format = FootnoteStyle::RomanLower;
+        style.prefix = QStringLiteral("[");
+        style.suffix = QStringLiteral("]");
+        builder.setFootnoteStyle(style);
+        const auto doc = builder.build(QStringLiteral("Cited[^a] here.\n\n[^a]: Used note.\n"));
+        const QString text = Content::toPlainText(doc);
+        QVERIFY2(text.contains(QStringLiteral("[i]")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("[i]. Used note.")), qPrintable(text));
+        QVERIFY(!text.contains(QStringLiteral("0")));
+    }
+    void al05LinkTargetsAndTitles() {
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral(
+            "[docs](https://example.com \"Docs site\") and [[Page|label]] and [[Other]] "
+            "and ![[Note]] and a #project/sub tag and [local](notes.md)\n"));
+        const auto *para = std::get_if<Content::Paragraph>(&doc.blocks.first());
+        QVERIFY(para);
+        auto find = [para](const QString &text) -> const Content::TextRun * {
+            for (const auto &node : para->inlines) {
+                const auto *run = std::get_if<Content::TextRun>(&node);
+                if (run && run->text == text)
+                    return run;
+            }
+            return nullptr;
+        };
+        const auto *docs = find(QStringLiteral("docs"));
+        QVERIFY(docs);
+        QCOMPARE(docs->style.linkHref, QStringLiteral("https://example.com"));
+        QCOMPARE(docs->style.linkTitle, QStringLiteral("Docs site"));
+        QVERIFY(docs->style.linkKind == Content::LinkKind::External);
+
+        const auto *wiki = find(QStringLiteral("label"));
+        QVERIFY(wiki);
+        QCOMPARE(wiki->style.linkHref, QStringLiteral("Page"));
+        QVERIFY(wiki->style.linkKind == Content::LinkKind::WikiLink);
+
+        const auto *other = find(QStringLiteral("Other"));
+        QVERIFY(other);
+        QCOMPARE(other->style.linkHref, QStringLiteral("Other"));
+        QVERIFY(other->style.linkKind == Content::LinkKind::WikiLink);
+
+        const auto *note = find(QStringLiteral("Note"));
+        QVERIFY2(note, "an embed shows its target text");
+        QCOMPARE(note->style.linkHref, QStringLiteral("Note"));
+        QVERIFY(note->style.linkKind == Content::LinkKind::Embed);
+        QVERIFY(!Content::toPlainText(doc).contains(QStringLiteral("![[Note]]")));
+
+        const auto *tag = find(QStringLiteral("#project/sub"));
+        QVERIFY(tag);
+        QVERIFY(tag->style.linkKind == Content::LinkKind::Tag);
+
+        const auto *local = find(QStringLiteral("local"));
+        QVERIFY(local);
+        QVERIFY(local->style.linkKind == Content::LinkKind::File);
+
+        // The title reaches the hit index the painted pages read.
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(
+            builder.build(QStringLiteral("A [titled](https://example.com \"Tip\") link.\n")), pl);
+        QVERIFY(!layout.pages.isEmpty());
+        const HitIndex index = buildHitIndex(layout.pages.first());
+        QVERIFY(index.linkHrefs.contains(QStringLiteral("https://example.com")));
+        QVERIFY(index.linkTitles.contains(QStringLiteral("Tip")));
+    }
 };
 
 int main(int argc, char **argv) {

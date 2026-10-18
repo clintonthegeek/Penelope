@@ -101,6 +101,21 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     painter->restore();
 }
 
+QString WebViewItem::linkTitleAt(const QPointF &pos) const
+{
+    for (int i = firstVisibleElement(pos.y()); i < m_result.elements.size(); ++i) {
+        qreal top = 0;
+        std::visit([&](const auto &e) { top = e.y; }, m_result.elements[i]);
+        if (top > pos.y()) break;
+        const auto links = m_linksByElement.constFind(i);
+        if (links == m_linksByElement.cend()) continue;
+        for (const auto &link : links.value()) {
+            if (link.rect.contains(pos)) return link.title;
+        }
+    }
+    return {};
+}
+
 QString WebViewItem::linkAt(const QPointF &pos) const
 {
     for (int i = firstVisibleElement(pos.y()); i < m_result.elements.size(); ++i) {

@@ -24,6 +24,7 @@ void addLine(HitIndex &index, const Layout::BlockBox &box, const Layout::LineBox
         if (!glyph.style.linkHref.isEmpty() && glyphWidth > 0) {
             index.linkBounds.append(QRectF(glyphX, box.y + lineY, glyphWidth, qMax(line.height, qreal(1))));
             index.linkHrefs.append(glyph.style.linkHref);
+            index.linkTitles.append(glyph.style.linkTitle);
         }
         glyphX += glyphWidth;
     }

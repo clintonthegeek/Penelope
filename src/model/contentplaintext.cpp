@@ -11,7 +11,7 @@ QString inlineText(const QList<InlineNode> &inlines)
             if constexpr (std::is_same_v<T, TextRun> || std::is_same_v<T, InlineCode>
                           || std::is_same_v<T, Link>) text += n.text;
             else if constexpr (std::is_same_v<T, InlineImage>) text += n.altText;
-            else if constexpr (std::is_same_v<T, FootnoteRef>) text += QString::number(n.index);
+            else if constexpr (std::is_same_v<T, FootnoteRef>) text += n.label;
             else if constexpr (std::is_same_v<T, SoftBreak>) text += QLatin1Char(' ');
             else if constexpr (std::is_same_v<T, HardBreak>) text += QLatin1Char('\n');
         }, node);
@@ -41,9 +41,8 @@ QString blocksText(const QList<BlockNode> &blocks)
                     parts.append(cells.join(QLatin1Char('\t')));
                 }
             } else if constexpr (std::is_same_v<T, FootnoteSection>) {
-                for (int i = 0; i < n.footnotes.size(); ++i)
-                    parts.append(QString::number(i + 1) + QStringLiteral(". ")
-                                 + inlineText(n.footnotes[i].content));
+                for (const auto &note : n.footnotes)
+                    parts.append(note.label + QStringLiteral(". ") + inlineText(note.content));
             }
         }, block);
     }

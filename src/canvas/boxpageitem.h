@@ -30,6 +30,7 @@ public:
                        const QString &fileName, const QString &title);
 
     QString linkAt(QPointF itemPos) const;
+    QString linkTitleAt(QPointF itemPos) const;
     QRectF lineRect(int index) const;
     QString textInRect(const QRectF &itemRect) const;
 

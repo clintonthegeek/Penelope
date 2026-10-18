@@ -12,6 +12,7 @@
 #include "hyphenator.h"
 #include "shortwords.h"
 #include "footnoteparser.h"
+#include "frontmatterparser.h"
 
 #include <algorithm>
 
@@ -201,6 +202,7 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     m_altText.clear();
     m_linkHref.clear();
     m_footnotes.clear();
+    m_linkSpanDepth = 0;
 
     // Resolve default text style
     if (m_styleManager)
@@ -208,9 +210,16 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     else
         m_currentStyle = defaultTextStyle();
 
+    // Front matter is metadata, not body. Blanking its lines before the
+    // footnote scan keeps `title: [^a]`-style text out of the note parser too.
+    FrontMatterParser fmParser;
+    QString body = fmParser.process(markdownText);
+    m_doc.hasFrontmatter = fmParser.frontMatter().present;
+    m_doc.frontmatterRaw = fmParser.frontMatter().raw;
+
     // Extract footnotes
     FootnoteParser fnParser;
-    QString processed = fnParser.process(markdownText);
+    QString processed = fnParser.process(body);
     for (const auto &fn : fnParser.footnotes()) {
         m_footnotes.append({fn.label, fn.content});
     }
@@ -232,7 +241,10 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     // Parse
     MD_PARSER parser = {};
     parser.abi_version = 0;
-    parser.flags = MD_DIALECT_GITHUB | MD_FLAG_UNDERLINE
+    // MD_FLAG_UNDERLINE would make `_x_` underline *and* disable `_` emphasis.
+    // CommonMark, and Markoff's parser, treat `_x_` as emphasis; underline is a
+    // style-system property that nothing in the dialect produces.
+    parser.flags = MD_DIALECT_GITHUB
                  | MD_FLAG_WIKILINKS | MD_FLAG_LATEXMATHSPANS;
     parser.enter_block = &ContentBuilder::sEnterBlock;
     parser.leave_block = &ContentBuilder::sLeaveBlock;
@@ -737,6 +749,18 @@ int ContentBuilder::leaveBlock(MD_BLOCKTYPE type, void * /*detail*/)
 
 // --- Span handlers ---
 
+// Where a link points, in the spirit of Markoff's LinkKind.
+static Content::LinkKind classifyLinkHref(const QString &href)
+{
+    if (href.startsWith(QLatin1Char('#')))
+        return Content::LinkKind::Anchor;
+    if (href.startsWith(QLatin1String("mailto:"))
+        || href.contains(QLatin1String("://"))
+        || href.startsWith(QLatin1String("www.")))
+        return Content::LinkKind::External;
+    return Content::LinkKind::File;
+}
+
 int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
 {
     if (m_cancelled && m_cancelled()) return 1;
@@ -780,6 +804,9 @@ int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
         }
         m_linkHref = extractAttribute(d->href);
         m_currentStyle.linkHref = m_linkHref;
+        m_currentStyle.linkTitle = extractAttribute(d->title);
+        m_currentStyle.linkKind = classifyLinkHref(m_linkHref);
+        ++m_linkSpanDepth;
         break;
     }
 
@@ -805,7 +832,15 @@ int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
         m_currentStyle.underline = true;
         break;
 
-    case MD_SPAN_WIKILINK:
+    case MD_SPAN_WIKILINK: {
+        auto *d = static_cast<MD_SPAN_WIKILINK_DETAIL *>(detail);
+        m_styleStack.push(m_currentStyle);
+        m_currentStyle.linkHref = extractAttribute(d->target);
+        m_currentStyle.linkKind = Content::LinkKind::WikiLink;
+        ++m_linkSpanDepth;
+        break;
+    }
+
     case MD_SPAN_LATEXMATH:
     case MD_SPAN_LATEXMATH_DISPLAY:
         m_styleStack.push(m_currentStyle);
@@ -856,6 +891,15 @@ int ContentBuilder::leaveSpan(MD_SPANTYPE type, void * /*detail*/)
             m_currentStyle = m_styleStack.pop();
         m_linkHref.clear();
         m_currentStyle.linkHref.clear();
+        m_currentStyle.linkTitle.clear();
+        m_currentStyle.linkKind = Content::LinkKind::None;
+        if (m_linkSpanDepth > 0) --m_linkSpanDepth;
+        break;
+
+    case MD_SPAN_WIKILINK:
+        if (!m_styleStack.isEmpty())
+            m_currentStyle = m_styleStack.pop();
+        if (m_linkSpanDepth > 0) --m_linkSpanDepth;
         break;
 
     default:
@@ -894,64 +938,9 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
     }
 
     switch (type) {
-    case MD_TEXT_NORMAL: {
-        // Check for footnote references
-        if (!m_footnotes.isEmpty()) {
-            static const QRegularExpression fnRefRx(QStringLiteral(R"(\[\^([^\]]+)\])"));
-            int lastEnd = 0;
-            auto it = fnRefRx.globalMatch(str);
-            bool found = false;
-            while (it.hasNext()) {
-                auto match = it.next();
-                if (match.capturedStart() > lastEnd) {
-                    QString seg = str.mid(lastEnd, match.capturedStart() - lastEnd);
-                    if (!m_inCodeBlock)
-                        seg = processTypography(seg);
-                    appendInlineNode(Content::TextRun{seg, m_currentStyle});
-                }
-                QString label = match.captured(1);
-                int fnIndex = -1;
-                for (int i = 0; i < m_footnotes.size(); ++i) {
-                    if (m_footnotes[i].label == label) {
-                        fnIndex = i;
-                        break;
-                    }
-                }
-                if (fnIndex >= 0) {
-                    int number = m_footnoteStyle.startNumber + fnIndex;
-                    Content::FootnoteRef ref;
-                    ref.index = fnIndex;
-                    ref.label = m_footnoteStyle.formatNumber(number);
-                    ref.style = m_currentStyle;
-                    ref.style.fontSize = 8.0;
-                    ref.style.foreground = QColor(0x03, 0x66, 0xd6);
-                    ref.style.superscript = m_footnoteStyle.superscriptRef;
-                    appendInlineNode(std::move(ref));
-                } else {
-                    appendInlineNode(Content::TextRun{match.captured(0), m_currentStyle});
-                }
-                lastEnd = match.capturedEnd();
-                found = true;
-            }
-            if (found) {
-                if (lastEnd < str.size()) {
-                    QString tail = str.mid(lastEnd);
-                    if (!m_inCodeBlock)
-                        tail = processTypography(tail);
-                    appendInlineNode(Content::TextRun{tail, m_currentStyle});
-                }
-            } else {
-                if (!m_inCodeBlock)
-                    str = processTypography(str);
-                appendInlineNode(Content::TextRun{str, m_currentStyle});
-            }
-        } else {
-            if (!m_inCodeBlock)
-                str = processTypography(str);
-            appendInlineNode(Content::TextRun{str, m_currentStyle});
-        }
+    case MD_TEXT_NORMAL:
+        emitNormalText(str);
         break;
-    }
 
     case MD_TEXT_CODE:
         if (m_inCodeBlock) {
@@ -987,6 +976,108 @@ int ContentBuilder::onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size)
         break;
     }
     return 0;
+}
+
+
+// Footnote references and Obsidian embeds are not MD4C spans, so a normal text
+// run is split for them; #tags are split out of what remains.
+void ContentBuilder::emitNormalText(const QString &text)
+{
+    static const QRegularExpression specials(
+        QStringLiteral(R"((!\[\[[^\]]*\]\])|(\[\^[^\]]+\]))"));
+    int last = 0;
+    auto it = specials.globalMatch(text);
+    while (it.hasNext()) {
+        const auto match = it.next();
+        if (match.capturedStart() > last)
+            emitPlainText(text.mid(last, match.capturedStart() - last));
+        if (!match.captured(1).isEmpty())
+            emitEmbed(match.captured(1));
+        else
+            emitFootnoteRef(match.captured(2));
+        last = match.capturedEnd();
+    }
+    if (last < text.size())
+        emitPlainText(text.mid(last));
+}
+
+void ContentBuilder::emitPlainText(const QString &text)
+{
+    if (text.isEmpty())
+        return;
+    if (!m_inCodeBlock && m_linkSpanDepth == 0) {
+        static const QRegularExpression tag(
+            QStringLiteral(R"((^|[\s(\[])(#[\p{L}\p{N}_][\p{L}\p{N}_/-]*))"),
+            QRegularExpression::UseUnicodePropertiesOption);
+        int consumed = 0;
+        auto it = tag.globalMatch(text);
+        while (it.hasNext()) {
+            const auto match = it.next();
+            const int start = match.capturedStart(2);
+            if (start > consumed)
+                appendInlineNode(Content::TextRun{
+                    processTypography(text.mid(consumed, start - consumed)), m_currentStyle});
+            Content::TextStyle style = m_currentStyle;
+            style.linkHref = match.captured(2);
+            style.linkKind = Content::LinkKind::Tag;
+            appendInlineNode(Content::TextRun{match.captured(2), style});
+            consumed = match.capturedEnd(2);
+        }
+        if (consumed > 0) {
+            if (consumed < text.size())
+                appendInlineNode(Content::TextRun{
+                    processTypography(text.mid(consumed)), m_currentStyle});
+            return;
+        }
+    }
+    appendInlineNode(Content::TextRun{
+        m_inCodeBlock ? text : processTypography(text), m_currentStyle});
+}
+
+void ContentBuilder::emitFootnoteRef(const QString &reference)
+{
+    const QString label = reference.mid(2, reference.size() - 3);
+    int fnIndex = -1;
+    for (int i = 0; i < m_footnotes.size(); ++i) {
+        if (m_footnotes[i].label == label) {
+            fnIndex = i;
+            break;
+        }
+    }
+    if (fnIndex < 0) {
+        // A reference with no definition stays literal, as Markoff leaves it.
+        appendInlineNode(Content::TextRun{reference, m_currentStyle});
+        return;
+    }
+    const int number = m_footnoteStyle.startNumber + fnIndex;
+    Content::FootnoteRef ref;
+    ref.index = fnIndex;
+    ref.label = m_footnoteStyle.formatNumber(number);
+    ref.style = m_currentStyle;
+    ref.style.fontSize = 8.0;
+    ref.style.foreground = QColor(0x03, 0x66, 0xd6);
+    ref.style.superscript = m_footnoteStyle.superscriptRef;
+    appendInlineNode(std::move(ref));
+}
+
+void ContentBuilder::emitEmbed(const QString &embed)
+{
+    // ![[Target#Section|alias]]
+    const QString body = embed.mid(3, embed.size() - 5);
+    QString target = body;
+    QString display = body;
+    const int pipe = body.lastIndexOf(QLatin1Char('|'));
+    if (pipe >= 0) {
+        target = body.left(pipe);
+        display = body.mid(pipe + 1);
+    }
+    target = target.trimmed();
+    if (display.trimmed().isEmpty())
+        display = target;
+    Content::TextStyle style = m_currentStyle;
+    style.linkHref = target;
+    style.linkKind = Content::LinkKind::Embed;
+    appendInlineNode(Content::TextRun{display, style});
 }
 
 // --- Source tracking ---

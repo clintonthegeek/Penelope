@@ -27,6 +27,7 @@ struct FontFace;
 struct LinkHitRect {
     QRectF rect;
     QString href;
+    QString title;
 };
 
 class QtBoxRenderer : public BoxTreeRenderer
@@ -79,7 +80,8 @@ public:
     void pushState() override;
     void popState() override;
 
-    void collectLink(const QRectF &rect, const QString &href) override;
+    void collectLink(const QRectF &rect, const QString &href,
+                     const QString &title) override;
 
 private:
     const QRawFont &rawFontFor(FontFace *face, qreal sizePoints);

@@ -1979,7 +1979,8 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
             if (m_currentHoverLink != href) {
                 m_currentHoverLink = href;
                 viewport()->setCursor(Qt::PointingHandCursor);
-                Q_EMIT statusHintChanged(href);
+                const QString title = m_webViewItem->linkTitleAt(itemPos);
+                Q_EMIT statusHintChanged(title.isEmpty() ? href : title);
             }
         } else {
             if (!m_currentHoverLink.isEmpty()) {
@@ -1997,12 +1998,14 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
                                         .translated(item->pos());
             if (!itemRect.contains(scenePos))
                 continue;
-            const QString href = item->linkAt(item->mapFromScene(scenePos));
+            const QPointF itemPos = item->mapFromScene(scenePos);
+            const QString href = item->linkAt(itemPos);
             if (!href.isEmpty()) {
                 if (m_currentHoverLink != href) {
                     m_currentHoverLink = href;
                     viewport()->setCursor(Qt::PointingHandCursor);
-                    Q_EMIT statusHintChanged(href);
+                    const QString title = item->linkTitleAt(itemPos);
+                    Q_EMIT statusHintChanged(title.isEmpty() ? href : title);
                 }
             } else if (!m_currentHoverLink.isEmpty()) {
                 m_currentHoverLink.clear();

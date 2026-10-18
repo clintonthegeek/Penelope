@@ -574,7 +574,8 @@ void PdfBoxRenderer::popState()
         *m_stream += "Q\n";
 }
 
-void PdfBoxRenderer::collectLink(const QRectF &rect, const QString &href)
+void PdfBoxRenderer::collectLink(const QRectF &rect, const QString &href,
+                                const QString & /*title*/)
 {
     if (href.isEmpty()) return;
 

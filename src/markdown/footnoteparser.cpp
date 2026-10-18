@@ -122,15 +122,4 @@ void FootnoteParser::orderByReference(const QString &text)
         fn.content = raw.content;
         m_footnotes.append(fn);
     }
-
-    // Add any definitions that were never referenced (at the end)
-    for (const auto &def : m_rawDefs) {
-        if (!assignedNumbers.contains(def.label)) {
-            FootnoteDefinition fn;
-            fn.label = def.label;
-            fn.sequentialNumber = nextNumber++;
-            fn.content = def.content;
-            m_footnotes.append(fn);
-        }
-    }
 }

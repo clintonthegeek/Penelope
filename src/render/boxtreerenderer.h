@@ -122,7 +122,8 @@ public:
 
     /// Collect a link annotation for the current page/view.
     /// Coordinates are in layout-engine space; the backend converts as needed.
-    virtual void collectLink(const QRectF &rect, const QString &href) = 0;
+    virtual void collectLink(const QRectF &rect, const QString &href,
+                             const QString &title) = 0;
 
 protected:
     explicit BoxTreeRenderer(FontManager *fontManager);

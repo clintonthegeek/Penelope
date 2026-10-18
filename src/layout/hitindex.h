@@ -15,6 +15,7 @@ struct HitIndex {
     QVector<QString> lineText;
     QVector<QRectF> linkBounds;
     QVector<QString> linkHrefs;
+    QVector<QString> linkTitles;
 };
 
 HitIndex buildHitIndex(const Layout::Page &page);

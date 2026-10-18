@@ -31,6 +31,17 @@ struct SourceRange {
     int endLine = -1;    // 1-based line in markdown source
 };
 
+// Where a link points, mirroring Markoff's LinkKind with an added Embed.
+enum class LinkKind {
+    None,
+    External,
+    File,
+    WikiLink,
+    Tag,
+    Anchor,
+    Embed,
+};
+
 // --- Style structs ---
 
 struct TextStyle {
@@ -47,6 +58,8 @@ struct TextStyle {
     bool subscript = false;
     QStringList fontFeatures;   // e.g. {"liga", "kern", "onum"}
     QString linkHref;           // non-empty when this run is inside <a href="...">
+    QString linkTitle;          // hover title from [text](href "title")
+    LinkKind linkKind = LinkKind::None;
 };
 
 struct ParagraphFormat {
@@ -235,6 +248,12 @@ struct FootnoteSection {
 
 struct Document {
     QList<BlockNode> blocks;
+
+    // YAML front matter, delimiters stripped. It is metadata, not body text:
+    // the lines it occupied stay blank so source ranges keep addressing the
+    // file. See FrontMatterParser for the extraction rule.
+    bool hasFrontmatter = false;
+    QString frontmatterRaw;
 };
 
 } // namespace Content

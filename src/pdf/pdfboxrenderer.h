@@ -157,6 +157,7 @@ public:
     void renderHersheyGlyphBox(const Layout::GlyphBox &gbox,
                                qreal x, qreal baselineY) override;
     void renderImageBlock(const Layout::BlockBox &box) override;
+    void renderLineImage(const Layout::ImageBox &image, qreal x, qreal y) override;
 
 private:
     // --- PDF coordinate helpers ---

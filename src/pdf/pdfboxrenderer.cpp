@@ -771,6 +771,23 @@ void PdfBoxRenderer::renderImageBlock(const Layout::BlockBox &box)
     *m_stream += "Q\n";
 }
 
+void PdfBoxRenderer::renderLineImage(const Layout::ImageBox &image, qreal x, qreal y)
+{
+    if (!m_stream || image.image.isNull() || image.imageId.isEmpty() || !m_imageNameCb)
+        return;
+    const QByteArray imgName = m_imageNameCb(image.imageId);
+    if (imgName.isEmpty())
+        return;
+
+    const qreal imgY = pdfY(y) - image.height;
+    *m_stream += "q\n";
+    *m_stream += pdfCoord(image.width) + " 0 0 "
+            + pdfCoord(image.height) + " "
+            + pdfCoord(x) + " " + pdfCoord(imgY) + " cm\n";
+    *m_stream += "/" + imgName + " Do\n";
+    *m_stream += "Q\n";
+}
+
 void PdfBoxRenderer::renderHersheyGlyphBox(const Layout::GlyphBox &gbox,
                                              qreal x, qreal baselineY)
 {

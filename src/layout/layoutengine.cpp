@@ -1123,7 +1123,81 @@ static QList<LineBreaking::Item> buildKPItems(
 
 // --- Line breaking ---
 
+// Inline images split the run: text before them, the image on its own line,
+// text after. Paragraphs hoist images out before they get here; headings and
+// table cells come through this path.
 QList<LineBox> Engine::breakIntoLines(const QList<Content::InlineNode> &inlines,
+                                      const Content::TextStyle &baseStyle,
+                                      const Content::ParagraphFormat &format,
+                                      qreal availWidth,
+                                      bool markdownRanges)
+{
+    QList<LineBox> result;
+    QList<Content::InlineNode> segment;
+    auto flushSegment = [&]() {
+        if (segment.isEmpty())
+            return;
+        result += breakTextIntoLines(segment, baseStyle, format, availWidth, markdownRanges);
+        segment.clear();
+    };
+    for (const auto &node : inlines) {
+        const auto *image = std::get_if<Content::InlineImage>(&node);
+        if (!image) {
+            segment.append(node);
+            continue;
+        }
+        flushSegment();
+        ImageBox box = makeInlineImageBox(*image, availWidth);
+        if (box.image.isNull() || box.width <= 0) {
+            // Keep the alt text when the bytes are missing.
+            Content::TextRun fallback;
+            fallback.text = QStringLiteral("[Image: %1]").arg(image->altText);
+            fallback.style = baseStyle;
+            segment.append(fallback);
+            continue;
+        }
+        LineBox line;
+        line.width = box.width;
+        line.height = box.height;
+        line.baseline = box.height;
+        line.images.append(std::move(box));
+        result.append(line);
+    }
+    flushSegment();
+    return result;
+}
+
+ImageBox Engine::makeInlineImageBox(const Content::InlineImage &image, qreal availWidth) const
+{
+    ImageBox box;
+    box.altText = image.altText;
+    if (image.resolvedImageData.isEmpty())
+        return box;
+    QImage loaded = QImage::fromData(image.resolvedImageData);
+    if (loaded.isNull())
+        return box;
+
+    qreal width = image.width > 0 ? image.width : loaded.width();
+    qreal height = image.height > 0 ? image.height : loaded.height();
+    const qreal maxWidth = qMax<qreal>(1.0, availWidth);
+    if (width > maxWidth) {
+        height *= maxWidth / width;
+        width = maxWidth;
+    }
+    constexpr qreal kMaxImageHeight = 500.0;
+    if (height > kMaxImageHeight) {
+        width *= kMaxImageHeight / height;
+        height = kMaxImageHeight;
+    }
+    box.image = loaded;
+    box.width = width;
+    box.height = height;
+    box.imageId = QString::number(qHashBits(image.resolvedImageData.constData(),
+                                             image.resolvedImageData.size()), 16);
+    return box;
+}
+
+QList<LineBox> Engine::breakTextIntoLines(const QList<Content::InlineNode> &inlines,
                                        const Content::TextStyle &baseStyle,
                                        const Content::ParagraphFormat &format,
                                        qreal availWidth,

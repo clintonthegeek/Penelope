@@ -210,9 +210,19 @@ void BoxTreeRenderer::renderFootnoteSectionBox(const Layout::FootnoteSectionBox 
     }
 }
 
+void BoxTreeRenderer::renderLineImage(const Layout::ImageBox &image, qreal x, qreal y)
+{
+    if (image.image.isNull() || image.width <= 0 || image.height <= 0)
+        return;
+    drawImage(QRectF(x, y, image.width, image.height), image.image);
+}
+
 void BoxTreeRenderer::renderLineBox(const Layout::LineBox &line,
                                      qreal originX, qreal originY, qreal availWidth)
 {
+    for (const auto &image : line.images)
+        renderLineImage(image, originX, originY);
+
     qreal baselineY = originY + line.baseline;
 
     // Justification

@@ -89,6 +89,7 @@ struct ImageBox {
     qreal width = 0;
     qreal height = 0;
     QString altText;
+    QString imageId; // resource name for the PDF writer
 };
 
 struct RuleBox {
@@ -385,6 +386,13 @@ private:
                                   const Content::ParagraphFormat &format,
                                   qreal availWidth,
                                   bool markdownRanges = true);
+    // The text-only half: images are split out before this runs.
+    QList<LineBox> breakTextIntoLines(const QList<Content::InlineNode> &inlines,
+                                      const Content::TextStyle &baseStyle,
+                                      const Content::ParagraphFormat &format,
+                                      qreal availWidth,
+                                      bool markdownRanges);
+    ImageBox makeInlineImageBox(const Content::InlineImage &image, qreal availWidth) const;
 
     QList<LineBox> shapeAndBreak(const QString &text,
                                  const Content::TextStyle &style,

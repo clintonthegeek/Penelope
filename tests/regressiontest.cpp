@@ -2973,6 +2973,76 @@ private Q_SLOTS:
         QCOMPARE(view.linkHint(QStringLiteral("https://example.com")),
                  QStringLiteral("https://example.com"));
     }
+    void md04InlineImagesAwayFromParagraphs() {
+        QTemporaryDir dir;
+        const QString png = dir.filePath(QStringLiteral("pic.png"));
+        QImage picture(12, 8, QImage::Format_ARGB32_Premultiplied);
+        picture.fill(QColor(200, 40, 40, 255));
+        QVERIFY(picture.save(png));
+
+        const QString md = QStringLiteral(
+            "# Heading ![pic](%1) after\n\n"
+            "| col |\n|---|\n| ![cell](%1) |\n\n"
+            "- item ![list](%1) end\n\n"
+            "Missing ![gone](/does/not/exist.png) here.\n").arg(png);
+        ContentBuilder builder;
+        const auto doc = builder.build(md);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+
+        int headingImages = 0;
+        int cellImages = 0;
+        int blockImages = 0;
+        for (const auto &page : layout.pages) {
+            for (const auto &element : page.elements) {
+                std::visit([&](const auto &e) {
+                    using T = std::decay_t<decltype(e)>;
+                    if constexpr (std::is_same_v<T, Layout::BlockBox>) {
+                        if (e.type == Layout::BlockBox::ImageBlock)
+                            blockImages += e.imageWidth > 0 ? 1 : 0;
+                        for (const auto &line : e.lines) {
+                            for (const auto &image : line.images) {
+                                if (image.width <= 0 || image.height <= 0)
+                                    continue;
+                                if (e.type == Layout::BlockBox::HeadingBlock)
+                                    ++headingImages;
+                                else if (e.type == Layout::BlockBox::ParagraphBlock)
+                                    ++cellImages;
+                            }
+                        }
+                    } else if constexpr (std::is_same_v<T, Layout::TableBox>) {
+                        for (const auto &row : e.rows) {
+                            for (const auto &cell : row.cells) {
+                                for (const auto &line : cell.lines)
+                                    cellImages += line.images.size();
+                            }
+                        }
+                    }
+                }, element);
+            }
+        }
+        QVERIFY2(headingImages > 0, "a heading keeps its inline image");
+        QVERIFY2(cellImages > 0, "a table cell keeps its inline image");
+        QVERIFY2(blockImages > 0, "a list item's image still becomes a block");
+        QString drawn;
+        for (const auto &page : layout.pages)
+            drawn += buildHitIndex(page).lineText.join(QLatin1Char(' ')) + QLatin1Char(' ');
+        QVERIFY2(drawn.contains(QStringLiteral("[Image: gone]")), qPrintable(drawn));
+
+        // The PDF writer handles the inline images too.
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(layout, pl, QStringLiteral("Pictures"));
+        QVERIFY(!pdf.isEmpty());
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        std::unique_ptr<Poppler::Page> first(poppler->page(0));
+        QVERIFY(first);
+        QVERIFY(first->text(QRectF()).contains(QStringLiteral("Heading")));
+    }
 };
 
 int main(int argc, char **argv) {

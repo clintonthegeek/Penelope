@@ -189,13 +189,27 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
             if (auto *bb = std::get_if<Layout::BlockBox>(&elem)) {
                 if (bb->type == Layout::BlockBox::ImageBlock && !bb->image.isNull())
                     ensureImageRegistered(bb->imageId, bb->image);
+                for (const auto &line : bb->lines) {
+                    for (const auto &image : line.images) {
+                        if (!image.image.isNull())
+                            ensureImageRegistered(image.imageId, image.image);
+                    }
+                }
             } else if (const auto *section = std::get_if<Layout::FootnoteSectionBox>(&elem)) {
                 for (const auto &note : section->footnotes) {
                     for (const auto &element : note.elements) {
                         const auto *noteBox = std::get_if<Layout::BlockBox>(&element);
-                        if (noteBox && noteBox->type == Layout::BlockBox::ImageBlock
+                        if (!noteBox)
+                            continue;
+                        if (noteBox->type == Layout::BlockBox::ImageBlock
                             && !noteBox->image.isNull())
                             ensureImageRegistered(noteBox->imageId, noteBox->image);
+                        for (const auto &line : noteBox->lines) {
+                            for (const auto &image : line.images) {
+                                if (!image.image.isNull())
+                                    ensureImageRegistered(image.imageId, image.image);
+                            }
+                        }
                     }
                 }
             }

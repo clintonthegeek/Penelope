@@ -69,6 +69,7 @@ public:
     virtual void renderCheckbox(const Layout::GlyphBox &gbox,
                                 qreal x, qreal baselineY);
     virtual void renderImageBlock(const Layout::BlockBox &box);
+    virtual void renderLineImage(const Layout::ImageBox &image, qreal x, qreal y);
 
     void setLineClip(const QRectF &clip);
     int lastPaintedLineCount() const { return m_lastPaintedLineCount; }

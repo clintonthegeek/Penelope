@@ -26,6 +26,8 @@ public:
     int pageNumber() const { return m_page ? m_page->pageNumber : 0; }
     const HitIndex &hitIndex() const { return m_hitIndex; }
     QPointF contentOrigin() const;
+    // The layout this page was laid out with (page-type overrides resolved).
+    PageLayout pageLayout() const;
 
     void setPageChrome(const PageLayout &layout, int totalPages,
                        const QString &fileName, const QString &title);

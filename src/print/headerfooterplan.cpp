@@ -32,11 +32,12 @@ HeaderFooterPlan makeHeaderFooterPlan(const PageLayout &pageLayout,
     const QSizeF pageSize = pageLayout.pageSizePoints();
     plan.pageRect = QRectF(QPointF(0, 0), pageSize);
 
+    // The bands sit on this page's own margins, not the base layout's.
     constexpr qreal mmToPt = 72.0 / 25.4;
-    const qreal marginLeft = pageLayout.margins.left() * mmToPt;
-    const qreal marginRight = pageLayout.margins.right() * mmToPt;
-    const qreal marginTop = pageLayout.margins.top() * mmToPt;
-    const qreal marginBottom = pageLayout.margins.bottom() * mmToPt;
+    const qreal marginLeft = resolved.margins.left() * mmToPt;
+    const qreal marginRight = resolved.margins.right() * mmToPt;
+    const qreal marginTop = resolved.margins.top() * mmToPt;
+    const qreal marginBottom = resolved.margins.bottom() * mmToPt;
     const qreal contentWidth = qMax<qreal>(0, pageSize.width() - marginLeft - marginRight);
 
     plan.headerLeft.text = HeaderFooterRenderer::resolveField(resolved.headerLeft, meta);

@@ -4003,6 +4003,101 @@ private Q_SLOTS:
         top->setValue(0.0);
         QCOMPARE(widget.currentPageLayout().margins.top(), 0.0);
     }
+    // A page type's margins were stored and shown but never used: the engine,
+    // the page chrome and the PDF all read the base layout.
+    void masterPageMarginsMoveThePage() {
+        FontManager fonts; TextShaper shaper(&fonts); Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("# Report\n\n") + QStringLiteral("word ").repeated(400));
+
+        PageLayout base; base.pageSizeId = QPageSize::A4;
+        base.margins = QMarginsF(20, 20, 20, 20);
+        base.headerEnabled = true; base.headerCenter = QStringLiteral("hdr");
+        base.footerCenter = QStringLiteral("{page}");
+
+        PageLayout withFirst = base;
+        MasterPage first; first.name = QStringLiteral("first");
+        first.marginTop = 50.0; first.marginBottom = 45.0;
+        first.marginLeft = 60.0; first.marginRight = 60.0;
+        withFirst.masterPages.insert(QStringLiteral("first"), first);
+
+        const auto baseLayout = engine.layout(doc, base);
+        const auto firstLayout = engine.layout(doc, withFirst);
+        QVERIFY(baseLayout.pages.size() >= 3);
+        QVERIFY(firstLayout.pages.size() >= 3);
+
+        constexpr qreal mmToPt = 72.0 / 25.4;
+        auto rectForPage = [](const Layout::LayoutResult &result, int page) {
+            for (const auto &entry : result.sourceMap) {
+                if (entry.pageNumber == page)
+                    return entry.rect;
+            }
+            return QRectF();
+        };
+        const QRectF baseFirst = rectForPage(baseLayout, 0);
+        const QRectF movedFirst = rectForPage(firstLayout, 0);
+        QVERIFY(!baseFirst.isEmpty());
+        QVERIFY(!movedFirst.isEmpty());
+        QCOMPARE(baseFirst.x(), 20.0 * mmToPt);
+        QCOMPARE(movedFirst.x(), 60.0 * mmToPt);
+        // Both sit under the same heading, so the y difference is the margin.
+        QCOMPARE(movedFirst.y() - baseFirst.y(), 30.0 * mmToPt);
+        QVERIFY2(movedFirst.width() < baseFirst.width() * 0.75,
+                 "the first page's column is narrower");
+
+        // The pages after the first keep the base margins.
+        const QRectF baseSecond = rectForPage(baseLayout, 1);
+        const QRectF second = rectForPage(firstLayout, 1);
+        QCOMPARE(second.x(), 20.0 * mmToPt);
+        QCOMPARE(second.width(), baseSecond.width());
+        QVERIFY2(firstLayout.pages.size() > baseLayout.pages.size(),
+                 "narrower first-page margins push content onto later pages");
+
+        // The chrome follows the same overrides.
+        const auto firstPlan = makeHeaderFooterPlan(withFirst, 0, 3, QStringLiteral("f.md"), QStringLiteral("T"));
+        const auto laterPlan = makeHeaderFooterPlan(withFirst, 1, 3, QStringLiteral("f.md"), QStringLiteral("T"));
+        QCOMPARE(firstPlan.headerCenter.rect.top(), 50.0 * mmToPt - PageLayout::kHeaderHeight);
+        QCOMPARE(laterPlan.headerCenter.rect.top(), 20.0 * mmToPt - PageLayout::kHeaderHeight);
+        QVERIFY(firstPlan.footerCenter.rect.left() > laterPlan.footerCenter.rect.left());
+
+        // And the page item places its content at the same origin.
+        auto sharedFonts = std::make_shared<FontManager>();
+        BoxPageItem firstItem(std::make_shared<Layout::Page>(firstLayout.pages.at(0)), firstLayout.pageSize, sharedFonts);
+        BoxPageItem laterItem(std::make_shared<Layout::Page>(firstLayout.pages.at(1)), firstLayout.pageSize, sharedFonts);
+        firstItem.setPageChrome(withFirst, firstLayout.pages.size(), QStringLiteral("f.md"), QStringLiteral("T"));
+        laterItem.setPageChrome(withFirst, firstLayout.pages.size(), QStringLiteral("f.md"), QStringLiteral("T"));
+        QCOMPARE(firstItem.contentOrigin().x(), 60.0 * mmToPt);
+        QCOMPARE(laterItem.contentOrigin().x(), 20.0 * mmToPt);
+        QCOMPARE(firstItem.contentOrigin().y(),
+                 50.0 * mmToPt + PageLayout::kHeaderHeight + PageLayout::kSeparatorGap);
+        QVERIFY(laterItem.contentOrigin().y() < firstItem.contentOrigin().y());
+
+        QVERIFY(firstLayout.pages.at(0).contentHeight
+                < baseLayout.pages.at(0).contentHeight + 1.0);
+
+        // Mirrored margins on facing pages change the origin, not the column
+        // width, so the text breaks exactly as it does in the base layout.
+        PageLayout wide = base;
+        wide.margins = QMarginsF(25, 25, 25, 25);
+        PageLayout mirrored = wide;
+        MasterPage left; left.name = QStringLiteral("left");
+        left.marginLeft = 30.0; left.marginRight = 20.0;
+        MasterPage right; right.name = QStringLiteral("right");
+        right.marginLeft = 20.0; right.marginRight = 30.0;
+        mirrored.masterPages.insert(QStringLiteral("left"), left);
+        mirrored.masterPages.insert(QStringLiteral("right"), right);
+        const auto wideLayout = engine.layout(doc, wide);
+        const auto mirroredLayout = engine.layout(doc, mirrored);
+        QCOMPARE(mirroredLayout.pages.size(), wideLayout.pages.size());
+        for (int i = 0; i < mirroredLayout.pages.size(); ++i)
+            QCOMPARE(mirroredLayout.pages.at(i).blockIds, wideLayout.pages.at(i).blockIds);
+        const QRectF mirroredSecond = rectForPage(mirroredLayout, 1);
+        const QRectF wideSecond = rectForPage(wideLayout, 1);
+        QCOMPARE(mirroredSecond.x(), 30.0 * mmToPt);   // page 2 is a left page
+        QCOMPARE(mirroredSecond.width(), wideSecond.width());
+        const QRectF mirroredThird = rectForPage(mirroredLayout, 2);
+        QCOMPARE(mirroredThird.x(), 20.0 * mmToPt);    // page 3 is a right page
+    }
 };
 
 int main(int argc, char **argv) {

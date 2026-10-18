@@ -286,6 +286,10 @@ struct CodeBlockRegion {
 struct Page {
     int pageNumber = 0;
     QList<PageElement> elements;
+    // The layout this page was actually laid out with: a page type may override
+    // the margins, and a table straddling a change keeps the earlier geometry.
+    PageLayout layout;
+    bool hasLayout = false;
     qreal contentHeight = 0;
     quint64 fingerprint = 0;
     QList<quint64> blockIds;
@@ -345,6 +349,18 @@ struct LayoutCursor {
     QList<int> pendingNoteIndices;
     QList<PageElement> queue;
     int queueIndex = 0;
+    // The column width the queued elements were shaped at. A page type may
+    // change the margins, so a reused queue would carry the wrong line breaks.
+    qreal contentWidth = 0;
+    // The layout the previous page used, kept for the case where a width change
+    // has to wait for an element it cannot re-shape.
+    PageLayout lastLayout;
+    // Characters of each block already on earlier pages, so a block interrupted
+    // by a width change can be shaped again without repeating what is placed.
+    QHash<quint64, int> placedChars;
+    // The block a width change interrupted, and how much of it is placed.
+    quint64 resumeBlock = 0;
+    int resumeChars = 0;
 };
 struct LayoutBudget {
     int maxBlocks = 0;

@@ -35,11 +35,21 @@ QRectF BoxPageItem::boundingRect() const
     return QRectF(-1, -1, m_pageSize.width() + shadow + 2, m_pageSize.height() + shadow + 2);
 }
 
+PageLayout BoxPageItem::pageLayout() const
+{
+    // The layout the page was laid out with: a page type may override the
+    // margins and the header.
+    if (m_page && m_page->hasLayout)
+        return m_page->layout;
+    return m_layout.resolvedForPage(m_page ? m_page->pageNumber : 0);
+}
+
 QPointF BoxPageItem::contentOrigin() const
 {
+    const PageLayout resolved = pageLayout();
     constexpr qreal mmToPt = 72.0 / 25.4;
-    return QPointF(m_layout.margins.left() * mmToPt,
-                   m_layout.margins.top() * mmToPt + m_layout.headerTotalHeight());
+    return QPointF(resolved.margins.left() * mmToPt,
+                   resolved.margins.top() * mmToPt + resolved.headerTotalHeight());
 }
 
 QPointF BoxPageItem::toContent(QPointF itemPos) const
@@ -111,7 +121,9 @@ void BoxPageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     painter->setBrush(Qt::NoBrush);
 
     const int pageNumber = m_page ? m_page->pageNumber : 0;
-    const HeaderFooterPlan plan = makeHeaderFooterPlan(m_layout, pageNumber, m_totalPages, m_fileName, m_title);
+    const PageLayout planLayout = pageLayout();
+    const HeaderFooterPlan plan = makeHeaderFooterPlan(planLayout, pageNumber, m_totalPages,
+                                                       m_fileName, m_title);
     QFont font(QStringLiteral("Noto Sans"));
     font.setPointSizeF(plan.fontSize);
     painter->setFont(font);

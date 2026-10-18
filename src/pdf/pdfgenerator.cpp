@@ -445,18 +445,21 @@ QByteArray PdfGenerator::renderPage(const Layout::Page &page,
         stream += "0 0 " + pdfCoord(pageWidth) + " " + pdfCoord(pageHeight) + " re f\n";
     }
 
-    // Calculate content area
-    qreal marginLeft = pageLayout.margins.left() * 72.0 / 25.4;
-    qreal marginTop = pageLayout.margins.top() * 72.0 / 25.4;
+    // A page type may override the margins and the chrome, so the content area
+    // comes from this page's own layout.
+    const PageLayout pageSetup = page.hasLayout ? page.layout
+                                                 : pageLayout.resolvedForPage(page.pageNumber);
+    qreal marginLeft = pageSetup.margins.left() * 72.0 / 25.4;
+    qreal marginTop = pageSetup.margins.top() * 72.0 / 25.4;
 
     qreal contentTopY = pageHeight - marginTop;
-    if (pageLayout.headerEnabled)
+    if (pageSetup.headerEnabled)
         contentTopY -= (PageLayout::kHeaderHeight + PageLayout::kSeparatorGap);
 
     qreal originX = marginLeft;
 
     // Render header/footer
-    renderHeaderFooter(stream, pageLayout, page.pageNumber,
+    renderHeaderFooter(stream, pageSetup, page.pageNumber,
                        m_pageAnnotations.size(), pageWidth, pageHeight);
 
     // Set up PdfBoxRenderer to render page elements
@@ -693,15 +696,17 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
     const HeaderFooterPlan plan = makeHeaderFooterPlan(
         pageLayout, pageNumber, totalPages, m_filename, m_title);
 
+    const PageLayout resolved = pageLayout.resolvedForPage(pageNumber);
+
     auto drawFields = [&](const QString &left, const QString &center, const QString &right,
                           qreal rectY, qreal rectHeight) {
         FontFace *font = m_fontManager->loadFont(QStringLiteral("Noto Sans"), 400, false);
         if (!font || !font->ftFace) return;
 
         QByteArray fname = pdfFontName(font);
-        qreal fontSize = 9.0;
-        qreal marginLeft = pageLayout.margins.left() * 72.0 / 25.4;
-        qreal marginRight = pageLayout.margins.right() * 72.0 / 25.4;
+        const qreal fontSize = plan.fontSize;
+        qreal marginLeft = resolved.margins.left() * 72.0 / 25.4;
+        qreal marginRight = resolved.margins.right() * 72.0 / 25.4;
         qreal textY = rectY;
 
         stream += "BT\n";
@@ -754,8 +759,8 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
         stream += "ET\n";
     };
 
-    qreal mTop = pageLayout.margins.top() * 72.0 / 25.4;
-    qreal mBottom = pageLayout.margins.bottom() * 72.0 / 25.4;
+    qreal mTop = resolved.margins.top() * 72.0 / 25.4;
+    qreal mBottom = resolved.margins.bottom() * 72.0 / 25.4;
 
     // Header
     if (plan.headerEnabled) {
@@ -765,8 +770,8 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
 
         // Separator line
         qreal sepY = pageHeight - mTop;
-        qreal mLeft = pageLayout.margins.left() * 72.0 / 25.4;
-        qreal mRight = pageLayout.margins.right() * 72.0 / 25.4;
+        qreal mLeft = resolved.margins.left() * 72.0 / 25.4;
+        qreal mRight = resolved.margins.right() * 72.0 / 25.4;
         stream += "q\n0.80 0.80 0.80 RG\n0.5 w\n";
         stream += pdfCoord(mLeft) + " " + pdfCoord(sepY) + " m "
                 + pdfCoord(pageWidth - mRight) + " " + pdfCoord(sepY) + " l S\n";
@@ -781,8 +786,8 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
 
         // Separator line
         qreal sepY = mBottom + PageLayout::kFooterHeight;
-        qreal mLeft = pageLayout.margins.left() * 72.0 / 25.4;
-        qreal mRight = pageLayout.margins.right() * 72.0 / 25.4;
+        qreal mLeft = resolved.margins.left() * 72.0 / 25.4;
+        qreal mRight = resolved.margins.right() * 72.0 / 25.4;
         stream += "q\n0.80 0.80 0.80 RG\n0.5 w\n";
         stream += pdfCoord(mLeft) + " " + pdfCoord(sepY) + " m "
                 + pdfCoord(pageWidth - mRight) + " " + pdfCoord(sepY) + " l S\n";
@@ -862,12 +867,15 @@ Pdf::ObjId PdfGenerator::writeOutlines(Pdf::Writer &writer,
 
     QSizeF pageSize = pageLayout.pageSizePoints();
     qreal pageHeight = pageSize.height();
-    qreal marginTop = pageLayout.margins.top() * 72.0 / 25.4;
-    qreal contentTop = pageHeight - marginTop;
-    if (pageLayout.headerEnabled)
-        contentTop -= (PageLayout::kHeaderHeight + PageLayout::kSeparatorGap);
 
     for (int pi = 0; pi < layout.pages.size(); ++pi) {
+        const PageLayout pageSetup = layout.pages[pi].hasLayout
+            ? layout.pages[pi].layout
+            : pageLayout.resolvedForPage(pi);
+        qreal marginTop = pageSetup.margins.top() * 72.0 / 25.4;
+        qreal contentTop = pageHeight - marginTop;
+        if (pageSetup.headerEnabled)
+            contentTop -= (PageLayout::kHeaderHeight + PageLayout::kSeparatorGap);
         if (m_cancelled && m_cancelled()) return {};
         for (const auto &elem : layout.pages[pi].elements) {
             if (auto *bb = std::get_if<Layout::BlockBox>(&elem)) {

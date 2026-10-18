@@ -53,9 +53,6 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
     LayoutResult result;
     result.pageSize = pageLayout.pageSizePoints();
 
-    QSizeF contentSize = pageLayout.contentSizePoints();
-    qreal availWidth = contentSize.width();
-
     LayoutCursor cursor;
     Page page;
     while (layoutNextPage(doc, pageLayout, &cursor, &page)) {
@@ -131,9 +128,10 @@ LayoutResult Engine::layoutReusing(const Content::Document &doc, const PageLayou
 
 void Engine::buildSourceMap(LayoutResult &result, const PageLayout &pageLayout) const
 {
-    QMarginsF margins = pageLayout.marginsPoints();
-    qreal headerOffset = pageLayout.headerTotalHeight();
     for (const auto &page : result.pages) {
+        const PageLayout resolved = pageLayout.resolvedForPage(page.pageNumber);
+        const QMarginsF margins = resolved.marginsPoints();
+        const qreal headerOffset = resolved.headerTotalHeight();
         for (const auto &element : page.elements) {
             std::visit([&](const auto &e) {
                 using T = std::decay_t<decltype(e)>;
@@ -309,6 +307,64 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
     return result;
 }
 
+// The identity a block carries through layout.
+quint64 blockIdOfNode(const Content::BlockNode &node)
+{
+    return std::visit([](const auto &b) { return b.blockId; }, node);
+}
+
+// The furthest character a block fragment reaches, in the block's own text.
+int fragmentEnd(const BlockBox &box)
+{
+    int end = 0;
+    for (const auto &line : box.lines) {
+        for (const auto &glyph : line.glyphs)
+            end = qMax(end, glyph.textStart + glyph.textLength);
+    }
+    return end;
+}
+
+// Drops the lines of a block that are already on earlier pages. A line that
+// straddles the boundary is kept whole: re-breaking at a new width cannot split
+// it exactly, and dropping it would lose text.
+void dropAlreadyPlacedLines(QList<PageElement> &elements, quint64 blockId, int placedChars)
+{
+    if (placedChars <= 0)
+        return;
+    QList<PageElement> kept;
+    kept.reserve(elements.size());
+    for (auto &element : elements) {
+        auto *box = std::get_if<BlockBox>(&element);
+        if (!box || box->blockId != blockId) {
+            kept.append(std::move(element));
+            continue;
+        }
+        int firstKept = 0;
+        while (firstKept < box->lines.size()) {
+            int end = 0;
+            for (const auto &glyph : box->lines[firstKept].glyphs)
+                end = qMax(end, glyph.textStart + glyph.textLength);
+            if (end > placedChars)
+                break;
+            ++firstKept;
+        }
+        if (firstKept >= box->lines.size())
+            continue; // every line is already on an earlier page
+        if (firstKept > 0) {
+            box->lines = box->lines.mid(firstKept);
+            box->isFragmentStart = false;
+            box->spaceBefore = 0;
+            box->firstLineIndent = 0;
+            qreal height = 0;
+            for (const auto &line : box->lines)
+                height += line.height;
+            box->height = height;
+        }
+        kept.append(std::move(element));
+    }
+    elements = std::move(kept);
+}
+
 bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage) {
     m_footnoteStyle = doc.footnoteStyle;
     m_notesAtFoot = !m_footnoteStyle.asEndnotes;
@@ -319,11 +375,61 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
     if (!cursor || cursor->finished || !outPage) return false;
     if (m_breakCancelled) return false;
 
-    QSizeF contentSize = pageLayout.contentSizePoints();
+    // A page type overrides the margins, so the page's own geometry is
+    // resolved before anything is placed on it.
+    PageLayout used = pageLayout.resolvedForPage(cursor->currentPageNumber);
+    used.masterPages.clear();
+    QSizeF contentSize = used.contentSizePoints();
+
+    if (cursor->contentWidth > 0
+        && qAbs(cursor->contentWidth - contentSize.width()) > 0.01) {
+        // The column changes on this page. Elements shaped for the old width
+        // cannot be reused: a block in progress is shaped again for the new
+        // width and its placed characters are dropped, while anything else (a
+        // table, a note band) keeps the geometry it started with, because its
+        // placed part cannot be re-shaped.
+        bool canReshape = cursor->queue.isEmpty();
+        quint64 interrupted = 0;
+        if (!canReshape && cursor->queueIndex < cursor->queue.size()) {
+            if (const auto *first = std::get_if<BlockBox>(&cursor->queue.at(cursor->queueIndex))) {
+                canReshape = true;
+                if (!first->isFragmentStart)
+                    interrupted = first->blockId;
+            }
+        }
+        const int placed = interrupted ? cursor->placedChars.value(interrupted, 0) : 0;
+        // The interrupted block has to be shaped again, so the pull position
+        // rewinds to it as well.
+        int interruptedIndex = -1;
+        if (interrupted != 0) {
+            for (int bi = 0; bi < doc.blocks.size(); ++bi) {
+                if (blockIdOfNode(doc.blocks.at(bi)) == interrupted) {
+                    interruptedIndex = bi;
+                    break;
+                }
+            }
+        }
+        const bool canResume = interruptedIndex >= 0 && placed > 0;
+        if (canReshape && (interrupted == 0 || canResume)) {
+            cursor->resumeBlock = interrupted;
+            cursor->resumeChars = placed;
+            cursor->queue.clear();
+            cursor->queueIndex = 0;
+            if (canResume)
+                cursor->nextBlock = qMin(cursor->nextBlock, interruptedIndex);
+        } else if (cursor->contentWidth > 0) {
+            used = cursor->lastLayout; // wait for a break we can re-shape at
+            used.masterPages.clear();
+            contentSize = used.contentSizePoints();
+        }
+    }
+
     qreal pageHeight = contentSize.height();
     const qreal contentWidth = contentSize.width();
-    const LayoutCursor incoming = *cursor;
+    cursor->contentWidth = contentWidth;
+    cursor->lastLayout = used;
 
+    const LayoutCursor incoming = *cursor;
     auto blockIdOf = [](const Content::BlockNode &node) {
         return std::visit([](const auto &b) { return b.blockId; }, node);
     };
@@ -357,6 +463,12 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
             }
             const int bi = pullBlock;
             auto elems = layoutBlockNode(doc.blocks.at(bi), contentWidth);
+            if (cursor->resumeBlock != 0 && blockIdOf(doc.blocks.at(bi)) == cursor->resumeBlock) {
+                const int before = elems.size();
+                dropAlreadyPlacedLines(elems, cursor->resumeBlock, cursor->resumeChars);
+                cursor->resumeBlock = 0;
+                cursor->resumeChars = 0;
+            }
             if (m_notesAtFoot) {
                 // The notes are placed per page; the trailing section is not part
                 // of the page body.
@@ -376,6 +488,8 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
 
     Page currentPage;
     currentPage.pageNumber = cursor->currentPageNumber;
+    currentPage.layout = used;
+    currentPage.hasLayout = true;
     qreal y = cursor->yOnPage;
     QList<quint64> pageIds;
     quint64 pageHash = 0;
@@ -445,14 +559,24 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
 
     auto remember = [&](const PageElement &el) {
         quint64 id = 0;
+        int far = 0;
         std::visit([&](const auto &e) {
             using T = std::decay_t<decltype(e)>;
             if constexpr (std::is_same_v<T, BlockBox> || std::is_same_v<T, TableBox>
-                          || std::is_same_v<T, FootnoteSectionBox>)
+                          || std::is_same_v<T, FootnoteSectionBox>) {
                 id = e.blockId;
+                if constexpr (std::is_same_v<T, BlockBox>)
+                    far = fragmentEnd(e);
+            }
         }, el);
         if (id != 0 && (pageIds.isEmpty() || pageIds.last() != id))
             pageIds.append(id);
+        if (id != 0 && far > 0) {
+            // How far into the block this page reached, for a later width change.
+            cursor->placedChars[id] = qMax(cursor->placedChars.value(id, 0), far);
+            if (cursor->placedChars.size() > 16)
+                cursor->placedChars.clear();
+        }
     };
 
     const bool notesAtFoot = m_notesAtFoot;

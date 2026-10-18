@@ -44,6 +44,11 @@ public:
     void setShortWords(ShortWords *sw);
     void setFootnoteStyle(const FootnoteStyle &style);
 
+    // Parses a fragment (a note body) into blocks, sharing this builder's
+    // configuration and block-id counter, without the front-matter or footnote
+    // pre-passes.
+    QList<Content::BlockNode> buildFragment(const QString &markdownText);
+
 private:
     // MD4C static callbacks
     static int sEnterBlock(MD_BLOCKTYPE type, void *detail, void *userdata);
@@ -79,6 +84,9 @@ private:
 
     // Inline node management
     void appendInlineNode(Content::InlineNode node);
+    void resetState();
+    void parseIntoDocument(const QString &text);
+    void appendFootnoteSection();
     QList<Content::InlineNode> *currentInlines();
 
     // Source position tracking

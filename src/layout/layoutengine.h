@@ -210,9 +210,13 @@ struct TableBox {
     quint64 blockId = 0;
 };
 
+// A note carries laid-out blocks. Footnote sections do not nest, so a note's
+// elements are the page elements minus another section.
+using NoteElement = std::variant<BlockBox, TableBox>;
+
 struct FootnoteBox {
     QString label;
-    QList<LineBox> lines;
+    QList<NoteElement> elements;
     Content::TextStyle numberStyle;
     qreal y = 0;
     qreal height = 0;

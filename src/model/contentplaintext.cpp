@@ -42,7 +42,7 @@ QString blocksText(const QList<BlockNode> &blocks)
                 }
             } else if constexpr (std::is_same_v<T, FootnoteSection>) {
                 for (const auto &note : n.footnotes)
-                    parts.append(note.label + QStringLiteral(". ") + inlineText(note.content));
+                    parts.append(note.label + QStringLiteral(". ") + blocksText(note.blocks));
             }
         }, block);
     }

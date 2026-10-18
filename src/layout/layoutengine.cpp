@@ -2053,7 +2053,11 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
     sbox.separatorLength = fs.separatorLength;
     sbox.separatorWidth = fs.separatorWidth;
 
-    qreal y = fs.showSeparator ? 12.0 : 0; // space for separator
+    constexpr qreal kIndent = 20.0; // notes hang under their marker
+    constexpr qreal kGap = 2.0;
+
+    qreal y = fs.showSeparator ? 12.0 : 0; // space for the separator
+    const qreal noteWidth = qMax<qreal>(1.0, availWidth - kIndent);
 
     for (const auto &fn : fs.footnotes) {
         if (m_cancelled && m_cancelled()) return {};
@@ -2062,21 +2066,76 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
         fbox.numberStyle = fn.numberStyle;
         fbox.y = y;
 
-        // Layout footnote text
-        Content::ParagraphFormat fmt;
-        fmt.leftMargin = 20.0;
-        fmt.firstLineIndent = -20.0;
-        QList<Content::InlineNode> note = fn.content;
-        note.prepend(Content::TextRun{fn.label + QStringLiteral(". "), fn.numberStyle});
-        fbox.lines = breakIntoLines(note, fn.textStyle, fmt, availWidth - 20.0);
+        qreal noteY = 0;
+        auto stack = [&](NoteElement element, qreal height, bool gapAbove) {
+            if (gapAbove && noteY > 0)
+                noteY += kGap;
+            std::visit([&](auto &e) {
+                e.x += kIndent;
+                e.y = noteY;
+            }, element);
+            noteY += height;
+            fbox.elements.append(std::move(element));
+        };
 
-        qreal h = 0;
-        for (const auto &line : fbox.lines)
-            h += line.height;
-        fbox.height = h;
+        for (int i = 0; i < fn.blocks.size(); ++i) {
+            const Content::BlockNode &block = fn.blocks[i];
 
+            if (i == 0) {
+                if (const auto *paragraph = std::get_if<Content::Paragraph>(&block)) {
+                    // The marker hangs into the margin on the first line, the
+                    // way a single-run note used to render.
+                    Content::ParagraphFormat fmt = paragraph->format;
+                    fmt.leftMargin = kIndent;
+                    fmt.firstLineIndent = -kIndent;
+                    QList<Content::InlineNode> inlines = paragraph->inlines;
+                    inlines.prepend(Content::TextRun{fn.label + QStringLiteral(". "), fn.numberStyle});
+
+                    BlockBox box;
+                    box.type = BlockBox::ParagraphBlock;
+                    box.lines = breakIntoLines(inlines, fn.textStyle, fmt,
+                                               availWidth - fmt.leftMargin - fmt.rightMargin);
+                    box.x = fmt.leftMargin;
+                    box.firstLineIndent = fmt.firstLineIndent;
+                    box.width = noteWidth;
+                    box.source = paragraph->source;
+                    box.blockId = paragraph->blockId;
+                    qreal height = 0;
+                    for (const auto &line : box.lines)
+                        height += line.height;
+                    box.height = height;
+                    stack(std::move(box), height, false);
+                    continue;
+                }
+                // A list, table or fence puts the marker on its own line.
+                Content::ParagraphFormat fmt;
+                QList<Content::InlineNode> labelInlines{
+                    Content::TextRun{fn.label + QStringLiteral(". "), fn.numberStyle}};
+                BlockBox labelBox;
+                labelBox.type = BlockBox::ParagraphBlock;
+                labelBox.lines = breakIntoLines(labelInlines, fn.numberStyle, fmt, noteWidth);
+                labelBox.width = noteWidth;
+                qreal height = 0;
+                for (const auto &line : labelBox.lines)
+                    height += line.height;
+                labelBox.height = height;
+                stack(std::move(labelBox), height, false);
+            }
+
+            for (auto element : layoutBlockNode(block, noteWidth)) {
+                if (const auto *box = std::get_if<BlockBox>(&element)) {
+                    const qreal height = box->height;
+                    stack(NoteElement(*box), height, true);
+                } else if (const auto *table = std::get_if<TableBox>(&element)) {
+                    const qreal height = table->height;
+                    stack(NoteElement(*table), height, true);
+                }
+            }
+        }
+
+        fbox.height = noteY;
         sbox.footnotes.append(fbox);
-        y += h + 2.0; // 2pt gap between footnotes
+        y += noteY + kGap;
     }
 
     sbox.height = y;

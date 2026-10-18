@@ -87,7 +87,7 @@ void ContentRtfExporter::scanStyles(const QList<Content::BlockNode> &blocks)
                 for (const auto &fn : b.footnotes) {
                     scanTextStyle(fn.numberStyle);
                     scanTextStyle(fn.textStyle);
-                    scanInlines(fn.content);
+                    scanStyles(fn.blocks);
                 }
             }
             // HorizontalRule has no styles to scan
@@ -268,8 +268,9 @@ void ContentRtfExporter::writeBlock(QByteArray &out, const Content::BlockNode &b
                 out.append("{");
                 writeCharFormat(out, fn.numberStyle);
                 out.append(RtfUtils::escapeText(fn.label));
-                out.append("} ");
-                writeInlines(out, fn.content);
+                out.append(".} ");
+                for (const auto &noteBlock : fn.blocks)
+                    writeBlock(out, noteBlock);
                 out.append("\\par\n");
             }
         }

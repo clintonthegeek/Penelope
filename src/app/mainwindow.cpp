@@ -1075,7 +1075,7 @@ void MainWindow::onFileExportPdf()
                         for (auto &fn : b.footnotes) {
                             substituteStyle(fn.numberStyle);
                             substituteStyle(fn.textStyle);
-                            substituteInlines(fn.content);
+                            substituteBlocks(fn.blocks);
                         }
                     }
                 }, block);

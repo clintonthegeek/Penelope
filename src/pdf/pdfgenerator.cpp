@@ -16,6 +16,30 @@
 #include <zlib.h>
 #include FT_OUTLINE_H
 
+
+namespace {
+// Every glyph a footnote section carries, wherever the note's blocks put it.
+template <typename Fn>
+void forEachFootnoteGlyph(const Layout::FootnoteSectionBox &section, Fn &&fn)
+{
+    for (const auto &note : section.footnotes) {
+        for (const auto &element : note.elements) {
+            if (const auto *box = std::get_if<Layout::BlockBox>(&element)) {
+                for (const auto &line : box->lines)
+                    for (const auto &gbox : line.glyphs)
+                        fn(gbox);
+            } else if (const auto *table = std::get_if<Layout::TableBox>(&element)) {
+                for (const auto &row : table->rows)
+                    for (const auto &cell : row.cells)
+                        for (const auto &line : cell.lines)
+                            for (const auto &gbox : line.glyphs)
+                                fn(gbox);
+            }
+        }
+    }
+}
+} // namespace
+
 PdfGenerator::PdfGenerator(FontManager *fontManager)
     : m_fontManager(fontManager)
 {
@@ -115,11 +139,10 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
                                     if (gbox.font && gbox.font->isHershey)
                                         m_hasHersheyGlyphs = true;
                 } else if constexpr (std::is_same_v<T, Layout::FootnoteSectionBox>) {
-                    for (const auto &fn : e.footnotes)
-                        for (const auto &line : fn.lines)
-                            for (const auto &gbox : line.glyphs)
-                                if (gbox.font && gbox.font->isHershey)
-                                    m_hasHersheyGlyphs = true;
+                    forEachFootnoteGlyph(e, [this](const Layout::GlyphBox &gbox) {
+                        if (gbox.font && gbox.font->isHershey)
+                            m_hasHersheyGlyphs = true;
+                    });
                 }
             }, elem);
             if (m_hasHersheyGlyphs) break;
@@ -150,23 +173,31 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
                                     if (gbox.font && !gbox.font->isHershey)
                                         ensureFontRegistered(gbox.font);
                 } else if constexpr (std::is_same_v<T, Layout::FootnoteSectionBox>) {
-                    for (const auto &fn : e.footnotes)
-                        for (const auto &line : fn.lines)
-                            for (const auto &gbox : line.glyphs)
-                                if (gbox.font && !gbox.font->isHershey)
-                                    ensureFontRegistered(gbox.font);
+                    forEachFootnoteGlyph(e, [this](const Layout::GlyphBox &gbox) {
+                        if (gbox.font && !gbox.font->isHershey)
+                            ensureFontRegistered(gbox.font);
+                    });
                 }
             }, elem);
         }
     }
 
-    // Also scan for images
+    // Also scan for images, including images a footnote holds.
     for (const auto &page : layout.pages) {
         if (m_cancelled && m_cancelled()) return {};
         for (const auto &elem : page.elements) {
             if (auto *bb = std::get_if<Layout::BlockBox>(&elem)) {
                 if (bb->type == Layout::BlockBox::ImageBlock && !bb->image.isNull())
                     ensureImageRegistered(bb->imageId, bb->image);
+            } else if (const auto *section = std::get_if<Layout::FootnoteSectionBox>(&elem)) {
+                for (const auto &note : section->footnotes) {
+                    for (const auto &element : note.elements) {
+                        const auto *noteBox = std::get_if<Layout::BlockBox>(&element);
+                        if (noteBox && noteBox->type == Layout::BlockBox::ImageBlock
+                            && !noteBox->image.isNull())
+                            ensureImageRegistered(noteBox->imageId, noteBox->image);
+                    }
+                }
             }
         }
     }

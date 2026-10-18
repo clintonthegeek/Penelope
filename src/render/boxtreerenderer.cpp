@@ -189,11 +189,23 @@ void BoxTreeRenderer::renderFootnoteSectionBox(const Layout::FootnoteSectionBox 
     }
 
     for (const auto &fn : box.footnotes) {
-        qreal fnY = sectionY + fn.y;
-        qreal lineY = 0;
-        for (const auto &line : fn.lines) {
-            renderLineBox(line, box.x, fnY + lineY, box.width);
-            lineY += line.height;
+        const qreal fnY = sectionY + fn.y;
+        // Notes carry laid-out blocks; place each at the note's origin.
+        for (const auto &element : fn.elements) {
+            std::visit([&](const auto &e) {
+                using T = std::decay_t<decltype(e)>;
+                if constexpr (std::is_same_v<T, Layout::BlockBox>) {
+                    Layout::BlockBox placed = e;
+                    placed.x += box.x;
+                    placed.y += fnY;
+                    renderBlockBox(placed);
+                } else if constexpr (std::is_same_v<T, Layout::TableBox>) {
+                    Layout::TableBox placed = e;
+                    placed.x += box.x;
+                    placed.y += fnY;
+                    renderTableBox(placed);
+                }
+            }, element);
         }
     }
 }

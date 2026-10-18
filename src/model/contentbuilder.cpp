@@ -181,6 +181,27 @@ QString ContentBuilder::processTypography(const QString &text) const
 
 Content::Document ContentBuilder::build(const QString &markdownText)
 {
+    resetState();
+
+    // Front matter is metadata, not body. Blanking its lines before the
+    // footnote scan keeps `title: [^a]`-style text out of the note parser too.
+    FrontMatterParser fmParser;
+    QString body = fmParser.process(markdownText);
+    m_doc.hasFrontmatter = fmParser.frontMatter().present;
+    m_doc.frontmatterRaw = fmParser.frontMatter().raw;
+
+    FootnoteParser fnParser;
+    const QString processed = fnParser.process(body);
+    for (const auto &fn : fnParser.footnotes())
+        m_footnotes.append({fn.label, fn.content});
+
+    parseIntoDocument(processed);
+    appendFootnoteSection();
+    return m_doc;
+}
+
+void ContentBuilder::resetState()
+{
     m_doc = Content::Document{};
     m_nextBlockId = 1;
     m_containers.clear();
@@ -201,34 +222,22 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     m_collectingAltText = false;
     m_altText.clear();
     m_linkHref.clear();
-    m_footnotes.clear();
     m_linkSpanDepth = 0;
+    m_footnotes.clear();
 
-    // Resolve default text style
     if (m_styleManager)
         m_currentStyle = resolveTextStyle(QStringLiteral("Default Paragraph Style"));
     else
         m_currentStyle = defaultTextStyle();
+}
 
-    // Front matter is metadata, not body. Blanking its lines before the
-    // footnote scan keeps `title: [^a]`-style text out of the note parser too.
-    FrontMatterParser fmParser;
-    QString body = fmParser.process(markdownText);
-    m_doc.hasFrontmatter = fmParser.frontMatter().present;
-    m_doc.frontmatterRaw = fmParser.frontMatter().raw;
+// Parses text that already passed the pre-passes. The line table, block
+// trackers and MD4C callbacks all address this text.
+void ContentBuilder::parseIntoDocument(const QString &text)
+{
+    m_processedMarkdown = text;
 
-    // Extract footnotes
-    FootnoteParser fnParser;
-    QString processed = fnParser.process(body);
-    for (const auto &fn : fnParser.footnotes()) {
-        m_footnotes.append({fn.label, fn.content});
-    }
-
-    // Store processed text for source line extraction
-    m_processedMarkdown = processed;
-
-    // Build line offset table for source tracking
-    const QByteArray utf8 = processed.toUtf8();
+    const QByteArray utf8 = text.toUtf8();
     m_lineStartOffsets.clear();
     m_lineStartOffsets.append(0); // line 1 starts at byte 0
     for (int i = 0; i < utf8.size(); ++i) {
@@ -238,7 +247,6 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     m_bufferStart = utf8.constData();
     m_blockTrackers.clear();
 
-    // Parse
     MD_PARSER parser = {};
     parser.abi_version = 0;
     // MD_FLAG_UNDERLINE would make `_x_` underline *and* disable `_` emphasis.
@@ -253,40 +261,61 @@ Content::Document ContentBuilder::build(const QString &markdownText)
     parser.text = &ContentBuilder::sText;
 
     md_parse(utf8.constData(), static_cast<MD_SIZE>(utf8.size()), &parser, this);
+}
 
-    // Append footnote section
-    if (!m_footnotes.isEmpty()) {
-        Content::FootnoteSection section;
-        section.showSeparator = m_footnoteStyle.showSeparator;
-        section.separatorLength = m_footnoteStyle.separatorLength;
-        section.separatorWidth = m_footnoteStyle.separatorWidth;
-        for (int i = 0; i < m_footnotes.size(); ++i) {
-            Content::Footnote fn;
-            fn.label = m_footnoteStyle.formatNumber(m_footnoteStyle.startNumber + i);
+// Note bodies are their own Markdown fragment. A second builder shares this
+// one's configuration and continues its block-id counter, so ids stay unique
+// across the note sections.
+QList<Content::BlockNode> ContentBuilder::buildFragment(const QString &markdownText)
+{
+    ContentBuilder fragment;
+    fragment.setStyleManager(m_styleManager);
+    fragment.setHyphenator(m_hyphenator);
+    fragment.setShortWords(m_shortWords);
+    fragment.setFootnoteStyle(m_footnoteStyle);
+    fragment.setBasePath(m_basePath);
+    fragment.setRenderImages(m_renderImages ? *m_renderImages
+                                            : PenelopeSettings::self()->renderImages());
+    fragment.setCancellationCheck(m_cancelled);
+    fragment.resetState();
+    fragment.m_nextBlockId = m_nextBlockId;
+    fragment.parseIntoDocument(markdownText);
 
-            Content::TextStyle numStyle = m_currentStyle;
-            numStyle.fontSize = 8.0;
-            numStyle.foreground = QColor(0x03, 0x66, 0xd6);
-            numStyle.superscript = m_footnoteStyle.superscriptNote;
-            fn.numberStyle = numStyle;
+    m_nextBlockId = fragment.m_nextBlockId;
+    return fragment.m_doc.blocks;
+}
 
-            Content::TextStyle textStyle = m_currentStyle;
-            textStyle.fontSize = 9.0;
-            textStyle.foreground = QColor(0x55, 0x55, 0x55);
-            fn.textStyle = textStyle;
+void ContentBuilder::appendFootnoteSection()
+{
+    if (m_footnotes.isEmpty())
+        return;
 
-            Content::TextRun textRun;
-            textRun.text = m_footnotes[i].text;
-            textRun.style = textStyle;
-            fn.content.append(textRun);
+    Content::FootnoteSection section;
+    section.showSeparator = m_footnoteStyle.showSeparator;
+    section.separatorLength = m_footnoteStyle.separatorLength;
+    section.separatorWidth = m_footnoteStyle.separatorWidth;
 
-            section.footnotes.append(fn);
-        }
-        section.blockId = m_nextBlockId++;
-        m_doc.blocks.append(section);
+    for (int i = 0; i < m_footnotes.size(); ++i) {
+        Content::Footnote fn;
+        fn.label = m_footnoteStyle.formatNumber(m_footnoteStyle.startNumber + i);
+
+        Content::TextStyle numStyle = m_currentStyle;
+        numStyle.fontSize = 8.0;
+        numStyle.foreground = QColor(0x03, 0x66, 0xd6);
+        numStyle.superscript = m_footnoteStyle.superscriptNote;
+        fn.numberStyle = numStyle;
+
+        Content::TextStyle textStyle = m_currentStyle;
+        textStyle.fontSize = 9.0;
+        textStyle.foreground = QColor(0x55, 0x55, 0x55);
+        fn.textStyle = textStyle;
+
+        fn.blocks = buildFragment(m_footnotes[i].text);
+        section.footnotes.append(fn);
     }
 
-    return m_doc;
+    section.blockId = m_nextBlockId++;
+    m_doc.blocks.append(section);
 }
 
 // --- Setters ---

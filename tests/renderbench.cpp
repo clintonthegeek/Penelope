@@ -682,8 +682,12 @@ int linesInElement(const Layout::PageElement &element, int *maxLines, qreal *max
                     count += cell.lines.size();
             }
         } else if constexpr (std::is_same_v<T, Layout::FootnoteSectionBox>) {
-            for (const auto &note : box.footnotes)
-                count += note.lines.size();
+            for (const auto &note : box.footnotes) {
+                for (const auto &element : note.elements) {
+                    if (const auto *b = std::get_if<Layout::BlockBox>(&element))
+                        count += b->lines.size();
+                }
+            }
         }
     }, element);
     if (maxLines)

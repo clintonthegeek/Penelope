@@ -119,7 +119,9 @@ private Q_SLOTS:
         QVERIFY(output.contains("  ordinary paragraph"));
         QCOMPARE(output.split('\n').indexOf("# Heading"), input.split('\n').indexOf("# Heading"));
         QCOMPARE(parser.footnotes().size(), 1);
-        QCOMPARE(parser.footnotes().first().content, QString("Note continued"));
+        // Continuation lines keep their line breaks: structure inside a note
+        // depends on them, and a soft break still renders as a space.
+        QCOMPARE(parser.footnotes().first().content, QString("Note\ncontinued"));
     }
     void footnoteLiterals() {
         FootnoteParser parser;
@@ -2515,6 +2517,120 @@ private Q_SLOTS:
             }
         }
         QVERIFY(htmlHasSource);
+    }
+    // --- Footnotes (FN-01 …) ---
+
+    void fn01FootnoteBlocks() {
+        const QString md = QStringLiteral(
+            "Body[^a] and[^b].\n\n"
+            "[^a]: First paragraph.\n\n"
+            "    - one\n"
+            "    - two\n\n"
+            "    *emphasis*\n\n"
+            "[^b]: Fenced.\n\n"
+            "    ```\n"
+            "    code line\n"
+            "    ```\n");
+        ContentBuilder builder;
+        const auto doc = builder.build(md);
+        const Content::FootnoteSection *section = nullptr;
+        for (const auto &block : doc.blocks) {
+            if (const auto *candidate = std::get_if<Content::FootnoteSection>(&block))
+                section = candidate;
+        }
+        QVERIFY(section);
+        QCOMPARE(section->footnotes.size(), 2);
+
+        const auto &first = section->footnotes.at(0).blocks;
+        QCOMPARE(first.size(), 3);
+        QVERIFY(std::holds_alternative<Content::Paragraph>(first.at(0)));
+        const auto *list = std::get_if<Content::List>(&first.at(1));
+        QVERIFY2(list, "a note body can hold a list");
+        QCOMPARE(list->items.size(), 2);
+        const auto *emphasis = std::get_if<Content::Paragraph>(&first.at(2));
+        QVERIFY(emphasis);
+        bool italic = false;
+        for (const auto &node : emphasis->inlines) {
+            if (const auto *run = std::get_if<Content::TextRun>(&node))
+                italic |= run->style.italic;
+        }
+        QVERIFY2(italic, "emphasis inside a note is styled");
+
+        const auto &second = section->footnotes.at(1).blocks;
+        QCOMPARE(second.size(), 2);
+        const auto *code = std::get_if<Content::CodeBlock>(&second.at(1));
+        QVERIFY2(code, "a note body can hold a fenced block");
+        QVERIFY(code->code.contains(QStringLiteral("code line")));
+
+        // Block ids stay unique once the note blocks are part of the document.
+        QSet<quint64> ids;
+        auto visit = [&](const QList<Content::BlockNode> &blocks, auto &&self) -> void {
+            for (const auto &block : blocks) {
+                std::visit([&](const auto &b) {
+                    using T = std::decay_t<decltype(b)>;
+                    if constexpr (!std::is_same_v<T, Content::HorizontalRule>) {
+                        if (b.blockId != 0)
+                            ids.insert(b.blockId);
+                        if constexpr (std::is_same_v<T, Content::BlockQuote>) {
+                            self(b.children, self);
+                        } else if constexpr (std::is_same_v<T, Content::List>) {
+                            for (const auto &item : b.items)
+                                self(item.children, self);
+                        } else if constexpr (std::is_same_v<T, Content::FootnoteSection>) {
+                            for (const auto &note : b.footnotes)
+                                self(note.blocks, self);
+                        }
+                    }
+                }, block);
+            }
+        };
+        visit(doc.blocks, visit);
+        int counted = 0;
+        for (const auto &block : doc.blocks) {
+            std::visit([&](const auto &) { ++counted; }, block);
+        }
+        QVERIFY(ids.size() > static_cast<size_t>(counted));
+
+        // The PDF carries the list text, and notes flow across pages.
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(layout, pl, QStringLiteral("Notes"));
+        QVERIFY(!pdf.isEmpty());
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        QString pageText;
+        for (int i = 0; i < poppler->numPages(); ++i) {
+            std::unique_ptr<Poppler::Page> page(poppler->page(i));
+            if (page)
+                pageText += page->text(QRectF());
+        }
+        QVERIFY2(pageText.contains(QStringLiteral("one")), qPrintable(pageText));
+        QVERIFY2(pageText.contains(QStringLiteral("two")), qPrintable(pageText));
+        QVERIFY2(pageText.contains(QStringLiteral("code line")), qPrintable(pageText));
+
+        QString many = QStringLiteral("Body");
+        for (int i = 0; i < 40; ++i)
+            many += QStringLiteral("[^n%1]").arg(i);
+        many += QStringLiteral(".\n\n");
+        for (int i = 0; i < 40; ++i)
+            many += QStringLiteral("[^n%1]: Note %1 body text.\n").arg(i);
+        const auto longDoc = builder.build(many);
+        const auto longLayout = engine.layout(longDoc, pl);
+        QVERIFY2(longLayout.pages.size() > 1, "a long note section spills onto more pages");
+        const QByteArray longPdf = generator.generate(longLayout, pl, QStringLiteral("Many"));
+        auto longPoppler = Poppler::Document::loadFromData(longPdf);
+        QVERIFY(longPoppler);
+        QString tail;
+        for (int i = longPoppler->numPages() - 1; i >= 0; --i) {
+            std::unique_ptr<Poppler::Page> page(longPoppler->page(i));
+            if (page)
+                tail += page->text(QRectF());
+        }
+        QVERIFY2(tail.contains(QStringLiteral("Note 39")), qPrintable(tail));
     }
 };
 

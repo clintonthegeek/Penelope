@@ -231,7 +231,9 @@ struct HorizontalRule {
 
 struct Footnote {
     QString label;
-    QList<InlineNode> content;
+    // The note's own Markdown structure. Note bodies are parsed as their own
+    // fragment so a note can hold paragraphs, lists, code and quotes.
+    QList<BlockNode> blocks;
     TextStyle numberStyle;
     TextStyle textStyle;
 };

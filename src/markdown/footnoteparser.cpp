@@ -55,7 +55,9 @@ QString FootnoteParser::process(const QString &markdownText)
             }
             if (!(lines[end].startsWith(QLatin1String("    "))
                 || lines[end].startsWith(QLatin1Char('\t')))) break;
-            def.content += blank ? QStringLiteral("\n\n") : QStringLiteral(" ");
+            // Keep the line structure: a soft break renders as a space in a
+            // paragraph, and lists, fences and tables need their own lines.
+            def.content += blank ? QStringLiteral("\n\n") : QStringLiteral("\n");
             def.content += lines[end].mid(lines[end].startsWith(QLatin1Char('\t')) ? 1 : 4).trimmed();
             blank = false;
             ++end;

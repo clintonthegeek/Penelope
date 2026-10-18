@@ -110,6 +110,11 @@ public:
     void copySelectionAsMarkdown();
     void copySelectionAsComplexRtf();
     void copySelectionWithFilter(const RtfFilterOptions &filter);
+    // The selection as styled text taken from the shaped boxes: only the runs
+    // the selection actually covers, so a partial paragraph copies partially.
+    QList<Layout::GlyphBox> selectedGlyphBoxes() const;
+    // That selection as a document, for the styled copy.
+    QList<Content::BlockNode> selectedRunsDocument() const;
     void clearSelection();
     // Source breadcrumbs for markdown-faithful copy + styled RTF export
     void setSourceData(const QString &processedMarkdown,

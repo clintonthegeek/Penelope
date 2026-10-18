@@ -3515,6 +3515,67 @@ private Q_SLOTS:
             QVERIFY2(extracted.contains(ch), qPrintable(extracted));
     }
 
+    void q01SelectionCopyIsClipped() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        const QString source = QStringLiteral("Alpha beta gamma delta epsilon.\n");
+        auto doc = builder.build(source);
+        auto layout = engine.layoutContinuous(doc, 500);
+        QVERIFY(!layout.sourceMap.isEmpty());
+
+        DocumentView view;
+        view.resize(700, 400);
+        view.setRenderMode(DocumentView::WebMode);
+        view.setWebFontManager(&fonts);
+        view.setSourceData(builder.processedMarkdown(), layout.sourceMap, doc, layout.codeBlockRegions);
+        view.setWebContent(std::move(layout));
+        view.setCursorMode(DocumentView::SelectionTool);
+        view.show();
+        QTest::qWait(20);
+
+        // Select the word "beta" only: from its left edge to its right edge.
+        const auto &elements = view.webViewItem()->layoutResult().elements;
+        QString wordText;
+        QRectF wordRect;
+        for (const auto &element : elements) {
+            const auto *box = std::get_if<Layout::BlockBox>(&element);
+            if (!box)
+                continue;
+            qreal y = box->y;
+            for (const auto &line : box->lines) {
+                qreal x = box->x + line.x;
+                for (const auto &gbox : line.glyphs) {
+                    const QRectF boxRect(view.webViewItem()->pos().x() + x,
+                                         view.webViewItem()->pos().y() + y,
+                                         gbox.width, line.height);
+                    if (gbox.text.trimmed() == QStringLiteral("beta")) {
+                        wordText = gbox.text.trimmed();
+                        wordRect = boxRect;
+                    }
+                    x += gbox.width;
+                }
+                y += line.height;
+            }
+        }
+        QCOMPARE(wordText, QStringLiteral("beta"));
+        const QPoint start = view.mapFromScene(wordRect.topLeft() + QPointF(1, 1));
+        const QPoint end = view.mapFromScene(wordRect.bottomRight() - QPointF(1, 1));
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QMouseEvent move(QEvent::MouseMove, end, view.viewport()->mapToGlobal(end),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(view.viewport(), &move);
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        view.copySelectionAsRtf();
+
+        auto *mime = QApplication::clipboard()->mimeData();
+        QVERIFY(mime->hasFormat(QStringLiteral("text/rtf")));
+        const QByteArray rtf = mime->data(QStringLiteral("text/rtf"));
+        QVERIFY2(rtf.contains("beta"), rtf.constData());
+        QVERIFY2(!rtf.contains("gamma"), rtf.constData());
+        QVERIFY2(!rtf.contains("Alpha"), rtf.constData());
+    }
 };
 
 int main(int argc, char **argv) {

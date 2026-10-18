@@ -1595,6 +1595,116 @@ void DocumentView::updateTextSelection()
     }
 }
 
+
+// The lines and runs the selection covers, clipped per run. The source map is
+// line-based, so a styled copy taken from the blocks would include a whole
+// paragraph when the selection covers a word of it.
+// The selection as a one-paragraph document of the runs it covers, for a styled
+// copy that stops at the selection rather than at the block boundary.
+QList<Content::BlockNode> DocumentView::selectedRunsDocument() const
+{
+    const QList<Layout::GlyphBox> boxes = selectedGlyphBoxes();
+    if (boxes.isEmpty())
+        return {};
+
+    Content::Paragraph paragraph;
+    Content::TextStyle previous;
+    bool havePrevious = false;
+    for (const auto &box : boxes) {
+        if (box.text.isEmpty())
+            continue;
+        Content::TextRun run;
+        run.text = box.text;
+        run.style = box.style;
+        // A word break between two runs that share a style still needs its
+        // space: the boxes carry their own trailing text, so only insert one
+        // when the text does not already provide it.
+        if (havePrevious && !previous.fontFamily.isEmpty() && run.style.fontFamily != previous.fontFamily
+            && !paragraph.inlines.isEmpty()) {
+            Content::TextRun space;
+            space.text = QStringLiteral(" ");
+            space.style = previous;
+            paragraph.inlines.append(space);
+        }
+        paragraph.inlines.append(run);
+        previous = run.style;
+        havePrevious = true;
+    }
+    if (paragraph.inlines.isEmpty())
+        return {};
+    return {paragraph};
+}
+
+QList<Layout::GlyphBox> DocumentView::selectedGlyphBoxes() const
+{
+    QList<Layout::GlyphBox> selected;
+    if (m_pagesWithSelection.isEmpty())
+        return selected;
+    const QRectF sel = QRectF(m_selectPressPos, m_selectCurrentPos).normalized();
+
+    auto takeLine = [&](const Layout::LineBox &line, const Layout::BlockBox &box,
+                        qreal originX, qreal originY) {
+        qreal lineY = originY;
+        Q_UNUSED(lineY);
+        qreal minX = std::numeric_limits<qreal>::max();
+        qreal maxX = 0;
+        for (const auto &gbox : line.glyphs) {
+            minX = qMin(minX, originX + box.x + line.x);
+            maxX = qMax(maxX, originX + box.x + line.x + gbox.width);
+        }
+        if (minX > maxX)
+            return;
+        const QRectF lineRect(minX, originY + box.y, maxX - minX, line.height);
+        if (!lineRect.intersects(sel))
+            return;
+        qreal x = originX + box.x + line.x;
+        for (const auto &gbox : line.glyphs) {
+            const QRectF boxRect(x, originY + box.y, gbox.width, line.height);
+            if (gbox.width > 0 && boxRect.intersects(sel))
+                selected.append(gbox);
+            x += gbox.width;
+        }
+    };
+
+    auto takeBlocks = [&](const QList<Layout::PageElement> &elements, qreal originX, qreal originY) {
+        for (const auto &element : elements) {
+            if (const auto *box = std::get_if<Layout::BlockBox>(&element)) {
+                qreal y = originY + box->y;
+                for (const auto &line : box->lines) {
+                    takeLine(line, *box, originX, y);
+                    y += line.height;
+                }
+            } else if (const auto *table = std::get_if<Layout::TableBox>(&element)) {
+                for (const auto &row : table->rows) {
+                    for (const auto &cell : row.cells) {
+                        qreal y = originY + table->y + cell.y;
+                        for (const auto &line : cell.lines) {
+                            Layout::BlockBox synthetic;
+                            synthetic.x = table->x + cell.x;
+                            takeLine(line, synthetic, originX, y);
+                            y += line.height;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    if (m_webViewItem) {
+        takeBlocks(m_webViewItem->layoutResult().elements,
+                   m_webViewItem->pos().x(), m_webViewItem->pos().y());
+    } else {
+        for (auto *item : m_boxPageItems) {
+            if (!item->page())
+                continue;
+            takeBlocks(item->page()->elements,
+                       item->pos().x() + item->contentOrigin().x(),
+                       item->pos().y() + item->contentOrigin().y());
+        }
+    }
+    return selected;
+}
+
 QString DocumentView::extractSelectedText() const
 {
     if (m_pagesWithSelection.isEmpty())
@@ -1785,7 +1895,9 @@ void DocumentView::copySelectionAsRtf()
     if (minLine > maxLine)
         return;
 
-    QList<Content::BlockNode> filteredBlocks = extractSelectedBlocks(minLine, maxLine);
+    QList<Content::BlockNode> filteredBlocks = selectedRunsDocument();
+    if (filteredBlocks.isEmpty())
+        filteredBlocks = extractSelectedBlocks(minLine, maxLine); // the PDF path
     if (filteredBlocks.isEmpty())
         return;
 
@@ -1843,7 +1955,9 @@ void DocumentView::copySelectionWithFilter(const RtfFilterOptions &filter)
     if (minLine > maxLine)
         return;
 
-    QList<Content::BlockNode> filteredBlocks = extractSelectedBlocks(minLine, maxLine);
+    QList<Content::BlockNode> filteredBlocks = selectedRunsDocument();
+    if (filteredBlocks.isEmpty())
+        filteredBlocks = extractSelectedBlocks(minLine, maxLine); // the PDF path
     if (filteredBlocks.isEmpty())
         return;
 

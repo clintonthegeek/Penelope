@@ -16,6 +16,7 @@
 #include "toolview.h"
 #include "documenttab.h"
 #include "documentview.h"
+#include "webviewitem.h"
 #include "filebrowserdock.h"
 #include "hyphenator.h"
 #include "markdownhighlighter.h"
@@ -64,6 +65,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSaveFile>
+#include <QSet>
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QScrollBar>
@@ -361,9 +363,13 @@ void MainWindow::setupSidebars()
         tocView, QIcon::fromTheme(QStringLiteral("format-list-ordered")), i18n("Contents"));
 
     connect(m_tocWidget, &TocWidget::headingNavigate,
-            this, [this](int page, qreal yOffset) {
+            this, [this](int page, qreal yOffset, int sourceLine) {
         auto *view = currentDocumentView();
-        if (view)
+        if (!view)
+            return;
+        if (page < 0)
+            view->followHeading(sourceLine);
+        else
             view->scrollToPosition(page, yOffset);
     });
 
@@ -1142,28 +1148,34 @@ void MainWindow::onFileExportRtf()
 void MainWindow::onFilePrint()
 {
     auto *view = currentDocumentView();
-    if (!view) {
+    auto *tab = currentDocumentTab();
+    if (!view || !tab) {
         statusBar()->showMessage(i18n("No document to print."), 3000);
         return;
     }
 
-    auto *tab = currentDocumentTab();
     PageLayout pl = m_pageDockWidget->currentPageLayout();
-    m_fontManager->resetUsage();
-    Layout::Engine engine(m_fontManager, m_textShaper);
-    engine.setHyphenateJustifiedText(PenelopeSettings::self()->hyphenateJustifiedText());
-    auto layout = engine.layout(buildCompositionContent(compositionRequest(tab)), pl);
-    PdfGenerator generator(m_fontManager);
-    QFileInfo fi(tab->filePath());
-    generator.setDocumentInfo(fi.fileName(), fi.baseName());
-    generator.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
-    // New pipeline: use PrintController with Poppler-based printing
-    auto *controller = new PrintController(this);
-    controller->setPdfData(generator.generate(layout, pl, fi.baseName()));
-    controller->setPageLayout(pl);
-    controller->print(this);
-    delete controller;
+    auto makePdf = [this, tab](const PageLayout &layout) {
+        m_fontManager->resetUsage();
+        Layout::Engine engine(m_fontManager, m_textShaper);
+        engine.setHyphenateJustifiedText(PenelopeSettings::self()->hyphenateJustifiedText());
+        const auto laidOut = engine.layout(buildCompositionContent(compositionRequest(tab)), layout);
+        PdfGenerator generator(m_fontManager);
+        const QFileInfo fi(tab->filePath());
+        generator.setDocumentInfo(fi.fileName(), fi.baseName());
+        generator.setMaxJustifyGap(PenelopeSettings::self()->maxJustifyGap());
+        return generator.generate(laidOut, layout, fi.baseName());
+    };
 
+    PrintController controller(this);
+    controller.setPageLayout(pl);
+    QString error;
+    if (!controller.print(this, makePdf, &error)) {
+        if (!error.isEmpty())
+            statusBar()->showMessage(error, 4000);
+        return;
+    }
+    statusBar()->showMessage(i18n("Sent to the printer."), 3000);
 }
 
 void MainWindow::onFileClose()
@@ -1516,6 +1528,36 @@ void MainWindow::restoreSession()
         onCompositionApplied();
 }
 
+namespace {
+
+qreal compositionWidth(const DocumentView *view)
+{
+    const qreal zoom = qMax(0.01, view->zoomPercent() / 100.0);
+    const auto *bar = view->verticalScrollBar();
+    // The viewport shrinks when the bar is shown. Add that back, then reserve
+    // the bar once, so showing it does not change the column width.
+    qreal viewport = view->viewport()->width();
+    const qreal reserve = bar ? bar->sizeHint().width() : 0;
+    if (bar && bar->isVisible())
+        viewport += bar->width();
+    return qMax(qreal(200), (viewport - 2 * DocumentView::kSceneMargin - reserve) / zoom);
+}
+
+qreal viewportSceneHeight(const DocumentView *view)
+{
+    const qreal zoom = qMax(0.01, view->zoomPercent() / 100.0);
+    return view->viewport()->height() / zoom;
+}
+
+bool pageGeometryDiffers(const PageLayout &a, const PageLayout &b)
+{
+    return a.pageSizeId != b.pageSizeId || a.orientation != b.orientation
+        || a.margins != b.margins || a.headerEnabled != b.headerEnabled
+        || a.footerEnabled != b.footerEnabled;
+}
+
+} // namespace
+
 CompositionRequest MainWindow::compositionRequest(DocumentTab *tab) const
 {
     CompositionRequest request;
@@ -1539,8 +1581,7 @@ CompositionRequest MainWindow::compositionRequest(DocumentTab *tab) const
     request.pageLayout = m_pageDockWidget->currentPageLayout();
     auto *view = tab->documentView();
     request.languageOverrides = view->codeBlockLanguageOverrides();
-    request.width = qMax(qreal(200), (view->viewport()->width() - 2 * DocumentView::kSceneMargin)
-                                    / (view->zoomPercent() / 100.0));
+    request.width = compositionWidth(view);
     auto *settings = PenelopeSettings::self();
     request.continuous = settings->useWebView();
     request.renderImages = settings->renderImages();
@@ -1566,9 +1607,33 @@ void MainWindow::installComposition(quint64 id, CompositionResultPtr result)
         || PenelopeSettings::self()->useWebView() != request.continuous) return;
     auto *view = tab->documentView();
     if (request.continuous) {
-        const qreal width = qMax(qreal(200), (view->viewport()->width() - 2 * DocumentView::kSceneMargin)
-                                           / (view->zoomPercent() / 100.0));
+        const qreal width = compositionWidth(view);
         if (qAbs(width - request.width) > 0.01) { rebuildCurrentDocument(); return; }
+    }
+    bool continueWeb = request.continuous && request.startBlock > 0
+        && request.startBlock == view->layoutCursor().nextBlock && view->webViewItem();
+    if (continueWeb) {
+        QSet<quint64> placed;
+        for (const auto &element : view->webViewItem()->layoutResult().elements) {
+            std::visit([&](const auto &item) {
+                if (item.blockId != 0)
+                    placed.insert(item.blockId);
+            }, element);
+        }
+        for (const auto &element : result->continuousLayout.elements) {
+            quint64 id = 0;
+            std::visit([&](const auto &item) { id = item.blockId; }, element);
+            if (id != 0 && placed.contains(id)) {
+                continueWeb = false;
+                break;
+            }
+        }
+    }
+    // A partial chunk that does not extend the column must not replace it.
+    // Installing that tail drops everything above it and leaves nothing to scroll.
+    if (request.continuous && request.startBlock > 0 && !continueWeb) {
+        rebuildCurrentDocument();
+        return;
     }
     // Capture the latest scroll/zoom, not the state from when the job began.
     ViewState state = tab->takeInitialViewState().value_or(view->saveViewState());
@@ -1576,38 +1641,99 @@ void MainWindow::installComposition(quint64 id, CompositionResultPtr result)
     view->setPageLayout(request.pageLayout);
     const auto sourceMap = request.continuous ? result->continuousLayout.sourceMap : result->paginated.sourceMap;
     const auto regions = request.continuous ? result->continuousLayout.codeBlockRegions : result->paginated.codeBlockRegions;
+    const bool continuePrint = !request.continuous && request.interactivePages && request.startBlock > 0
+        && request.startBlock == view->layoutCursor().nextBlock && view->hasBoxPages();
+    if (request.continuous) {
+        view->setWebFontOwner(result->fonts);
+        if (continueWeb)
+            view->appendWebContent(std::move(result->continuousLayout));
+        else
+            view->setWebContent(std::move(result->continuousLayout));
+        view->setRenderMode(DocumentView::WebMode);
+    } else if (request.interactivePages) {
+        QList<std::shared_ptr<const Layout::Page>> pages;
+        for (const auto &page : result->paginated.pages)
+            pages.append(std::make_shared<const Layout::Page>(page));
+        view->setBoxPages(pages, result->fonts, request.pageLayout, continuePrint,
+                          request.filename, request.title);
+        view->setRenderMode(DocumentView::PrintMode);
+    } else {
+        view->setPdfData(result->pdf);
+        view->setRenderMode(DocumentView::PrintMode);
+    }
+    if (continueWeb) {
+        view->setSourceData(result->processedMarkdown, view->webViewItem()->layoutResult().sourceMap,
+                            result->document, view->webViewItem()->layoutResult().codeBlockRegions);
+    } else if (continuePrint) {
+        auto map = view->sourceMap();
+        map.append(sourceMap);
+        auto regionList = regions;
+        view->setSourceData(result->processedMarkdown, map, result->document, regionList);
+    } else {
+        view->setSourceData(result->processedMarkdown, sourceMap, result->document, regions);
+    }
+    // Headings use the column or pages installed above. A follow-up chunk's
+    // own map starts at y = 0; the view's map has the absolute positions.
+    const auto &placedMap = view->sourceMap();
+    m_tocWidget->buildFromContentModel(result->document, placedMap);
+    tab->setTocData(result->document, placedMap);
     QList<HeadingPosition> headings;
     QHash<quint64, Layout::SourceMapEntry> bySource;
-    for (const auto &entry : sourceMap) {
+    for (const auto &entry : placedMap) {
         const quint64 key = (quint64(entry.startLine) << 32) | quint32(entry.endLine);
         if (!bySource.contains(key)) bySource.insert(key, entry);
     }
     for (const auto &block : result->document.blocks) {
         const auto *heading = std::get_if<Content::Heading>(&block);
         if (!heading || heading->level < 1 || heading->level > 6) continue;
-        HeadingPosition hp;
-        hp.sourceLine = heading->source.startLine;
         const auto entry = bySource.constFind((quint64(heading->source.startLine) << 32)
                                              | quint32(heading->source.endLine));
-        if (entry != bySource.cend()) { hp.page = entry->pageNumber; hp.yOffset = entry->rect.top(); }
+        if (entry == bySource.cend()) continue;
+        HeadingPosition hp;
+        hp.sourceLine = heading->source.startLine;
+        hp.page = entry->pageNumber;
+        hp.yOffset = entry->rect.top();
         headings.append(hp);
     }
-    m_tocWidget->buildFromContentModel(result->document, sourceMap);
-    tab->setTocData(result->document, sourceMap);
-    if (request.continuous) {
-        view->setWebFontOwner(result->fonts);
-        view->setWebContent(std::move(result->continuousLayout));
-        view->setRenderMode(DocumentView::WebMode);
-    } else {
-        view->setPdfData(result->pdf);
-        view->setRenderMode(DocumentView::PrintMode);
-    }
-    view->setSourceData(result->processedMarkdown, sourceMap, result->document, regions);
+    view->integrateCursor(result->cursor);
     view->setHeadingPositions(headings);
-    view->restoreViewState(state);
+    if (!continueWeb && !continuePrint)
+        view->restoreViewState(state);
     tab->setCompositionGeneration(request.semanticRevision);
-    statusBar()->showMessage(i18n("Rendered %1", request.filename), 2000);
+    const int shownPages = request.continuous ? 0 : view->pageCount();
+    if (request.continuous)
+        statusBar()->showMessage(i18n("Rendered %1", request.filename), 2000);
+    else if (result->finished)
+        statusBar()->showMessage(i18n("Rendered %1 (%2 pages)", request.filename, shownPages), 2000);
+    else
+        statusBar()->showMessage(i18n("Rendered %1 (%2 pages so far)", request.filename, shownPages), 2000);
+    if (!result->finished && tab == currentDocumentTab())
+        submitLayoutFollowUp();
+    if (request.continuous && !result->finished)
+        view->scheduleMoreLayout();
     Q_EMIT documentRendered(tab);
+}
+
+void MainWindow::submitLayoutFollowUp()
+{
+    if (!m_compositionController || m_compositionController->isBusy() || m_compositionController->pendingCount())
+        return;
+    auto *tab = currentDocumentTab();
+    if (!tab || tab->isSourceMode() || tab != m_renderTarget.data())
+        return;
+    auto *view = tab->documentView();
+    if (view->layoutCursor().finished)
+        return;
+    CompositionRequest request = compositionRequest(tab);
+    request.startBlock = view->layoutCursor().nextBlock;
+    if (request.continuous) {
+        request.maxHeight = viewportSceneHeight(view);
+    } else {
+        request.onePage = true;
+        request.interactivePages = true;
+        request.geometryChanged = false;
+    }
+    m_renderRequest = m_compositionController->submit(request);
 }
 
 void MainWindow::rebuildCurrentDocument()
@@ -1643,7 +1769,29 @@ void MainWindow::rebuildCurrentDocument()
         return;
     }
     m_renderTarget = tab;
-    m_renderRequest = m_compositionController->submit(compositionRequest(tab));
+    CompositionRequest request = compositionRequest(tab);
+    if (request.continuous) {
+        auto *view = tab->documentView();
+        const auto *vp = view->viewport();
+        // The window has not been laid out yet. A column measured at a few
+        // dozen pixels is replaced as soon as the real size arrives, and the
+        // two results flash on top of each other.
+        if (view->isVisible() && vp && (vp->width() < 160 || vp->height() < 120)) {
+            view->scheduleWebRelayout();
+            return;
+        }
+        const qreal viewport = viewportSceneHeight(view);
+        request.maxHeight = viewport * 2.0;
+        request.startBlock = 0;
+        m_webLayoutWidth = request.width;
+    } else {
+        request.onePage = true;
+        request.interactivePages = true;
+        request.geometryChanged = m_hasPageGeometry && pageGeometryDiffers(m_lastPageGeometry, request.pageLayout);
+        m_lastPageGeometry = request.pageLayout;
+        m_hasPageGeometry = true;
+    }
+    m_renderRequest = m_compositionController->submit(request);
     statusBar()->showMessage(i18n("Rendering %1…", QFileInfo(filePath).fileName()));
 
 }
@@ -1681,6 +1829,11 @@ void MainWindow::openFile(const QUrl &url)
     PageLayout openPl = m_pageDockWidget->currentPageLayout();
     tab->documentView()->setPageLayout(openPl);
 
+    // Zoom is applied before web mode. In web mode a zoom change schedules a
+    // new column, and doing that on top of the open rebuild flashes two copies.
+    const int savedZoom = m_metadataStore->value(filePath, QStringLiteral("viewState")).toObject()
+        .value(QStringLiteral("zoom")).toInt(qRound(PenelopeSettings::self()->defaultZoom() * 100));
+    tab->documentView()->setZoomPercent(savedZoom);
     const bool webMode = PenelopeSettings::self()->useWebView();
     if (webMode)
         tab->documentView()->setRenderMode(DocumentView::WebMode);
@@ -1832,8 +1985,21 @@ void MainWindow::openFile(const QUrl &url)
         statusBar()->showMessage(i18n("%1 changed on disk; your unsaved edits have been kept.", tab->filePath()), 8000);
     });
     connect(tab->documentView(), &DocumentView::webRelayoutRequested, this, [this, tab]() {
-        if (currentDocumentTab() == tab && PenelopeSettings::self()->useWebView()) rebuildCurrentDocument();
-        else tab->setCompositionGeneration(0);
+        if (currentDocumentTab() != tab || !PenelopeSettings::self()->useWebView()) {
+            tab->setCompositionGeneration(0);
+            return;
+        }
+        auto *view = tab->documentView();
+        // Scrollbar show/hide resizes the viewport without changing the column
+        // width. Rebuilding there replaces the column and snaps scroll to the top.
+        if (view->webViewItem() && m_webLayoutWidth > 0
+            && qAbs(compositionWidth(view) - m_webLayoutWidth) < 1.0)
+            return;
+        rebuildCurrentDocument();
+    });
+    connect(tab->documentView(), &DocumentView::moreLayoutRequested, this, [this, tab]() {
+        if (currentDocumentTab() == tab)
+            submitLayoutFollowUp();
     });
 
     int index = m_tabWidget->addTab(tab, fi.fileName());

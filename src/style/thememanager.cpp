@@ -190,7 +190,7 @@ void ThemeManager::applyStyleOverrides(const QJsonObject &root, StyleManager *sm
     // Footnote style
     if (root.contains(QLatin1String("footnoteStyle"))) {
         QJsonObject fnObj = root.value(QLatin1String("footnoteStyle")).toObject();
-        FootnoteStyle fs;
+        FootnoteStyle fs = sm->footnoteStyle();
 
         if (fnObj.contains(QLatin1String("format"))) {
             QString fmt = fnObj.value(QLatin1String("format")).toString();
@@ -360,6 +360,15 @@ void ThemeManager::assignDefaultParents(StyleManager *sm)
         if (!s) {
             CharacterStyle stub(styleName);
             stub.setParentStyleName(QString::fromLatin1(def.parentName));
+            if (styleName == QLatin1String("Emphasis"))
+                stub.setFontItalic(true);
+            else if (styleName == QLatin1String("Strong"))
+                stub.setFontWeight(QFont::Bold);
+            else if (styleName == QLatin1String("StrongEmphasis")) {
+                stub.setFontWeight(QFont::Bold);
+                stub.setFontItalic(true);
+            } else if (styleName == QLatin1String("Strikethrough"))
+                stub.setFontStrikeOut(true);
             sm->addCharacterStyle(stub);
         } else if (s->parentStyleName().isEmpty()) {
             s->setParentStyleName(QString::fromLatin1(def.parentName));
@@ -484,4 +493,25 @@ void ThemeManager::loadDefaults(StyleManager *sm)
     link.setForeground(QColor(0x03, 0x66, 0xd6));
     link.setFontUnderline(true);
     sm->addCharacterStyle(link);
+
+    CharacterStyle emphasis(QStringLiteral("Emphasis"));
+    emphasis.setParentStyleName(QStringLiteral("Default Character Style"));
+    emphasis.setFontItalic(true);
+    sm->addCharacterStyle(emphasis);
+
+    CharacterStyle strong(QStringLiteral("Strong"));
+    strong.setParentStyleName(QStringLiteral("Default Character Style"));
+    strong.setFontWeight(QFont::Bold);
+    sm->addCharacterStyle(strong);
+
+    CharacterStyle strongEmphasis(QStringLiteral("StrongEmphasis"));
+    strongEmphasis.setParentStyleName(QStringLiteral("Default Character Style"));
+    strongEmphasis.setFontWeight(QFont::Bold);
+    strongEmphasis.setFontItalic(true);
+    sm->addCharacterStyle(strongEmphasis);
+
+    CharacterStyle strike(QStringLiteral("Strikethrough"));
+    strike.setParentStyleName(QStringLiteral("Default Character Style"));
+    strike.setFontStrikeOut(true);
+    sm->addCharacterStyle(strike);
 }

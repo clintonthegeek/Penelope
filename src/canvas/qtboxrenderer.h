@@ -84,6 +84,13 @@ public:
 private:
     const QRawFont &rawFontFor(FontFace *face, qreal sizePoints);
 
+    /// Draw a glyph run from outlines instead of QPainter::drawGlyphRun.
+    void drawGlyphsAsPaths(const QRawFont &rf, const GlyphRenderInfo &info,
+                           const QColor &foreground, qreal x, qreal baselineY);
+
+    /// Device-space uniform scale of the current painter transform.
+    qreal painterScale() const;
+
     QPainter *m_painter = nullptr;
     QHash<QPair<FontFace *, int>, QRawFont> m_rawFontCache; // key: (face, size*100)
     QList<LinkHitRect> m_linkHitRects;

@@ -23,6 +23,7 @@ TocWidget::TocWidget(QWidget *parent)
 void TocWidget::buildFromContentModel(const Content::Document &doc,
                                        const QList<Layout::SourceMapEntry> &sourceMap)
 {
+    m_treeWidget->blockSignals(true);
     m_treeWidget->clear();
     m_headingsByLine.clear();
 
@@ -54,8 +55,9 @@ void TocWidget::buildFromContentModel(const Content::Document &doc,
         if (text.isEmpty())
             continue;
 
-        // Find page and y-offset from source map
-        int page = 0;
+        // Find page and y-offset from source map. A heading that has not been
+        // laid out yet has no geometry; y = 0 would mean the top of the document.
+        int page = -1;
         qreal yOffset = 0;
         if (heading->source.startLine > 0) {
             for (const auto &entry : sourceMap) {
@@ -98,10 +100,13 @@ void TocWidget::buildFromContentModel(const Content::Document &doc,
     }
 
     m_treeWidget->expandAll();
+    applyHighlight();
+    m_treeWidget->blockSignals(false);
 }
 
 void TocWidget::clear()
 {
+    m_highlightedLine = -1;
     m_treeWidget->clear();
     m_headingsByLine.clear();
 }
@@ -110,23 +115,27 @@ void TocWidget::onItemClicked(QTreeWidgetItem *item, int column)
 {
     Q_UNUSED(column);
 
-    const QVariant yOffset = item->data(0, Qt::UserRole + 1);
-    if (!yOffset.isValid()) return;
-    Q_EMIT headingNavigate(item->data(0, Qt::UserRole).toInt(), yOffset.toDouble());
-    const QVariant sourceLine = item->data(0, Qt::UserRole + 2);
-    if (sourceLine.isValid()) Q_EMIT headingSourceNavigate(sourceLine.toInt());
+    const int sourceLine = item->data(0, Qt::UserRole + 2).toInt();
+    const int page = item->data(0, Qt::UserRole).toInt();
+    const qreal yOffset = item->data(0, Qt::UserRole + 1).toDouble();
+    Q_EMIT headingNavigate(page, yOffset, sourceLine);
+    if (sourceLine > 0) Q_EMIT headingSourceNavigate(sourceLine);
 
 }
 
 void TocWidget::highlightHeading(int sourceLine)
 {
-    auto it = m_headingsByLine.find(sourceLine);
+    m_highlightedLine = sourceLine;
+    applyHighlight();
+}
+
+void TocWidget::applyHighlight()
+{
+    auto it = m_headingsByLine.find(m_highlightedLine);
     QTreeWidgetItem *target = (it != m_headingsByLine.end()) ? *it : nullptr;
     if (m_treeWidget->currentItem() == target)
-        return; // already highlighted — no redundant work
-    m_treeWidget->blockSignals(true);
+        return;
     m_treeWidget->setCurrentItem(target);
     if (target)
         m_treeWidget->scrollToItem(target);
-    m_treeWidget->blockSignals(false);
 }

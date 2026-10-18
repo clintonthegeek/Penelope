@@ -37,11 +37,7 @@ bool FragmentCache::storeParagraph(quint64 blockId, quint64 contentHash, const Q
     auto *bv = new FragmentCacheValue(v);
     bool ok1 = m_shapeCache.insert(sk, sv, c);
     bool ok2 = m_breakCache.insert(bk, bv, c);
-    if (!ok1 || !ok2) {
-        // remove if partial? QCache takes ownership; if insert fails, object deleted by QCache? Qt docs: if cost > maxCost, returns false and object deleted? Actually insert returns false if cost > maxCost, object not inserted but not deleted? To be safe, not delete.
-        return false;
-    }
-    return true;
+    return ok1 && ok2;
 }
 
 bool FragmentCache::loadParagraphBreaks(quint64 blockId, quint64 contentHash, const QString &fontFamily,
@@ -118,10 +114,12 @@ bool FragmentCache::loadCodeLine(quint64 blockId, int lineIndex, quint64 textHas
     k.blockId = blockId; k.lineIndex = lineIndex; k.textHash = textHash;
     k.width = qRound(width * 100);
     if (auto *v = m_codeCache.object(k)) {
+        ++breakHits;
         if (lines) *lines = v->lines;
         if (glyphIds) *glyphIds = v->glyphIds;
         return true;
     }
+    ++breakMisses;
     return false;
 }
 

@@ -23,6 +23,7 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 #include "pdfpageitem.h"
+#include "boxpageitem.h"
 #include <KLocalizedString>
 #include <poppler-qt6.h>
 #include "contentbuilder.h"
@@ -30,6 +31,7 @@
 #include "contentfilter.h"
 #include "contentrtfexporter.h"
 #include "documenttab.h"
+#include "tocwidget.h"
 #include "documentview.h"
 #include "fontmanager.h"
 #include "footnoteparser.h"
@@ -48,6 +50,29 @@
 #include "textshaper.h"
 #include "webviewitem.h"
 #include "compositioncontroller.h"
+#include "linebreaker.h"
+#include "fragmentcache.h"
+#include "blockidentity.h"
+#include "stylerunindex.h"
+#include "boxpageitem.h"
+#include "qtboxrenderer.h"
+#include "pagelayoutwidget.h"
+#include "hitindex.h"
+#include "pagefingerprint.h"
+#include "headerfooterplan.h"
+#include "printcontroller.h"
+#include "themecomposer.h"
+#include "thememanager.h"
+#include "stylemanager.h"
+#include "colorpalette.h"
+#include "typeset.h"
+#include "paragraphstyle.h"
+#include "footnotestyle.h"
+#include <QDoubleSpinBox>
+#include <QJsonObject>
+#include <QScrollBar>
+#include <QSignalSpy>
+#include <QTreeWidget>
 
 class RegressionTest : public QObject {
     Q_OBJECT
@@ -234,7 +259,7 @@ private Q_SLOTS:
         window.openFile(QUrl::fromLocalFile(a));
         auto *tabs = window.findChild<QTabWidget *>(); QVERIFY(tabs);
         auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget()); QVERIFY(tab);
-        QTRY_VERIFY_WITH_TIMEOUT(tab->documentView()->isPdfMode() && tab->hasTocData(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(tab->documentView()->hasPageItems() && tab->hasTocData(), 10000);
         window.actionCollection()->action("view_source_mode")->trigger();
         tab->sourceEditor()->insertPlainText("new ");
         window.actionCollection()->action("view_web_mode")->trigger();
@@ -243,7 +268,7 @@ private Q_SLOTS:
         auto rtf = ContentRtfExporter().exportBlocks(tab->cachedContentDoc().blocks);
         QVERIFY(rtf.contains("new"));
         window.actionCollection()->action("view_print_mode")->trigger();
-        QTRY_VERIFY_WITH_TIMEOUT(tab->documentView()->isPdfMode(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(tab->documentView()->hasPageItems(), 10000);
         QVERIFY(tab->saveSource());
         window.openFile(QUrl::fromLocalFile(b));
         QCOMPARE(tabs->count(),2);
@@ -711,8 +736,9 @@ private Q_SLOTS:
         auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget()); QVERIFY(tab);
         QTRY_VERIFY_WITH_TIMEOUT(tab->compositionGeneration() > 0, 10000);
         QCOMPARE(tab->documentView()->zoomPercent(), 130);
-        QTRY_COMPARE_WITH_TIMEOUT(tab->documentView()->saveViewState().currentPage, 2, 10000);
         auto *view = tab->documentView();
+        QTRY_VERIFY_WITH_TIMEOUT(view->pageCount() >= 3, 30000);
+        QTRY_COMPARE_WITH_TIMEOUT(view->saveViewState().currentPage, 2, 10000);
         for (auto mode : {DocumentView::SinglePage, DocumentView::FacingPages,
                           DocumentView::FacingPagesFirstAlone}) {
             view->setViewMode(mode);
@@ -721,6 +747,8 @@ private Q_SLOTS:
             bool hasTargetPage = false;
             for (auto *item : view->scene()->items()) {
                 if (auto *page = dynamic_cast<PdfPageItem *>(item))
+                    hasTargetPage |= page->pageNumber() == 2;
+                if (auto *page = dynamic_cast<BoxPageItem *>(item))
                     hasTargetPage |= page->pageNumber() == 2;
             }
             QVERIFY(hasTargetPage);
@@ -867,6 +895,1186 @@ private Q_SLOTS:
         store.setValue("/example.md", "other", "kept");
         QCOMPARE(store.value("/example.md", "zoom").toInt(),125);
         QCOMPARE(store.value("/example.md", "other").toString(),QString("kept"));
+    }
+
+    static QString glyphText(const Layout::PageElement &element) {
+        QString text;
+        if (const auto *block = std::get_if<Layout::BlockBox>(&element)) {
+            for (const auto &line : block->lines)
+                for (const auto &glyph : line.glyphs)
+                    text += glyph.text;
+        }
+        return text;
+    }
+    static int lastSourceLine(const Layout::LayoutResult &result) {
+        int line = -1;
+        if (result.pages.isEmpty()) return line;
+        for (const auto &element : result.pages.last().elements) {
+            std::visit([&](const auto &item) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(item)>, Layout::BlockBox>
+                              || std::is_same_v<std::decay_t<decltype(item)>, Layout::TableBox>)
+                    line = qMax(line, item.source.endLine);
+            }, element);
+        }
+        return line;
+    }
+    static CompositionResultPtr awaitReady(CompositionController &controller, const CompositionRequest &request) {
+        QSignalSpy ready(&controller, &CompositionController::ready);
+        QSignalSpy failed(&controller, &CompositionController::failed);
+        controller.submit(request);
+        const bool arrived = QTest::qWaitFor([&] { return ready.size() >= 1 || failed.size() >= 1; }, 10000);
+        if (!arrived || failed.size() != 0 || ready.size() != 1)
+            return {};
+        return qvariant_cast<CompositionResultPtr>(ready.takeFirst().at(1));
+    }
+
+    void ebook01FindBreaksObservesCancel() {
+        QList<LineBreaking::Item> items;
+        for (int i = 0; i < 2000; ++i) {
+            items.append(LineBreaking::Item::makeBox(10, i));
+            items.append(LineBreaking::Item::makeGlue(4, 2, 1));
+        }
+        int checks = 0;
+        auto result = LineBreaking::findBreaks(items, {200}, {}, [&] {
+            return ++checks > 2;
+        });
+        QVERIFY(result.cancelled);
+        QVERIFY(result.breaks.isEmpty());
+        auto again = LineBreaking::findBreaks(items, {200});
+        QVERIFY(!again.cancelled);
+        QVERIFY(!again.breaks.isEmpty());
+    }
+    void ebook01LayoutAbortsOneParagraph() {
+        const QString sentence = QStringLiteral("The quick brown fox jumps. ");
+        QString body;
+        for (int i = 0; i < 4000; ++i) body += sentence;
+        ContentBuilder builder;
+        auto doc = builder.build(body);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout layout;
+        engine.setCancellationCheck([] { return true; });
+        QCOMPARE(engine.layout(doc, layout).pages.size(), 0);
+        QCOMPARE(engine.layoutContinuous(doc, 400).elements.size(), 0);
+        engine.setCancellationCheck({});
+        QVERIFY(!engine.layout(doc, layout).pages.isEmpty());
+        QVERIFY(!engine.layout(doc, layout).pages.first().elements.isEmpty());
+    }
+    void ebook01ShapeDoesNotCachePartial() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        const QString text = QStringLiteral("Alpha Beta");
+        StyleRun first{0, 5, QStringLiteral("Noto Serif"), 400, false, 12};
+        StyleRun second{6, 4, QStringLiteral("Noto Sans"), 700, true, 12};
+        shaper.setCancellationCheck([] { return true; });
+        QVERIFY(shaper.shape(text, {first, second}).isEmpty());
+        const auto misses = shaper.cacheMisses();
+        shaper.setCancellationCheck({});
+        QVERIFY(!shaper.shape(text, {first, second}).isEmpty());
+        QVERIFY(shaper.cacheMisses() > misses);
+        const auto hits = shaper.cacheHits();
+        shaper.shape(text, {first, second});
+        QVERIFY(shaper.cacheHits() > hits);
+    }
+    void ebook01SupersededHugeParagraphDeliversShort() {
+        CompositionController controller;
+        QSignalSpy ready(&controller, &CompositionController::ready);
+        QSignalSpy failed(&controller, &CompositionController::failed);
+        QString huge;
+        const QString sentence = QStringLiteral("The quick brown fox jumps. ");
+        for (int i = 0; i < 4000; ++i) huge += sentence;
+        CompositionRequest first;
+        first.markdown = huge;
+        first.continuous = true;
+        controller.submit(first);
+        CompositionRequest second;
+        second.markdown = QStringLiteral("# Ok\n\nShort.\n");
+        second.continuous = true;
+        const quint64 id = controller.submit(second);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 10000);
+        QCOMPARE(failed.size(), 0);
+        auto result = qvariant_cast<CompositionResultPtr>(ready.first().at(1));
+        QCOMPARE(ready.first().at(0).toULongLong(), id);
+        QCOMPARE(result->request.markdown, second.markdown);
+        QVERIFY(!result->continuousLayout.elements.isEmpty());
+    }
+    void ebook02StyleRunIndexMatchesEdges() {
+        QList<StyleRun> runs{{0, 10, {}, 400, false, 11}, {10, 5, {}, 400, false, 11}, {20, 1, {}, 400, false, 11}};
+        QCOMPARE(styleRunIndexAt(0, runs), 0);
+        QCOMPARE(styleRunIndexAt(9, runs), 0);
+        QCOMPARE(styleRunIndexAt(10, runs), 1);
+        QCOMPARE(styleRunIndexAt(14, runs), 1);
+        QCOMPARE(styleRunIndexAt(20, runs), 2);
+        QCOMPARE(styleRunIndexAt(19, runs), -1);
+        QCOMPARE(styleRunIndexAt(21, runs), -1);
+    }
+    void ebook02CodeLineCount() {
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("```cpp\nint a = 1;\nint b = 2;\n\nint c = 3;\n```\n"));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        engine.setCodeHighlighting(QStringLiteral("Breeze Light"), true);
+        auto layout = engine.layoutContinuous(doc, 420);
+        const Layout::BlockBox *code = nullptr;
+        for (const auto &element : layout.elements) {
+            if (const auto *block = std::get_if<Layout::BlockBox>(&element)) {
+                if (block->type == Layout::BlockBox::CodeBlockType)
+                    code = block;
+            }
+        }
+        QVERIFY(code);
+        QCOMPARE(code->lines.size(), 5);
+        bool colored = false;
+        for (const auto &line : code->lines)
+            for (const auto &glyph : line.glyphs)
+                colored |= glyph.style.foreground.isValid() && glyph.style.foreground != code->lines.first().glyphs.value(0).style.foreground;
+        Q_UNUSED(colored);
+        bool marked = false;
+        for (const auto &line : code->lines)
+            for (const auto &glyph : line.glyphs)
+                marked |= glyph.style.foreground.isValid();
+        QVERIFY(marked);
+    }
+    void ebook02CancelBetweenCodeLines() {
+        QString code = QStringLiteral("```cpp\n");
+        for (int i = 0; i < 2000; ++i) code += QStringLiteral("int x%1 = %1;\n").arg(i);
+        code += QStringLiteral("```\n");
+        ContentBuilder builder;
+        auto doc = builder.build(code);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        engine.setCancellationCheck([] { return true; });
+        QCOMPARE(engine.layoutContinuous(doc, 400).elements.size(), 0);
+    }
+    void ebook02ClipSkipsLines() {
+        QString code = QStringLiteral("```\n");
+        for (int i = 0; i < 80; ++i) code += QStringLiteral("line %1\n").arg(i);
+        code += QStringLiteral("```\n");
+        ContentBuilder builder;
+        auto doc = builder.build(code);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto layout = engine.layoutContinuous(doc, 400);
+        const Layout::BlockBox *codeBox = nullptr;
+        for (const auto &element : layout.elements) {
+            if (const auto *block = std::get_if<Layout::BlockBox>(&element))
+                if (block->type == Layout::BlockBox::CodeBlockType)
+                    codeBox = block;
+        }
+        QVERIFY(codeBox);
+        QImage image(20, 20, QImage::Format_RGB32);
+        QPainter painter(&image);
+        QtBoxRenderer renderer(&fonts);
+        renderer.setPainter(&painter);
+        renderer.setLineClip(QRectF(0, codeBox->y, 200, 30));
+        renderer.renderBlockBox(*codeBox);
+        const int clipped = renderer.lastPaintedLineCount();
+        QVERIFY(clipped > 0);
+        QVERIFY(clipped < codeBox->lines.size());
+        renderer.setLineClip(QRectF());
+        renderer.renderBlockBox(*codeBox);
+        QCOMPARE(renderer.lastPaintedLineCount(), codeBox->lines.size());
+    }
+    void ebook03BuildAssignsUniqueIds() {
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("# Title\n\nParagraph.\n\n- outer\n  - nested\n\n> quoted\n\n| a |\n| --- |\n| b |\n\n```\ncode\n```\n\nNote[^n].\n\n[^n]: footnote\n"));
+        QSet<quint64> ids;
+        auto walk = [&](auto &&self, const QList<Content::BlockNode> &blocks) -> void {
+            for (const auto &block : blocks) {
+                const quint64 id = std::visit([](const auto &item) { return item.blockId; }, block);
+                QVERIFY(id != 0);
+                QVERIFY(!ids.contains(id));
+                ids.insert(id);
+                if (const auto *quote = std::get_if<Content::BlockQuote>(&block))
+                    self(self, quote->children);
+                if (const auto *list = std::get_if<Content::List>(&block)) {
+                    for (const auto &item : list->items)
+                        self(self, item.children);
+                }
+            }
+        };
+        walk(walk, doc.blocks);
+        QVERIFY(ids.size() > 5);
+    }
+    void ebook03RestabilizeKeepsNeighbors() {
+        ContentBuilder builder;
+        auto before = builder.build(QStringLiteral("# Title\n\nAlpha.\n\nBeta.\n"));
+        auto after = builder.build(QStringLiteral("# Title\n\nAlpha.\n\nInserted.\n\nBeta.\n"));
+        const quint64 title = std::get<Content::Heading>(before.blocks.at(0)).blockId;
+        const quint64 alpha = std::get<Content::Paragraph>(before.blocks.at(1)).blockId;
+        const quint64 beta = std::get<Content::Paragraph>(before.blocks.at(2)).blockId;
+        restabilizeBlockIds(before.blocks, after.blocks);
+        QCOMPARE(std::get<Content::Heading>(after.blocks.at(0)).blockId, title);
+        QCOMPARE(std::get<Content::Paragraph>(after.blocks.at(1)).blockId, alpha);
+        QCOMPARE(std::get<Content::Paragraph>(after.blocks.at(3)).blockId, beta);
+        QVERIFY(std::get<Content::Paragraph>(after.blocks.at(2)).blockId != alpha);
+        QVERIFY(std::get<Content::Paragraph>(after.blocks.at(2)).blockId != beta);
+        auto twins = builder.build(QStringLiteral("Same.\n\nSame.\n"));
+        auto edited = builder.build(QStringLiteral("Same!\n\nSame.\n"));
+        const quint64 first = std::get<Content::Paragraph>(twins.blocks.at(0)).blockId;
+        const quint64 second = std::get<Content::Paragraph>(twins.blocks.at(1)).blockId;
+        restabilizeBlockIds(twins.blocks, edited.blocks);
+        QVERIFY(std::get<Content::Paragraph>(edited.blocks.at(0)).blockId != first);
+        QCOMPARE(std::get<Content::Paragraph>(edited.blocks.at(1)).blockId, second);
+    }
+    void ebook03WorkerKeepsIdsAcrossInsert() {
+        CompositionController controller;
+        CompositionRequest request;
+        request.markdown = QStringLiteral("# Title\n\nAlpha.\n\nBeta.\n");
+        request.continuous = true;
+        auto first = awaitReady(controller, request);
+        const quint64 alpha = std::get<Content::Paragraph>(first->document.blocks.at(1)).blockId;
+        const quint64 beta = std::get<Content::Paragraph>(first->document.blocks.at(2)).blockId;
+        request.markdown = QStringLiteral("# Title\n\nAlpha.\n\nInserted.\n\nBeta.\n");
+        auto second = awaitReady(controller, request);
+        QCOMPARE(std::get<Content::Paragraph>(second->document.blocks.at(1)).blockId, alpha);
+        QCOMPARE(std::get<Content::Paragraph>(second->document.blocks.at(3)).blockId, beta);
+        QVERIFY(std::get<Content::Paragraph>(second->document.blocks.at(2)).blockId != alpha);
+    }
+    void ebook04FragmentCacheKeys() {
+        FragmentCache cache;
+        cache.setMaxCost(100000);
+        Layout::LineBox line;
+        line.width = 40;
+        line.height = 12;
+        const int before = cache.totalCost();
+        QVERIFY(cache.storeParagraph(1, 2, QStringLiteral("Noto Serif"), 1100, 400, false, 200, false, {line}));
+        QList<Layout::LineBox> loaded;
+        QVERIFY(cache.loadParagraphBreaks(1, 2, QStringLiteral("Noto Serif"), 1100, 400, false, 200, false, &loaded));
+        QCOMPARE(loaded.size(), 1);
+        QVERIFY(!cache.loadParagraphBreaks(1, 2, QStringLiteral("Noto Serif"), 1100, 400, false, 240, false, &loaded));
+        QVERIFY(cache.loadParagraphShapes(1, 2, QStringLiteral("Noto Serif"), 1100, 400, false, &loaded));
+        QCOMPARE(loaded.size(), 1);
+        const int cost = cache.totalCost();
+        QVERIFY(cost > before);
+        QVERIFY(!cache.storeParagraph(9, 9, QStringLiteral("Noto Serif"), 1100, 400, false, 200, false, {line}, {}, cache.maxCost() + 1));
+        QCOMPARE(cache.totalCost(), cost);
+    }
+    void ebook04ParagraphCacheRoundTrip() {
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("One.\n\nTwo.\n\nThree.\n"));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        FragmentCache cache;
+        Layout::Engine engine(&fonts, &shaper);
+        engine.setFragmentCache(&cache);
+        auto first = engine.layoutContinuous(doc, 360);
+        auto second = engine.layoutContinuous(doc, 360);
+        QCOMPARE(second.elements.size(), first.elements.size());
+        QCOMPARE(second.sourceMap.size(), first.sourceMap.size());
+        for (int i = 0; i < first.sourceMap.size(); ++i) {
+            QCOMPARE(second.sourceMap.at(i).startLine, first.sourceMap.at(i).startLine);
+            QCOMPARE(second.sourceMap.at(i).endLine, first.sourceMap.at(i).endLine);
+        }
+        auto wider = engine.layoutContinuous(doc, 400);
+        QCOMPARE(wider.elements.size(), first.elements.size());
+        for (int i = 0; i < first.elements.size(); ++i)
+            QCOMPARE(glyphText(wider.elements.at(i)), glyphText(first.elements.at(i)));
+        Layout::Engine plain(&fonts, &shaper);
+        auto third = plain.layoutContinuous(doc, 360);
+        QCOMPARE(third.elements.size(), first.elements.size());
+        for (int i = 0; i < first.elements.size(); ++i) {
+            const auto *a = std::get_if<Layout::BlockBox>(&first.elements.at(i));
+            const auto *b = std::get_if<Layout::BlockBox>(&third.elements.at(i));
+            QVERIFY(a && b);
+            QCOMPARE(b->lines.size(), a->lines.size());
+        }
+    }
+    void ebook04CodeLineCacheHits() {
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("```cpp\nint value0 = 0;\n```\n"));
+        auto &block = std::get<Content::CodeBlock>(doc.blocks.first());
+        QStringList codeLines;
+        for (int i = 0; i < 30; ++i)
+            codeLines.append(QStringLiteral("int value%1 = %1;").arg(i));
+        block.code = codeLines.join(u'\n');
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        FragmentCache cache;
+        Layout::Engine engine(&fonts, &shaper);
+        engine.setCodeHighlighting(QStringLiteral("Breeze Light"), true);
+        engine.setFragmentCache(&cache);
+        engine.layoutContinuous(doc, 400);
+        cache.breakHits = 0;
+        cache.breakMisses = 0;
+        engine.layoutContinuous(doc, 400);
+        QCOMPARE(cache.breakHits, quint64(30));
+        auto edited = doc;
+        auto &editedBlock = std::get<Content::CodeBlock>(edited.blocks.first());
+        const QStringList lines = editedBlock.code.split(u'\n');
+        QStringList changed = lines;
+        changed[2] = QStringLiteral("int changed = 3;");
+        editedBlock.code = changed.join(u'\n');
+        cache.breakHits = 0;
+        cache.breakMisses = 0;
+        engine.layoutContinuous(edited, 400);
+        QCOMPARE(cache.breakHits, quint64(29));
+        QCOMPARE(cache.breakMisses, quint64(1));
+    }
+    void ebook05ContinuousCursorMatchesFull() {
+        QString markdown;
+        for (int i = 0; i < 12; ++i) markdown += QStringLiteral("Paragraph %1.\n\n").arg(i);
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto full = engine.layoutContinuous(doc, 380);
+        Layout::LayoutCursor cursor;
+        Layout::LayoutBudget budget;
+        budget.maxBlocks = 5;
+        QList<Layout::PageElement> combined;
+        QList<int> lines;
+        while (!cursor.finished) {
+            auto part = engine.layoutContinuousFrom(doc, 380, &cursor, budget);
+            combined.append(part.elements);
+            for (const auto &entry : part.sourceMap) lines.append(entry.startLine);
+            if (part.elements.isEmpty()) break;
+        }
+        QCOMPARE(combined.size(), full.elements.size());
+        QList<int> fullLines;
+        for (const auto &entry : full.sourceMap) fullLines.append(entry.startLine);
+        QCOMPARE(lines, fullLines);
+        Layout::LayoutCursor once;
+        auto all = engine.layoutContinuousFrom(doc, 380, &once, {});
+        QCOMPARE(all.elements.size(), full.elements.size());
+        QVERIFY(once.finished);
+    }
+    void ebook05PagedCursorMatchesFull() {
+        QString markdown = QStringLiteral("| Column |\n| --- |\n");
+        for (int i = 0; i < 40; ++i) markdown += QStringLiteral("| Row %1 |\n").arg(i);
+        for (int i = 0; i < 20; ++i) markdown += QStringLiteral("Paragraph %1.\n\n").arg(i);
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout layout;
+        auto full = engine.layout(doc, layout);
+        Layout::LayoutCursor cursor;
+        Layout::LayoutResult paged;
+        paged.pageSize = layout.pageSizePoints();
+        Layout::Page page;
+        while (engine.layoutNextPage(doc, layout, &cursor, &page)) {
+            paged.pages.append(page);
+            page = {};
+        }
+        engine.recordSourceMap(paged, layout);
+        QCOMPARE(paged.pages.size(), full.pages.size());
+        for (int i = 0; i < full.pages.size(); ++i)
+            QCOMPARE(paged.pages.at(i).elements.size(), full.pages.at(i).elements.size());
+        QCOMPARE(paged.sourceMap.size(), full.sourceMap.size());
+        for (int i = 0; i < full.sourceMap.size(); ++i) {
+            QCOMPARE(paged.sourceMap.at(i).startLine, full.sourceMap.at(i).startLine);
+            QCOMPARE(paged.sourceMap.at(i).endLine, full.sourceMap.at(i).endLine);
+        }
+    }
+    void ebook05WorkerHonorsBlockBudget() {
+        CompositionController controller;
+        QString markdown;
+        for (int i = 0; i < 30; ++i) markdown += QStringLiteral("Paragraph %1.\n\n").arg(i);
+        CompositionRequest request;
+        request.markdown = markdown;
+        request.continuous = true;
+        request.maxBlocks = 4;
+        request.width = 400;
+        auto partial = awaitReady(controller, request);
+        QVERIFY(!partial->finished);
+        QVERIFY(!partial->continuousLayout.elements.isEmpty());
+        QVERIFY(partial->continuousLayout.elements.size() < 30);
+        request.maxBlocks = 0;
+        auto full = awaitReady(controller, request);
+        QVERIFY(full->finished);
+        QCOMPARE(full->continuousLayout.elements.size(), 30);
+    }
+    void ebook06AppendDoesNotResetScroll() {
+        QString markdown;
+        for (int i = 0; i < 30; ++i) markdown += QStringLiteral("Paragraph %1 has several words.\n\n").arg(i);
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        Layout::LayoutCursor cursor;
+        Layout::LayoutBudget budget;
+        budget.maxBlocks = 20;
+        auto head = engine.layoutContinuousFrom(doc, 400, &cursor, budget);
+        auto tail = engine.layoutContinuousFrom(doc, 400, &cursor, budget);
+        DocumentView view;
+        view.resize(500, 220);
+        view.setRenderMode(DocumentView::WebMode);
+        view.setWebFontManager(&fonts);
+        view.setWebContent(std::move(head));
+        view.show();
+        QTest::qWait(20);
+        auto *bar = view.verticalScrollBar();
+        QVERIFY(bar->maximum() > 0);
+        bar->setValue(qMax(1, bar->maximum() / 3));
+        const int value = bar->value();
+        const qreal before = view.sceneRect().height();
+        view.appendWebContent(std::move(tail));
+        QCOMPARE(bar->value(), value);
+        QVERIFY(view.sceneRect().height() > before);
+    }
+    void ebook06PrefixDoesNotLayoutEveryBlock() {
+        QString markdown;
+        for (int i = 0; i < 200; ++i) markdown += QStringLiteral("Paragraph %1.\n\n").arg(i);
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto full = engine.layoutContinuous(doc, 500);
+        CompositionController controller;
+        CompositionRequest request;
+        request.markdown = markdown;
+        request.continuous = true;
+        request.width = 500;
+        request.maxHeight = 1600;
+        auto first = awaitReady(controller, request);
+        QVERIFY(!first->finished);
+        QVERIFY(first->continuousLayout.elements.size() < 200);
+        int count = first->continuousLayout.elements.size();
+        auto cursor = first->cursor;
+        int guard = 0;
+        while (!cursor.finished && guard++ < 30) {
+            request.startBlock = cursor.nextBlock;
+            request.maxHeight = 800;
+            auto next = awaitReady(controller, request);
+            count += next->continuousLayout.elements.size();
+            cursor = next->cursor;
+        }
+        QVERIFY(cursor.finished);
+        QCOMPARE(count, full.elements.size());
+    }
+    void ebook06NearEndRequestsMore() {
+        QString markdown;
+        for (int i = 0; i < 25; ++i) markdown += QStringLiteral("Paragraph %1 has enough text to grow.\n\n").arg(i);
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto layout = engine.layoutContinuous(doc, 360);
+        DocumentView view;
+        view.resize(420, 180);
+        view.setRenderMode(DocumentView::WebMode);
+        view.setWebFontManager(&fonts);
+        view.setWebContent(std::move(layout));
+        Layout::LayoutCursor cursor;
+        cursor.finished = false;
+        cursor.nextBlock = 10;
+        view.setLayoutCursor(cursor);
+        view.show();
+        QTest::qWait(20);
+        auto *bar = view.verticalScrollBar();
+        QVERIFY(bar->maximum() > 0);
+        QSignalSpy spy(&view, &DocumentView::moreLayoutRequested);
+        bar->setValue(qMax(0, bar->maximum() - 1));
+        bar->setValue(bar->maximum());
+        QCOMPARE(spy.size(), 1);
+        bar->setValue(qMax(0, bar->maximum() - 1));
+        bar->setValue(bar->maximum());
+        QCOMPARE(spy.size(), 1);
+        view.layoutExtended();
+        bar->setValue(qMax(0, bar->maximum() - 1));
+        bar->setValue(bar->maximum());
+        QCOMPARE(spy.size(), 2);
+    }
+    void ebook06WidthChangeReusesShapes() {
+        QString markdown;
+        for (int i = 0; i < 40; ++i)
+            markdown += QStringLiteral("Varied paragraph %1 uses words %2.\n\n").arg(i).arg(i * 17);
+        CompositionController controller;
+        CompositionRequest request;
+        request.markdown = markdown;
+        request.continuous = true;
+        request.width = 400;
+        awaitReady(controller, request);
+        request.width = 460;
+        request.maxBlocks = 40;
+        auto second = awaitReady(controller, request);
+        QVERIFY(second->shapeHits > 0);
+        QVERIFY(second->reusedContent);
+        QVERIFY(second->finished);
+    }
+    void ebook07MarginEditsCoalesce() {
+        PageLayoutWidget widget;
+        QSignalSpy spy(&widget, &PageLayoutWidget::pageLayoutChanged);
+        auto spins = widget.findChildren<QDoubleSpinBox *>();
+        QVERIFY(!spins.isEmpty());
+        auto *spin = spins.first();
+        spin->setValue(spin->value() + 1);
+        QTest::qWait(10);
+        spin->setValue(spin->value() + 1);
+        QTest::qWait(10);
+        spin->setValue(spin->value() + 1);
+        QCOMPARE(spy.size(), 0);
+        QTest::qWait(200);
+        QCOMPARE(spy.size(), 1);
+    }
+    void ebook07FirstPageBeforeLast() {
+        QString markdown;
+        for (int i = 0; i < 40; ++i)
+            markdown += QString(QStringLiteral("Paragraph %1 is a sentence. ").arg(i).repeated(40)) + QStringLiteral("\n\n");
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout layout;
+        CompositionController controller;
+        CompositionRequest request;
+        request.markdown = markdown;
+        request.continuous = false;
+        request.onePage = true;
+        request.hyphenateJustified = false;
+        auto page = awaitReady(controller, request);
+        const int fullPages = engine.layout(page->document, layout).pages.size();
+        QCOMPARE(page->paginated.pages.size(), 1);
+        QVERIFY(!page->finished);
+        int count = 1;
+        auto cursor = page->cursor;
+        int guard = 0;
+        while (!cursor.finished && guard++ < 40) {
+            request.startBlock = cursor.nextBlock;
+            auto next = awaitReady(controller, request);
+            count += next->paginated.pages.size();
+            cursor = next->cursor;
+        }
+        QVERIFY(cursor.finished);
+        QCOMPARE(count, fullPages);
+    }
+    void ebook07ZoomDoesNotRelayout() {
+        DocumentView view;
+        view.resize(640, 480);
+        view.setRenderMode(DocumentView::PrintMode);
+        QSignalSpy spy(&view, &DocumentView::webRelayoutRequested);
+        view.setZoomPercent(150);
+        QCOMPARE(spy.size(), 0);
+        QResizeEvent printResize(QSize(700, 480), QSize(640, 480));
+        QApplication::sendEvent(&view, &printResize);
+        QCOMPARE(spy.size(), 0);
+        view.setRenderMode(DocumentView::WebMode);
+        view.show();
+        view.resize(760, 480);
+        QResizeEvent webResize(QSize(820, 480), view.size());
+        QApplication::sendEvent(&view, &webResize);
+        QTRY_COMPARE_WITH_TIMEOUT(spy.size(), 1, 1000);
+    }
+    void ebook08BoxPagePaintsAfterFontsReleased() {
+        std::shared_ptr<FontManager> fonts = std::make_shared<FontManager>();
+        QSizeF pageSize;
+        Layout::Page page;
+        {
+            TextShaper shaper(fonts.get());
+            Layout::Engine engine(fonts.get(), &shaper);
+            ContentBuilder builder;
+            auto doc = builder.build(QStringLiteral("Hello from a box page.\n"));
+            PageLayout layout;
+            auto result = engine.layout(doc, layout);
+            QVERIFY(!result.pages.isEmpty());
+            page = result.pages.first();
+            pageSize = result.pageSize;
+        }
+        BoxPageItem item(std::make_shared<Layout::Page>(page), pageSize, fonts);
+        QImage image(qMax(1, int(pageSize.width())), qMax(1, int(pageSize.height())), QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        QStyleOptionGraphicsItem option;
+        option.exposedRect = item.boundingRect();
+        item.paint(&painter, &option, nullptr);
+        painter.end();
+        int colored = 0;
+        for (int y = 0; y < image.height(); y += 3) {
+            for (int x = 0; x < image.width(); x += 3) {
+                if (image.pixelColor(x, y) != QColor(Qt::white))
+                    ++colored;
+            }
+        }
+        QVERIFY(colored > 0);
+    }
+    void ebook08HeaderPlanTokens() {
+        PageLayout layout;
+        layout.footerEnabled = true;
+        layout.footerRight = QStringLiteral("{page} / {pages}");
+        layout.headerEnabled = true;
+        layout.headerLeft = QStringLiteral("{filename}");
+        const auto plan = makeHeaderFooterPlan(layout, 1, 9, QStringLiteral("a.md"), QStringLiteral("Title"));
+        QVERIFY(plan.footerRight.text.contains(QStringLiteral("2")));
+        QVERIFY(plan.footerRight.text.contains(QStringLiteral("9")));
+        QVERIFY(!plan.footerRight.text.contains(QStringLiteral("{page}")));
+        QVERIFY(plan.headerLeft.text.contains(QStringLiteral("a.md")));
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("Footer check.\n"));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto result = engine.layout(doc, layout);
+        PdfGenerator generator(&fonts);
+        generator.setDocumentInfo(QStringLiteral("a.md"), QStringLiteral("Title"));
+        auto pdf = generator.generate(result, layout, QStringLiteral("Title"));
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        std::unique_ptr<Poppler::Page> page(poppler->page(0));
+        const QString extracted = page->text(QRectF());
+        QVERIFY2(extracted.contains(QStringLiteral("1 /")), qPrintable(extracted));
+    }
+    void ebook08InteractivePrintHasNoPdf() {
+        CompositionController controller;
+        CompositionRequest request;
+        request.markdown = QStringLiteral("# Page\n\n");
+        for (int i = 0; i < 30; ++i)
+            request.markdown += QString(QStringLiteral("Paragraph %1. ").arg(i).repeated(40)) + QStringLiteral("\n\n");
+        request.continuous = false;
+        request.onePage = true;
+        request.interactivePages = true;
+        auto result = awaitReady(controller, request);
+        QVERIFY(result->pdf.isEmpty());
+        QCOMPARE(result->paginated.pages.size(), 1);
+        QVERIFY(!result->finished);
+    }
+    void largeTextSurvivesGlyphCacheLimit() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("# Zoomed Heading\n"));
+        auto layout = engine.layoutContinuous(doc, 400);
+        const Layout::BlockBox *heading = nullptr;
+        for (const auto &element : layout.elements)
+            if (const auto *block = std::get_if<Layout::BlockBox>(&element))
+                if (block->type == Layout::BlockBox::HeadingBlock)
+                    heading = block;
+        QVERIFY(heading);
+        QVERIFY(!heading->lines.isEmpty());
+
+        QImage image(2400, 800, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        painter.scale(6.0, 6.0);
+        QtBoxRenderer renderer(&fonts);
+        renderer.setPainter(&painter);
+        renderer.renderBlockBox(*heading);
+        painter.end();
+
+        int colored = 0;
+        for (int y = 0; y < image.height(); y += 3)
+            for (int x = 0; x < image.width(); x += 3)
+                if (image.pixelColor(x, y) != QColor(Qt::white))
+                    ++colored;
+        QVERIFY2(colored > 0, "heading glyphs vanished when scaled past the glyph cache limit");
+    }
+    void ebook09HitIndexFindsLine() {
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("First paragraph stays on the page.\n\nSecond paragraph is the target.\n"));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout layout;
+        auto result = engine.layout(doc, layout);
+        QVERIFY(!result.pages.isEmpty());
+        const auto &page = result.pages.first();
+        const auto *first = std::get_if<Layout::BlockBox>(&page.elements.first());
+        QVERIFY(first);
+        const auto index = buildHitIndex(page);
+        const int second = first->lines.size();
+        QVERIFY(second < index.lineBounds.size());
+        QCOMPARE(hitLine(index, index.lineBounds.at(second).center()), second);
+        QCOMPARE(hitLine(index, QPointF(-20, -20)), -1);
+    }
+    void ebook09BoxLinkAndSelection() {
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("See [go](https://example.com) now.\n"));
+        auto fonts = std::make_shared<FontManager>();
+        TextShaper shaper(fonts.get());
+        Layout::Engine engine(fonts.get(), &shaper);
+        PageLayout layout;
+        auto result = engine.layout(doc, layout);
+        BoxPageItem item(std::make_shared<Layout::Page>(result.pages.first()), result.pageSize, fonts);
+        item.setPageChrome(layout, 1, QStringLiteral("a.md"), QStringLiteral("a"));
+        const auto &index = item.hitIndex();
+        QVERIFY(!index.linkBounds.isEmpty());
+        constexpr qreal mmToPt = 72.0 / 25.4;
+        const QPointF origin(layout.margins.left() * mmToPt,
+                             layout.margins.top() * mmToPt + layout.headerTotalHeight());
+        const QRectF word = index.linkBounds.first().translated(origin);
+        QCOMPARE(item.linkAt(word.center()), QStringLiteral("https://example.com"));
+        const QString text = item.textInRect(word);
+        QVERIFY2(text.contains(QStringLiteral("go")), qPrintable(text + QStringLiteral(" | ") + index.lineText.join(QStringLiteral("/"))));
+        QVERIFY(!text.contains(QStringLiteral("https://example.com")));
+    }
+    void ebook09FindResumesCursor() {
+        DocumentView view;
+        view.requestScrollToBlock(12);
+        Layout::LayoutCursor cursor;
+        cursor.nextBlock = 10;
+        cursor.finished = false;
+        view.integrateCursor(cursor);
+        QCOMPARE(view.scrollToBlock(), 12);
+        cursor.nextBlock = 12;
+        view.integrateCursor(cursor);
+        QCOMPARE(view.scrollToBlock(), 12);
+        cursor.nextBlock = 14;
+        view.integrateCursor(cursor, 12, 480);
+        QCOMPARE(view.scrollToBlock(), -1);
+        QCOMPARE(view.scrollTargetY(), 480);
+    }
+    void ebook10FingerprintStable() {
+        Layout::LayoutCursor cursor;
+        cursor.y = 12;
+        cursor.yOnPage = 12;
+        cursor.nextBlock = 3;
+        const QList<quint64> ids{4, 5};
+        const quint64 hash = 99;
+        const quint64 first = pageFingerprint(cursor, ids, hash, false, 0, 0);
+        const quint64 second = pageFingerprint(cursor, ids, hash, false, 0, 0);
+        QCOMPARE(second, first);
+        cursor.y = 40;
+        cursor.yOnPage = 40;
+        QVERIFY(pageFingerprint(cursor, ids, hash, false, 0, 0) != first);
+        cursor.y = 12;
+        cursor.yOnPage = 12;
+        QVERIFY(pageFingerprint(cursor, {4, 6}, hash, false, 0, 0) != first);
+    }
+    void ebook10ReuseTailAfterInsert() {
+        PageLayout layout;
+        layout.footerEnabled = false;
+        layout.footerRight.clear();
+        // One short paragraph per page, so an early page ends on a block boundary
+        // and does not contain the edited tail paragraph.
+        layout.margins = QMarginsF(20, 145, 20, 145);
+        QString markdown;
+        for (int i = 0; i < 15; ++i)
+            markdown += QStringLiteral("Paragraph %1.\n\n").arg(i);
+        ContentBuilder builder;
+        auto doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto stored = engine.layout(doc, layout);
+        QVERIFY2(stored.pages.size() > 1, qPrintable(QString::number(stored.pages.size())));
+        quint64 editedId = 0;
+        for (const auto &node : doc.blocks) {
+            Content::Document one;
+            one.blocks.append(node);
+            if (Content::toPlainText(one).contains(QStringLiteral("Paragraph 14.")))
+                editedId = std::visit([](const auto &block) { return block.blockId; }, node);
+        }
+        QVERIFY(editedId != 0);
+        int prefix = -1;
+        for (int i = 0; i < stored.pages.size(); ++i) {
+            const auto &candidate = stored.pages.at(i);
+            if (candidate.boundary && !candidate.hasTable && !candidate.blockIds.isEmpty()
+                && !candidate.blockIds.contains(editedId)) {
+                prefix = i;
+                break;
+            }
+        }
+        QVERIFY(prefix >= 0);
+        QString edited = markdown;
+        edited.replace(QStringLiteral("Paragraph 14."), QStringLiteral("Paragraph fourteen."));
+        auto docEdited = builder.build(edited);
+        restabilizeBlockIds(doc.blocks, docEdited.blocks);
+        auto mutated = stored;
+        auto &prefixPage = mutated.pages[prefix];
+        if (auto *block = std::get_if<Layout::BlockBox>(&prefixPage.elements.first()))
+            block->y = 4242;
+        auto reused = engine.layoutReusing(docEdited, layout, &mutated, false);
+        QCOMPARE(reused.pages.at(prefix).blockIds, stored.pages.at(prefix).blockIds);
+        if (const auto *block = std::get_if<Layout::BlockBox>(&reused.pages.at(prefix).elements.first()))
+            QCOMPARE(block->y, 4242);
+        auto fullEdited = engine.layout(docEdited, layout);
+        QCOMPARE(reused.pages.size(), fullEdited.pages.size());
+        QCOMPARE(lastSourceLine(reused), lastSourceLine(fullEdited));
+
+        auto inserted = builder.build(QStringLiteral("Inserted on the first page.\n\n") + markdown);
+        restabilizeBlockIds(doc.blocks, inserted.blocks);
+        auto rebuilt = engine.layoutReusing(inserted, layout, &stored, false);
+        auto fullInserted = engine.layout(inserted, layout);
+        QCOMPARE(rebuilt.pages.size(), fullInserted.pages.size());
+        QCOMPARE(lastSourceLine(rebuilt), lastSourceLine(fullInserted));
+
+        auto flipped = stored;
+        flipped.pages[0].fingerprint ^= 1;
+        if (auto *block = std::get_if<Layout::BlockBox>(&flipped.pages[0].elements.first()))
+            block->y = 4242;
+        auto fresh = engine.layoutReusing(doc, layout, &flipped, false);
+        auto full = engine.layout(doc, layout);
+        QCOMPARE(fresh.pages.size(), full.pages.size());
+        QCOMPARE(lastSourceLine(fresh), lastSourceLine(full));
+        if (const auto *block = std::get_if<Layout::BlockBox>(&fresh.pages.first().elements.first()))
+            QVERIFY(!qFuzzyCompare(block->y, 4242));
+    }
+
+    void webModeClearsPrintAndKeepsScrolling() {
+        DocumentView view;
+        view.resize(640, 480);
+        view.show();
+        PageLayout layout;
+        layout.pageBackground = QColor(QStringLiteral("#282828"));
+        auto fonts = std::make_shared<FontManager>();
+        auto page = std::make_shared<Layout::Page>();
+        page->pageNumber = 0;
+        view.setViewMode(DocumentView::SinglePage);
+        view.setBoxPages({page}, fonts, layout, false);
+        QVERIFY(view.hasBoxPages());
+        QCOMPARE(view.verticalScrollBarPolicy(), Qt::ScrollBarAlwaysOff);
+        view.setRenderMode(DocumentView::WebMode);
+        QVERIFY(!view.hasBoxPages());
+        QVERIFY(!view.webViewItem());
+        QCOMPARE(view.scene()->items().size(), 0);
+        QCOMPARE(view.verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
+        QCOMPARE(view.backgroundBrush().color(), QColor(QStringLiteral("#282828")));
+        view.setViewMode(DocumentView::FacingPages);
+        QCOMPARE(view.verticalScrollBarPolicy(), Qt::ScrollBarAsNeeded);
+        view.setWebFontManager(fonts.get());
+        Layout::ContinuousLayoutResult column;
+        column.contentWidth = 400;
+        column.totalHeight = 2400;
+        view.setWebContent(std::move(column));
+        QVERIFY(view.webViewItem());
+        QVERIFY(view.verticalScrollBar()->maximum() > 0);
+        view.setRenderMode(DocumentView::PrintMode);
+        QVERIFY(!view.webViewItem());
+        QCOMPARE(view.verticalScrollBarPolicy(), Qt::ScrollBarAlwaysOff);
+    }
+    void darkCodeSurfaceUsesLightSyntaxColors() {
+        auto keyword = [](const QColor &background) {
+            Content::CodeBlock block;
+            block.language = QStringLiteral("cpp");
+            block.code = QStringLiteral("int value = 1;\n");
+            block.background = background;
+            block.style.foreground = QColor(QStringLiteral("#1a1a1a"));
+            block.style.fontFamily = QStringLiteral("Noto Sans");
+            block.style.fontSize = 10;
+            Content::Document doc;
+            doc.blocks.append(block);
+            FontManager fonts;
+            TextShaper shaper(&fonts);
+            Layout::Engine engine(&fonts, &shaper);
+            engine.setCodeHighlighting(QString(), true);
+            const auto layout = engine.layoutContinuous(doc, 420);
+            for (const auto &element : layout.elements) {
+                const auto *box = std::get_if<Layout::BlockBox>(&element);
+                if (!box) continue;
+                for (const auto &line : box->lines)
+                    for (const auto &glyph : line.glyphs)
+                        if (glyph.text == QLatin1String("int"))
+                            return glyph.style.foreground;
+            }
+            return QColor();
+        };
+        const QColor onLight = keyword(QColor(Qt::white));
+        const QColor onDark = keyword(QColor(QStringLiteral("#3c3836")));
+        QVERIFY(onLight.isValid());
+        QVERIFY(onDark.isValid());
+        QVERIFY2(onDark.lightness() > onLight.lightness(),
+                 qPrintable(onLight.name() + QLatin1Char(' ') + onDark.name()));
+    }
+    void webViewScrollSurvivesLayout() {
+        PenelopeSettings::self()->setUseWebView(true);
+        QTemporaryDir dir;
+        QString markdown = QStringLiteral("# Title\n\n");
+        for (int i = 0; i < 40; ++i)
+            markdown += QStringLiteral("Paragraph %1. The quick brown fox jumps over the lazy dog.\n\n").arg(i);
+        const QString file = dir.filePath(QStringLiteral("scroll.md"));
+        QVERIFY(writeFile(file, markdown.toUtf8()));
+        MainWindow window;
+        window.resize(1000, 700);
+        window.show();
+        window.openFile(QUrl::fromLocalFile(file));
+        auto *tabs = window.findChild<QTabWidget *>();
+        QVERIFY(tabs);
+        auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget());
+        QVERIFY(tab);
+        auto *view = tab->documentView();
+        QTRY_VERIFY_WITH_TIMEOUT(view->webViewItem()
+                                 && view->verticalScrollBar()->maximum() > 100, 10000);
+        QTest::qWait(500);
+        QCOMPARE(view->scene()->items().size(), 1);
+        auto *bar = view->verticalScrollBar();
+        const int mid = bar->maximum() / 2;
+        bar->setValue(mid);
+        QTest::qWait(600);
+        QVERIFY2(bar->value() > mid / 2, qPrintable(QString::number(bar->value())));
+        QCOMPARE(view->scene()->items().size(), 1);
+    }
+    void contentsFollowsScrollAndJump() {
+        PenelopeSettings::self()->setUseWebView(true);
+        QTemporaryDir dir;
+        QString markdown = QStringLiteral("# Alpha\n\n");
+        for (int i = 0; i < 40; ++i)
+            markdown += QStringLiteral("Alpha paragraph %1 fills the column before the next heading.\n\n").arg(i);
+        markdown += QStringLiteral("# Beta\n\n");
+        for (int i = 0; i < 40; ++i)
+            markdown += QStringLiteral("Beta paragraph %1 keeps this section well below the first screen.\n\n").arg(i);
+        markdown += QStringLiteral("# Gamma\n\nGamma is last.\n");
+        const QString file = dir.filePath(QStringLiteral("toc.md"));
+        QVERIFY(writeFile(file, markdown.toUtf8()));
+        MainWindow window;
+        window.resize(900, 640);
+        window.show();
+        window.openFile(QUrl::fromLocalFile(file));
+        auto *tabs = window.findChild<QTabWidget *>();
+        QVERIFY(tabs);
+        auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget());
+        QVERIFY(tab);
+        auto *view = tab->documentView();
+        auto *toc = window.findChild<TocWidget *>();
+        QVERIFY(toc);
+        auto *tree = toc->findChild<QTreeWidget *>();
+        QVERIFY(tree);
+        auto headingText = [](QTreeWidgetItem *item) {
+            QString text = item ? item->text(0) : QString();
+            text.remove(QChar(0x00AD));
+            return text;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 3 && view->webViewItem(), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Alpha"), 2000);
+        QTreeWidgetItem *beta = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((beta = tree->topLevelItem(1))
+                                 && headingText(beta) == QStringLiteral("Beta")
+                                 && beta->data(0, Qt::UserRole).toInt() >= 0, 10000);
+        const qreal betaY = beta->data(0, Qt::UserRole + 1).toDouble();
+        QVERIFY(betaY > 200);
+        view->scrollToPosition(0, betaY);
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Beta"), 2000);
+        view->verticalScrollBar()->setValue(0);
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Alpha"), 2000);
+        auto *gamma = tree->topLevelItem(2);
+        QVERIFY(gamma);
+        Q_EMIT tree->itemClicked(gamma, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Gamma"), 10000);
+
+        auto *printAction = window.actionCollection()->action(QStringLiteral("view_print_mode"));
+        QVERIFY(printAction);
+        printAction->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(view->hasBoxPages(), 10000);
+        QTreeWidgetItem *printedBeta = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((printedBeta = tree->topLevelItem(1))
+                                 && headingText(printedBeta) == QStringLiteral("Beta")
+                                 && printedBeta->data(0, Qt::UserRole).toInt() >= 0, 15000);
+        view->scrollToPosition(printedBeta->data(0, Qt::UserRole).toInt(),
+                               printedBeta->data(0, Qt::UserRole + 1).toDouble());
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Beta"), 2000);
+        view->verticalScrollBar()->setValue(0);
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Alpha"), 2000);
+        Q_EMIT tree->itemClicked(tree->topLevelItem(2), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(headingText(tree->currentItem()), QStringLiteral("Gamma"), 15000);
+    }
+    void styleResolutionFollowsTypeSetAndPalette() {
+        TypeSet typeSet;
+        typeSet.body.family = QStringLiteral("Georgia");
+        typeSet.heading.family = QStringLiteral("Trebuchet MS");
+        typeSet.mono.family = QStringLiteral("Courier New");
+        QJsonObject paragraphs;
+        paragraphs.insert(QStringLiteral("Heading"),
+                          QJsonObject{{QStringLiteral("foreground"), QStringLiteral("#ff00ff")}});
+        paragraphs.insert(QStringLiteral("Heading1"),
+                          QJsonObject{{QStringLiteral("fontSize"), 28},
+                                      {QStringLiteral("fontWeight"), QStringLiteral("bold")}});
+        paragraphs.insert(QStringLiteral("BodyText"),
+                          QJsonObject{{QStringLiteral("alignment"), QStringLiteral("justify")},
+                                      {QStringLiteral("lineHeightPercent"), 120}});
+        typeSet.paragraphStyles = paragraphs;
+        QJsonObject characters;
+        characters.insert(QStringLiteral("InlineCode"),
+                          QJsonObject{{QStringLiteral("foreground"), QStringLiteral("#ff0000")}});
+        typeSet.characterStyles = characters;
+
+        ColorPalette palette;
+        palette.colors.insert(QStringLiteral("headingText"), QColor(QStringLiteral("#fabd2f")));
+        palette.colors.insert(QStringLiteral("text"), QColor(QStringLiteral("#ebdbb2")));
+        palette.colors.insert(QStringLiteral("codeText"), QColor(QStringLiteral("#b8bb26")));
+        palette.colors.insert(QStringLiteral("surfaceCode"), QColor(QStringLiteral("#3c3836")));
+
+        ThemeManager themes;
+        ThemeComposer composer(&themes);
+        composer.setTypeSet(typeSet);
+        composer.setColorPalette(palette);
+        StyleManager styles;
+        composer.compose(&styles);
+
+        const ParagraphStyle heading = styles.resolvedParagraphStyle(QStringLiteral("Heading1"));
+        QCOMPARE(heading.fontFamily(), QStringLiteral("Trebuchet MS"));
+        QCOMPARE(heading.fontSize(), 28.0);
+        QCOMPARE(heading.fontWeight(), QFont::Bold);
+        QCOMPARE(heading.foreground(), QColor(QStringLiteral("#fabd2f")));
+
+        const ParagraphStyle body = styles.resolvedParagraphStyle(QStringLiteral("BodyText"));
+        QCOMPARE(body.fontFamily(), QStringLiteral("Georgia"));
+        QCOMPARE(body.alignment(), Qt::AlignJustify);
+        QCOMPARE(body.lineHeightPercent(), 120);
+        QCOMPARE(body.foreground(), QColor(QStringLiteral("#ebdbb2")));
+        QVERIFY(body.foreground() != QColor(0x1a, 0x1a, 0x1a));
+
+        const CharacterStyle emphasis = styles.characterStyleOverrides(QStringLiteral("Emphasis"));
+        QVERIFY(emphasis.fontItalic());
+        QVERIFY(!emphasis.hasFontFamily());
+        const CharacterStyle strong = styles.characterStyleOverrides(QStringLiteral("Strong"));
+        QCOMPARE(strong.fontWeight(), QFont::Bold);
+        QVERIFY(!strong.fontItalic());
+
+        ContentBuilder builder;
+        builder.setStyleManager(&styles);
+        const Content::Document doc = builder.build(
+            QStringLiteral("# *Emphasized* and [linked](https://example.test)\n\n"
+                           "Body *italicword* **boldword** ***bothword*** `codeword` ~~gone~~.\n\n"
+                           "```\n"
+                           "fenceword\n"
+                           "```\n"));
+        const auto styled = [](const Content::Document &document, const QString &needle) -> const Content::TextStyle * {
+            for (const auto &block : document.blocks) {
+                const QList<Content::InlineNode> *inlines = nullptr;
+                if (const auto *headingBlock = std::get_if<Content::Heading>(&block))
+                    inlines = &headingBlock->inlines;
+                else if (const auto *paragraph = std::get_if<Content::Paragraph>(&block))
+                    inlines = &paragraph->inlines;
+                if (!inlines)
+                    continue;
+                for (const auto &node : *inlines) {
+                    if (const auto *run = std::get_if<Content::TextRun>(&node)) {
+                        if (run->text.contains(needle))
+                            return &run->style;
+                    } else if (const auto *code = std::get_if<Content::InlineCode>(&node)) {
+                        if (code->text.contains(needle))
+                            return &code->style;
+                    }
+                }
+            }
+            return nullptr;
+        };
+        const Content::TextStyle *emphasized = styled(doc, QStringLiteral("Emphasized"));
+        QVERIFY(emphasized);
+        QCOMPARE(emphasized->fontFamily, QStringLiteral("Trebuchet MS"));
+        QCOMPARE(emphasized->fontSize, 28.0);
+        QVERIFY(emphasized->italic);
+        QCOMPARE(emphasized->foreground, QColor(QStringLiteral("#fabd2f")));
+
+        const Content::TextStyle *linked = styled(doc, QStringLiteral("linked"));
+        QVERIFY(linked);
+        QCOMPARE(linked->fontFamily, QStringLiteral("Trebuchet MS"));
+        QVERIFY(linked->underline);
+        QCOMPARE(linked->linkHref, QStringLiteral("https://example.test"));
+
+        const Content::TextStyle *italic = styled(doc, QStringLiteral("italicword"));
+        QVERIFY(italic);
+        QCOMPARE(italic->fontFamily, QStringLiteral("Georgia"));
+        QVERIFY(italic->italic);
+        QCOMPARE(italic->fontWeight, 400);
+        QCOMPARE(italic->foreground, QColor(QStringLiteral("#ebdbb2")));
+
+        const Content::TextStyle *bold = styled(doc, QStringLiteral("boldword"));
+        QVERIFY(bold);
+        QCOMPARE(bold->fontWeight, 700);
+        QVERIFY(!bold->italic);
+        QCOMPARE(bold->fontFamily, QStringLiteral("Georgia"));
+
+        const Content::TextStyle *both = styled(doc, QStringLiteral("bothword"));
+        QVERIFY(both);
+        QCOMPARE(both->fontWeight, 700);
+        QVERIFY(both->italic);
+
+        const Content::TextStyle *code = styled(doc, QStringLiteral("codeword"));
+        QVERIFY(code);
+        QCOMPARE(code->fontFamily, QStringLiteral("Courier New"));
+        QCOMPARE(code->foreground, QColor(QStringLiteral("#b8bb26")));
+
+        const Content::TextStyle *struck = styled(doc, QStringLiteral("gone"));
+        QVERIFY(struck);
+        QVERIFY(struck->strikethrough);
+        QCOMPARE(struck->fontFamily, QStringLiteral("Georgia"));
+
+        const Content::CodeBlock *fence = nullptr;
+        for (const auto &block : doc.blocks) {
+            if (const auto *codeBlock = std::get_if<Content::CodeBlock>(&block))
+                fence = codeBlock;
+        }
+        QVERIFY(fence);
+        QVERIFY(fence->code.contains(QStringLiteral("fenceword")));
+        QCOMPARE(fence->style.fontFamily, QStringLiteral("Courier New"));
+        QCOMPARE(fence->background, QColor(QStringLiteral("#3c3836")));
+
+        ParagraphStyle indent(QStringLiteral("CodeIndent"));
+        indent.setParentStyleName(QStringLiteral("CodeBlock"));
+        indent.setLeftMargin(18);
+        styles.addParagraphStyle(indent);
+        const ParagraphStyle resolvedIndent = styles.resolvedParagraphStyle(QStringLiteral("CodeIndent"));
+        QCOMPARE(resolvedIndent.fontFamily(), QStringLiteral("Courier New"));
+        QCOMPARE(resolvedIndent.leftMargin(), 18.0);
+
+        FootnoteStyle prior = styles.footnoteStyle();
+        prior.suffix = QStringLiteral(")");
+        prior.prefix = QStringLiteral("(");
+        styles.setFootnoteStyle(prior);
+        QJsonObject footnote{{QStringLiteral("format"), QStringLiteral("roman_lower")}};
+        themes.applyStyleOverrides(QJsonObject{{QStringLiteral("footnoteStyle"), footnote}}, &styles);
+        QCOMPARE(styles.footnoteStyle().format, FootnoteStyle::RomanLower);
+        QCOMPARE(styles.footnoteStyle().suffix, QStringLiteral(")"));
+        QCOMPARE(styles.footnoteStyle().prefix, QStringLiteral("("));
+        QVERIFY(styles.footnoteStyle().superscriptRef);
+
+        CharacterStyle cycleA(QStringLiteral("CycleA"));
+        cycleA.setParentStyleName(QStringLiteral("CycleB"));
+        cycleA.setFontItalic(true);
+        CharacterStyle cycleB(QStringLiteral("CycleB"));
+        cycleB.setParentStyleName(QStringLiteral("CycleA"));
+        cycleB.setFontStrikeOut(true);
+        styles.addCharacterStyle(cycleA);
+        styles.addCharacterStyle(cycleB);
+        const CharacterStyle cycle = styles.characterStyleOverrides(QStringLiteral("CycleA"));
+        QVERIFY(cycle.fontItalic());
+        QVERIFY(cycle.fontStrikeOut());
+        QVERIFY(!cycle.hasFontFamily());
+    }
+    void printPdfBecomesPostScript() {
+        QString markdown;
+        for (int i = 0; i < 80; ++i)
+            markdown += QStringLiteral("Paragraph %1 fills a printed page of the same layout used for PDF export.\n\n").arg(i);
+        ContentBuilder builder;
+        const Content::Document doc = builder.build(markdown);
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout layout;
+        const auto laidOut = engine.layout(doc, layout);
+        QVERIFY(laidOut.pages.size() > 1);
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(laidOut, layout, QStringLiteral("Print"));
+        std::unique_ptr<Poppler::Document> poppler(Poppler::Document::loadFromData(pdf));
+        QVERIFY(poppler);
+        QCOMPARE(poppler->numPages(), laidOut.pages.size());
+
+        QString error;
+        const QByteArray all = PrintController::pdfToPostScript(pdf, layout.pageSizePoints(), 0, 0, &error);
+        QVERIFY2(!all.isEmpty(), qPrintable(error));
+        QVERIFY(all.startsWith("%!PS"));
+        QVERIFY(all.contains("%%Pages:"));
+        const QByteArray expectedPages = QByteArray("%%Pages: ") + QByteArray::number(poppler->numPages());
+        QVERIFY2(all.contains(expectedPages), all.left(400).constData());
+
+        const int lastPage = poppler->numPages();
+        const QByteArray onlyLast = PrintController::pdfToPostScript(pdf, layout.pageSizePoints(),
+                                                                     lastPage, lastPage, &error);
+        QVERIFY2(!onlyLast.isEmpty(), qPrintable(error));
+        QVERIFY(onlyLast.startsWith("%!PS"));
+        QVERIFY(onlyLast.contains("%%Pages: 1"));
+        QVERIFY(onlyLast.size() < all.size());
+
+        const QByteArray onlySecond = PrintController::pdfToPostScript(pdf, layout.pageSizePoints(), 2, 2, &error);
+        QVERIFY2(!onlySecond.isEmpty(), qPrintable(error));
+        QVERIFY(onlySecond.contains("%%Pages: 1"));
+
+        QString badError;
+        const QByteArray bad = PrintController::pdfToPostScript(QByteArray("not a pdf"),
+                                                                layout.pageSizePoints(), 0, 0, &badError);
+        QVERIFY(bad.isEmpty());
+        QVERIFY(!badError.isEmpty());
     }
 };
 

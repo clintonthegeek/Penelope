@@ -12,6 +12,7 @@
 #include "pagelayout.h"
 #include "rtffilteroptions.h"
 
+class BoxPageItem;
 class FontManager;
 class PdfPageItem;
 class RenderCache;
@@ -66,6 +67,8 @@ public:
     // Navigation
     void goToPage(int page);
     void scrollToPosition(int page, qreal yOffset);
+    // Scroll to a heading that may still be below the laid-out column.
+    void followHeading(int sourceLine);
     void setHeadingPositions(const QList<HeadingPosition> &positions);
     const QList<HeadingPosition> &headingPositions() const { return m_headingPositions; }
     void previousPage();
@@ -117,13 +120,29 @@ public:
     void setWebContent(Layout::ContinuousLayoutResult &&result);
     void appendWebContent(Layout::ContinuousLayoutResult &&extra);
     void layoutExtended();
+    void setBoxPages(const QList<std::shared_ptr<const Layout::Page>> &pages,
+                     std::shared_ptr<FontManager> fonts, const PageLayout &layout,
+                     bool append, const QString &fileName = {}, const QString &title = {});
+    void scheduleMoreLayout();
+    void scheduleWebRelayout();
+    const Layout::LayoutCursor &layoutCursor() const { return m_layoutCursor; }
+    void setLayoutCursor(const Layout::LayoutCursor &cursor) { m_layoutCursor = cursor; }
+    void requestScrollToBlock(int blockIndex);
+    void integrateCursor(const Layout::LayoutCursor &cursor, int blockIndex = -1, qreal blockY = 0);
+    int scrollToBlock() const { return m_scrollToBlock; }
+    qreal scrollTargetY() const { return m_scrollTargetY; }
+    WebViewItem *webViewItem() const { return m_webViewItem; }
+    bool hasBoxPages() const { return !m_boxPageItems.isEmpty(); }
     void setWebFontManager(FontManager *fm) { m_webFontManager = fm; m_webFontOwner.reset(); }
     void setWebFontOwner(std::shared_ptr<FontManager> owner) {
         m_webFontManager = owner.get(); m_webFontOwner = std::move(owner);
     }
 
     bool isPdfMode() const { return m_pdfMode; }
+    bool hasPageItems() const { return m_pdfMode || !m_boxPageItems.isEmpty(); }
+    bool isPrintMode() const { return m_renderMode == PrintMode && hasPageItems(); }
     QByteArray pdfData() const { return m_pdfData; }
+    const QList<Layout::SourceMapEntry> &sourceMap() const { return m_sourceMap; }
 
 Q_SIGNALS:
     void zoomChanged(int percent);
@@ -149,6 +168,7 @@ private Q_SLOTS:
     void onPixmapReady(int pageNumber);
 
 private:
+    void applyRenderChrome();
     void layoutPages();
     void layoutPagesContinuous();
     void layoutPagesSingle();
@@ -157,7 +177,14 @@ private:
     void layoutPagesFacingFirstAlone();
     void layoutPagesContinuousFacingFirstAlone();
     void updateCurrentPage();
+    void noteUserScroll();
+    void maintainHeadingScroll();
+    void applyScrollChase();
+    void requestMoreLayout();
+    bool headingSceneY(const HeadingPosition &hp, qreal *sceneY) const;
     void clearPdfPages();
+    void clearBoxPages();
+    void layoutBoxPages();
 
     // B2: Text selection helpers
     void updateTextSelection();
@@ -188,12 +215,18 @@ private:
     Poppler::Document *m_popplerDoc = nullptr;
     RenderCache *m_renderCache = nullptr;
     QList<PdfPageItem *> m_pdfPageItems;
+    QList<BoxPageItem *> m_boxPageItems;
+    int m_pendingPage = -1;
+    int m_scrollToBlock = -1;
+    qreal m_scrollTargetY = 0;
+    QHash<int, qreal> m_blockY;
 
     // Web view rendering
     RenderMode m_renderMode = PrintMode;
     Layout::LayoutCursor m_layoutCursor;
     bool m_moreRequested = false;
     WebViewItem *m_webViewItem = nullptr;
+    bool m_applyingWebContent = false;
     QTimer m_relayoutTimer;
     std::shared_ptr<FontManager> m_webFontOwner;
     FontManager *m_webFontManager = nullptr;
@@ -227,6 +260,11 @@ private:
     bool m_wordSelection = false; // set by double-click, cleared by mouse press
     QList<HeadingPosition> m_headingPositions;
     int m_currentHeadingLine = -1; // source line of current heading (stable ID)
+    int m_pendingHeadingLine = -1;
+    bool m_applyingScroll = false;
+    bool m_scrollChase = false;
+    int m_scrollChasePage = 0;
+    qreal m_scrollChaseY = 0;
 
     static constexpr qreal kPageGap = 12.0;
 

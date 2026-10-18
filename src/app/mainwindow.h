@@ -83,6 +83,7 @@ private:
     void rebuildCurrentDocument();
     CompositionRequest compositionRequest(DocumentTab *tab) const;
     void installComposition(quint64 id, CompositionResultPtr result);
+    void submitLayoutFollowUp();
     void saveSession();
     void restoreSession();
     DocumentView *currentDocumentView() const;
@@ -136,6 +137,9 @@ private:
 
     // Composition generation counter — incremented on any theme/style/layout change
     quint64 m_compositionGeneration = 1;
+    qreal m_webLayoutWidth = -1;
+    bool m_hasPageGeometry = false;
+    PageLayout m_lastPageGeometry;
 };
 
 #endif // PENELOPE_MAINWINDOW_H

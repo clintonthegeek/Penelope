@@ -26,6 +26,8 @@ add_library(PenelopeCore STATIC
     canvas/webviewitem.h
     print/headerfooterrenderer.cpp
     print/headerfooterrenderer.h
+    print/headerfooterplan.cpp
+    print/headerfooterplan.h
     print/printcontroller.cpp
     print/printcontroller.h
     style/pagelayout.cpp
@@ -100,6 +102,10 @@ add_library(PenelopeCore STATIC
     layout/linebreaker.h
     layout/fragmentcache.cpp
     layout/fragmentcache.h
+    layout/pagefingerprint.cpp
+    layout/pagefingerprint.h
+    layout/hitindex.cpp
+    layout/hitindex.h
     pdf/pdfwriter.cpp
     pdf/pdfwriter.h
     pdf/pdfgenerator.cpp

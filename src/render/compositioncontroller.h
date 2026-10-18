@@ -33,6 +33,8 @@ struct CompositionRequest {
     int maxBlocks = 0;
     qreal maxHeight = 0;
     bool onePage = false;
+    bool interactivePages = false;
+    bool geometryChanged = false;
     int startBlock = 0;
     qreal width = 500;
     bool renderImages = true;

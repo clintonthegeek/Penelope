@@ -39,6 +39,9 @@ public:
     // Returns a fully-resolved copy with all inherited properties filled in.
     ParagraphStyle resolvedParagraphStyle(const QString &name);
     CharacterStyle resolvedCharacterStyle(const QString &name);
+    // Properties this character style sets for a text run. The root default
+    // character style is the body face, so it is not part of the override.
+    CharacterStyle characterStyleOverrides(const QString &name);
 
     // Footnote style
     FootnoteStyle footnoteStyle() const { return m_footnoteStyle; }

@@ -8,16 +8,32 @@
 #include "fontmanager.h"
 #include "linebreaker.h"
 #include "fragmentcache.h"
+#include "pagefingerprint.h"
 #include "stylerunindex.h"
+#include "contentplaintext.h"
+#include "headerfooterplan.h"
 #include "penelopesettings.h"
 #include "textshaper.h"
 
 
 #include <QMarginsF>
+#include <QSet>
 #include <QtMath>
 
 #include <unicode/brkiter.h>
 #include <unicode/unistr.h>
+
+namespace {
+
+quint64 blockContentKey(const Content::BlockNode &node)
+{
+    Content::Document one;
+    one.blocks.append(node);
+    const quint64 id = std::visit([](const auto &block) { return block.blockId; }, node);
+    return qHashMulti(quint64(0), id, qHash(Content::toPlainText(one)));
+}
+
+} // namespace
 
 namespace Layout {
 
@@ -41,13 +57,76 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
     LayoutCursor cursor;
     Page page;
     while (layoutNextPage(doc, pageLayout, &cursor, &page)) {
-        result.pages.append(page);
+        if (m_breakCancelled) return {};
+        result.pages.append(std::move(page));
         page = Page{};
     }
-    if (!page.elements.isEmpty()) result.pages.append(page);
+    if (m_breakCancelled) return {};
+    if (!page.elements.isEmpty()) result.pages.append(std::move(page));
     if (result.pages.isEmpty()) result.pages.append(Page{});
+    buildSourceMap(result, pageLayout);
+    return result;
+}
 
-    // Build source map from placed elements (maps page rects to markdown source lines)
+LayoutResult Engine::layoutReusing(const Content::Document &doc, const PageLayout &pageLayout,
+                                   const LayoutResult *previous, bool geometryChanged)
+{
+    auto fresh = [&]() { return layout(doc, pageLayout); };
+    if (!previous || geometryChanged || previous->pages.isEmpty())
+        return fresh();
+    if (headerFooterUsesPageToken(pageLayout))
+        return fresh();
+
+    LayoutResult result;
+    result.pageSize = pageLayout.pageSizePoints();
+    LayoutCursor cursor;
+    for (const Page &old : previous->pages) {
+        if (!old.boundary || old.hasTable || old.hasFootnote || old.blockIds.isEmpty())
+            break;
+        if (cursor.nextBlock + old.blockIds.size() > doc.blocks.size())
+            break;
+        QList<quint64> ids;
+        quint64 hash = 0;
+        bool same = true;
+        for (int k = 0; k < old.blockIds.size(); ++k) {
+            const auto &node = doc.blocks.at(cursor.nextBlock + k);
+            const quint64 id = std::visit([](const auto &b) { return b.blockId; }, node);
+            hash = qHashMulti(hash, blockContentKey(node));
+            if (id != old.blockIds.at(k))
+                same = false;
+            ids.append(id);
+        }
+        if (!same || hash != old.contentHash)
+            break;
+        const quint64 fp = pageFingerprint(cursor, ids, hash, cursor.prevKeepWithNext,
+                                            old.tableHeaderRows, old.noteCount);
+        if (fp != old.fingerprint)
+            break;
+        Page copy = old;
+        copy.pageNumber = cursor.currentPageNumber;
+        result.pages.append(copy);
+        cursor.nextBlock += ids.size();
+        cursor.currentPageNumber++;
+        cursor.yOnPage = 0;
+        cursor.y = 0;
+    }
+    if (cursor.nextBlock < doc.blocks.size() || result.pages.isEmpty()) {
+        Page page;
+        while (layoutNextPage(doc, pageLayout, &cursor, &page)) {
+            if (m_breakCancelled) return {};
+            result.pages.append(std::move(page));
+            page = Page{};
+        }
+        if (m_breakCancelled) return {};
+        if (!page.elements.isEmpty()) result.pages.append(std::move(page));
+    }
+    if (result.pages.isEmpty()) result.pages.append(Page{});
+    buildSourceMap(result, pageLayout);
+    return result;
+}
+
+void Engine::buildSourceMap(LayoutResult &result, const PageLayout &pageLayout) const
+{
     QMarginsF margins = pageLayout.marginsPoints();
     qreal headerOffset = pageLayout.headerTotalHeight();
     for (const auto &page : result.pages) {
@@ -64,8 +143,6 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
                         entry.startLine = e.source.startLine;
                         entry.endLine = e.source.endLine;
                         result.sourceMap.append(entry);
-
-                        // Code block hit regions (includes padding for generous hit area)
                         if (e.type == BlockBox::CodeBlockType) {
                             CodeBlockRegion region;
                             region.pageNumber = page.pageNumber;
@@ -94,8 +171,6 @@ LayoutResult Engine::layout(const Content::Document &doc, const PageLayout &page
             }, element);
         }
     }
-
-    return result;
 }
 
 // --- Continuous (web-view) layout ---
@@ -145,30 +220,7 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
 
         if (budget.maxBlocks > 0 && blocksDone >= budget.maxBlocks) break;
 
-        // layout this block
-        QList<PageElement> blockElems;
-        std::visit([&](const auto &b) {
-            using T = std::decay_t<decltype(b)>;
-            if constexpr (std::is_same_v<T, Content::Paragraph>) {
-                blockElems.append(layoutParagraphElements(b, width));
-            } else if constexpr (std::is_same_v<T, Content::Heading>) {
-                blockElems.append(layoutHeading(b, width));
-            } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
-                blockElems.append(layoutCodeBlock(b, width));
-            } else if constexpr (std::is_same_v<T, Content::BlockQuote>) {
-                auto bq = layoutBlockQuote(b, width);
-                blockElems.append(bq);
-            } else if constexpr (std::is_same_v<T, Content::List>) {
-                auto ls = layoutList(b, width);
-                blockElems.append(ls);
-            } else if constexpr (std::is_same_v<T, Content::Table>) {
-                blockElems.append(layoutTable(b, width));
-            } else if constexpr (std::is_same_v<T, Content::HorizontalRule>) {
-                blockElems.append(layoutHorizontalRule(b, width));
-            } else if constexpr (std::is_same_v<T, Content::FootnoteSection>) {
-                blockElems.append(layoutFootnoteSection(b, width));
-            }
-        }, doc.blocks[bi]);
+        QList<PageElement> blockElems = layoutBlockNode(doc.blocks[bi], width);
 
         if (m_breakCancelled) return {};
 
@@ -251,115 +303,184 @@ ContinuousLayoutResult Engine::layoutContinuousFrom(const Content::Document &doc
 
 bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage) {
     if (!cursor || cursor->finished || !outPage) return false;
+    if (m_breakCancelled) return false;
 
     QSizeF contentSize = pageLayout.contentSizePoints();
     qreal pageHeight = contentSize.height();
+    const qreal contentWidth = contentSize.width();
+    const LayoutCursor incoming = *cursor;
 
-    // Populate queue with remaining blocks if empty
-    if (cursor->queue.isEmpty() && cursor->nextBlock < doc.blocks.size()) {
-        for (int bi = cursor->nextBlock; bi < doc.blocks.size(); ++bi) {
-            if (m_cancelled && m_cancelled()) return false;
-            std::visit([&](const auto &b) {
-                using T = std::decay_t<decltype(b)>;
-                if constexpr (std::is_same_v<T, Content::Paragraph>) {
-                    cursor->queue.append(layoutParagraphElements(b, contentSize.width()));
-                } else if constexpr (std::is_same_v<T, Content::Heading>) {
-                    cursor->queue.append(layoutHeading(b, contentSize.width()));
-                } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
-                    cursor->queue.append(layoutCodeBlock(b, contentSize.width()));
-                } else if constexpr (std::is_same_v<T, Content::BlockQuote>) {
-                    auto bq = layoutBlockQuote(b, contentSize.width());
-                    cursor->queue.append(bq);
-                } else if constexpr (std::is_same_v<T, Content::List>) {
-                    auto ls = layoutList(b, contentSize.width());
-                    cursor->queue.append(ls);
-                } else if constexpr (std::is_same_v<T, Content::Table>) {
-                    cursor->queue.append(layoutTable(b, contentSize.width()));
-                } else if constexpr (std::is_same_v<T, Content::HorizontalRule>) {
-                    cursor->queue.append(layoutHorizontalRule(b, contentSize.width()));
-                } else if constexpr (std::is_same_v<T, Content::FootnoteSection>) {
-                    cursor->queue.append(layoutFootnoteSection(b, contentSize.width()));
-                }
-            }, doc.blocks[bi]);
-            if (m_breakCancelled) return false;
+    auto blockIdOf = [](const Content::BlockNode &node) {
+        return std::visit([](const auto &b) { return b.blockId; }, node);
+    };
+    // nextBlock is the first block not yet placed. The queue may already hold
+    // its shaped elements (and later prefetched blocks). pullBlock is the first
+    // block that still has to be shaped, so a carried-over block is not laid out twice.
+    int pullBlock = cursor->nextBlock;
+    if (!cursor->queue.isEmpty()) {
+        QSet<quint64> queuedIds;
+        for (int qi = cursor->queueIndex; qi < cursor->queue.size(); ++qi) {
+            quint64 id = 0;
+            std::visit([&](const auto &element) { id = element.blockId; }, cursor->queue.at(qi));
+            if (id != 0)
+                queuedIds.insert(id);
         }
-        cursor->queueIndex = 0;
-        cursor->nextBlock = doc.blocks.size();
+        while (pullBlock < doc.blocks.size() && queuedIds.contains(blockIdOf(doc.blocks.at(pullBlock))))
+            ++pullBlock;
     }
-
-    if (cursor->queueIndex >= cursor->queue.size()) {
-        cursor->finished = true;
-        return false;
-    }
+    auto pullUntil = [&](int index) -> bool {
+        while (cursor->queue.size() <= index) {
+            if (pullBlock >= doc.blocks.size())
+                return false;
+            if (m_cancelled && m_cancelled()) {
+                m_breakCancelled = true;
+                return false;
+            }
+            const int bi = pullBlock;
+            auto elems = layoutBlockNode(doc.blocks.at(bi), contentWidth);
+            if (m_breakCancelled)
+                return false;
+            ++pullBlock;
+            cursor->queue.append(elems);
+            if (elems.isEmpty() && cursor->queue.size() <= index)
+                continue;
+        }
+        return cursor->queue.size() > index;
+    };
 
     Page currentPage;
     currentPage.pageNumber = cursor->currentPageNumber;
-    qreal y = cursor->y;
+    qreal y = cursor->yOnPage;
+    QList<quint64> pageIds;
+    quint64 pageHash = 0;
 
-    while (cursor->queueIndex < cursor->queue.size()) {
-        const auto &element = cursor->queue[cursor->queueIndex];
+    auto finish = [&](bool) {
+        currentPage.contentHeight = y;
+        currentPage.blockIds = pageIds;
+        pageHash = 0;
+        int searchFrom = incoming.nextBlock;
+        for (quint64 id : pageIds) {
+            for (int bi = searchFrom; bi < doc.blocks.size(); ++bi) {
+                if (blockIdOf(doc.blocks.at(bi)) != id)
+                    continue;
+                pageHash = qHashMulti(pageHash, blockContentKey(doc.blocks.at(bi)));
+                searchFrom = bi + 1;
+                break;
+            }
+        }
+        currentPage.contentHash = pageHash;
+        bool midBlock = false;
+        if (cursor->queueIndex < cursor->queue.size()) {
+            const auto &nextElement = cursor->queue.at(cursor->queueIndex);
+            if (const auto *block = std::get_if<BlockBox>(&nextElement))
+                midBlock = !block->isFragmentStart;
+            else if (const auto *table = std::get_if<TableBox>(&nextElement))
+                midBlock = pageIds.contains(table->blockId);
+            else if (const auto *notes = std::get_if<FootnoteSectionBox>(&nextElement))
+                midBlock = pageIds.contains(notes->blockId);
+        }
+        currentPage.boundary = !midBlock;
+        currentPage.fingerprint = pageFingerprint(incoming, currentPage.blockIds, currentPage.contentHash,
+                                                  incoming.prevKeepWithNext, currentPage.tableHeaderRows,
+                                                  currentPage.noteCount);
+        *outPage = currentPage;
+        cursor->yOnPage = 0;
+        cursor->y = 0;
+        cursor->currentPageNumber++;
+        int rewind = 0;
+        quint64 lastId = 0;
+        bool anyRewind = false;
+        for (int qi = cursor->queueIndex; qi < cursor->queue.size(); ++qi) {
+            quint64 id = 0;
+            std::visit([&](const auto &element) { id = element.blockId; }, cursor->queue.at(qi));
+            if (id == 0 || pageIds.contains(id))
+                continue;
+            if (!anyRewind || id != lastId) {
+                ++rewind;
+                anyRewind = true;
+                lastId = id;
+            }
+        }
+        cursor->nextBlock = qMax(0, pullBlock - rewind);
+        if (cursor->queueIndex > 0 && cursor->queueIndex <= cursor->queue.size()) {
+            cursor->queue = cursor->queue.mid(cursor->queueIndex);
+            cursor->queueIndex = 0;
+        }
+        if (cursor->queue.isEmpty() && cursor->nextBlock >= doc.blocks.size())
+            cursor->finished = true;
+        return true;
+    };
 
-        // Table handling
-        if (auto *tablePtr = std::get_if<TableBox>(&element)) {
+    auto remember = [&](const PageElement &el) {
+        quint64 id = 0;
+        std::visit([&](const auto &e) {
+            using T = std::decay_t<decltype(e)>;
+            if constexpr (std::is_same_v<T, BlockBox> || std::is_same_v<T, TableBox>
+                          || std::is_same_v<T, FootnoteSectionBox>)
+                id = e.blockId;
+        }, el);
+        if (id != 0 && (pageIds.isEmpty() || pageIds.last() != id))
+            pageIds.append(id);
+    };
+
+    while (pullUntil(cursor->queueIndex)) {
+        if (m_breakCancelled) return false;
+
+        // pullUntil appends to the queue and can reallocate it. Any reference
+        // taken before that call points at a destroyed element (a valueless
+        // variant), so refresh the pointer after every pull.
+        const PageElement *element = &cursor->queue[cursor->queueIndex];
+
+        if (auto *tablePtr = std::get_if<TableBox>(element)) {
             const TableBox &table = *tablePtr;
             qreal remaining = pageHeight - y;
-
             if (table.height <= remaining) {
                 TableBox positioned = table;
                 positioned.y = y;
                 currentPage.elements.append(positioned);
-                y += table.height;
-                ++cursor->queueIndex;
-                continue;
-            } else {
-                qreal firstRowsHeight = 0;
-                const int firstRows = qMin(int(table.rows.size()), table.headerRowCount + 1);
-                for (int i = 0; i < firstRows; ++i) firstRowsHeight += table.rows[i].height;
-                if (firstRowsHeight > remaining && !currentPage.elements.isEmpty()) {
-                    // page break
-                    break;
-                }
-                auto slices = splitTable(table, remaining, pageHeight);
-                if (!slices.isEmpty()) {
-                    if (slices.size() == 1 || currentPage.elements.isEmpty()) {
-                        slices[0].y = y;
-                        currentPage.elements.append(slices[0]);
-                        y += slices[0].height;
-                        ++cursor->queueIndex;
-                        // push rest? splitTable returns all slices; need queue remaining slices
-                        for (int si = 1; si < slices.size(); ++si) {
-                            cursor->queue.insert(cursor->queueIndex, slices[si]);
-                        }
-                        continue;
-                    }
-                }
-                if (!currentPage.elements.isEmpty()) break;
-                // place on fresh page
-                if (!slices.isEmpty()) {
-                    slices[0].y = y;
-                    currentPage.elements.append(slices[0]);
-                    y += slices[0].height;
-                    ++cursor->queueIndex;
-                    for (int si = 1; si < slices.size(); ++si)
-                        cursor->queue.insert(cursor->queueIndex, slices[si]);
-                    continue;
-                }
-                // fallback place whole
-                TableBox positioned = table;
-                positioned.y = y;
-                currentPage.elements.append(positioned);
+                remember(positioned);
+                currentPage.hasTable = true;
+                currentPage.tableHeaderRows += table.headerRowCount;
                 y += table.height;
                 ++cursor->queueIndex;
                 continue;
             }
+            qreal firstRowsHeight = 0;
+            const int firstRows = qMin(int(table.rows.size()), table.headerRowCount + 1);
+            for (int i = 0; i < firstRows; ++i) firstRowsHeight += table.rows[i].height;
+            if (firstRowsHeight > remaining && !currentPage.elements.isEmpty())
+                return finish(false);
+            auto slices = splitTable(table, remaining, pageHeight);
+            if (!slices.isEmpty()) {
+                slices[0].y = y;
+                currentPage.elements.append(slices[0]);
+                remember(slices[0]);
+                currentPage.hasTable = true;
+                currentPage.tableHeaderRows += slices[0].headerRowCount;
+                y += slices[0].height;
+                ++cursor->queueIndex;
+                for (int si = slices.size() - 1; si >= 1; --si)
+                    cursor->queue.insert(cursor->queueIndex, slices[si]);
+                if (slices.size() > 1)
+                    return finish(false);
+                continue;
+            }
+            if (!currentPage.elements.isEmpty())
+                return finish(false);
+            TableBox positioned = table;
+            positioned.y = y;
+            currentPage.elements.append(positioned);
+            remember(positioned);
+            currentPage.hasTable = true;
+            y += table.height;
+            ++cursor->queueIndex;
+            continue;
         }
 
-        // Non-table
         qreal elementHeight = 0;
         qreal spaceBefore = 0;
         qreal spaceAfter = 0;
         bool keepWithNext = false;
-        int lineCount = 0;
         std::visit([&](const auto &e) {
             using T = std::decay_t<decltype(e)>;
             if constexpr (std::is_same_v<T, BlockBox>) {
@@ -367,136 +488,155 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
                 spaceBefore = e.spaceBefore;
                 spaceAfter = e.spaceAfter;
                 keepWithNext = e.keepWithNext;
-                lineCount = e.lines.size();
             } else if constexpr (std::is_same_v<T, FootnoteSectionBox>) {
                 elementHeight = e.height;
                 spaceBefore = 20.0;
+                currentPage.hasFootnote = true;
+                currentPage.noteCount += e.footnotes.size();
             }
-        }, element);
+        }, *element);
 
         qreal totalHeight = spaceBefore + elementHeight + spaceAfter;
-
         bool needsPageBreak = (y + totalHeight > pageHeight) && !currentPage.elements.isEmpty();
 
-        // keep-with-next peek
-        if (keepWithNext && !needsPageBreak && cursor->queueIndex + 1 < cursor->queue.size()
-            && !currentPage.elements.isEmpty()) {
-            qreal nextHeight = 0;
-            std::visit([&](const auto &ne) {
-                using T = std::decay_t<decltype(ne)>;
-                if constexpr (std::is_same_v<T, BlockBox>) {
-                    nextHeight = ne.spaceBefore + ne.height;
-                    if (ne.lines.size() > 2) {
-                        qreal twoLineH = 0;
-                        for (int li = 0; li < 2 && li < ne.lines.size(); ++li)
-                            twoLineH += ne.lines[li].height;
-                        nextHeight = ne.spaceBefore + twoLineH;
+        if (keepWithNext && !needsPageBreak && !currentPage.elements.isEmpty()) {
+            if (pullUntil(cursor->queueIndex + 1)) {
+                qreal nextHeight = 0;
+                std::visit([&](const auto &ne) {
+                    using T = std::decay_t<decltype(ne)>;
+                    if constexpr (std::is_same_v<T, BlockBox>) {
+                        nextHeight = ne.spaceBefore + ne.height;
+                        if (ne.lines.size() > 2) {
+                            qreal twoLineH = 0;
+                            for (int li = 0; li < 2 && li < ne.lines.size(); ++li)
+                                twoLineH += ne.lines[li].height;
+                            nextHeight = ne.spaceBefore + twoLineH;
+                        }
+                    } else if constexpr (std::is_same_v<T, TableBox>) {
+                        nextHeight = ne.height;
+                    } else if constexpr (std::is_same_v<T, FootnoteSectionBox>) {
+                        nextHeight = 20.0 + ne.height;
                     }
-                } else if constexpr (std::is_same_v<T, TableBox>) {
-                    nextHeight = ne.height;
-                } else if constexpr (std::is_same_v<T, FootnoteSectionBox>) {
-                    nextHeight = 20.0 + ne.height;
-                }
-            }, cursor->queue[cursor->queueIndex + 1]);
-            if (y + totalHeight + nextHeight > pageHeight)
-                needsPageBreak = true;
+                }, cursor->queue[cursor->queueIndex + 1]);
+                if (y + totalHeight + nextHeight > pageHeight)
+                    needsPageBreak = true;
+            }
+            element = &cursor->queue[cursor->queueIndex];
         }
 
         if (needsPageBreak) {
-            // try split block
             qreal remaining = pageHeight - y;
             bool didSplit = false;
-            if (auto *bb = std::get_if<BlockBox>(&element)) {
+            if (auto *bb = std::get_if<BlockBox>(element)) {
                 auto split = splitBlockBox(*bb, remaining);
                 if (split) {
                     auto &[f1, f2] = *split;
                     y += f1.spaceBefore;
                     f1.y = y;
                     currentPage.elements.append(f1);
+                    remember(f1);
                     y += f1.height + f1.spaceAfter;
                     cursor->queue.insert(cursor->queueIndex + 1, f2);
                     ++cursor->queueIndex;
                     didSplit = true;
                 }
-            } else if (auto *fs = std::get_if<FootnoteSectionBox>(&element)) {
+            } else if (auto *fs = std::get_if<FootnoteSectionBox>(element)) {
                 auto split = splitFootnoteSection(*fs, remaining);
                 if (split) {
                     auto &[f1, f2] = *split;
                     y += 20.0;
                     f1.y = y;
                     currentPage.elements.append(f1);
+                    remember(f1);
                     y += f1.height;
                     cursor->queue.insert(cursor->queueIndex + 1, f2);
                     ++cursor->queueIndex;
                     didSplit = true;
                 }
             }
-            if (didSplit) continue;
-            break; // page break
+            if (didSplit)
+                continue;
+            return finish(false);
         }
 
         if (currentPage.elements.isEmpty() && y + totalHeight > pageHeight) {
-            // split on fresh page
             bool didSplit = false;
-            if (auto *bb = std::get_if<BlockBox>(&element)) {
+            if (auto *bb = std::get_if<BlockBox>(element)) {
                 auto split = splitBlockBox(*bb, pageHeight);
                 if (split) {
                     auto &[f1, f2] = *split;
                     y += f1.spaceBefore;
                     f1.y = y;
                     currentPage.elements.append(f1);
+                    remember(f1);
                     y += f1.height + f1.spaceAfter;
                     cursor->queue.insert(cursor->queueIndex + 1, f2);
                     ++cursor->queueIndex;
                     didSplit = true;
                 }
-            } else if (auto *fs = std::get_if<FootnoteSectionBox>(&element)) {
+            } else if (auto *fs = std::get_if<FootnoteSectionBox>(element)) {
                 auto split = splitFootnoteSection(*fs, pageHeight);
                 if (split) {
                     auto &[f1, f2] = *split;
                     y += 20.0;
                     f1.y = y;
                     currentPage.elements.append(f1);
+                    remember(f1);
                     y += f1.height;
                     cursor->queue.insert(cursor->queueIndex + 1, f2);
                     ++cursor->queueIndex;
                     didSplit = true;
                 }
             }
-            if (didSplit) continue;
+            if (didSplit)
+                continue;
         }
 
         y += spaceBefore;
-        PageElement positioned = element;
+        PageElement positioned = *element;
         std::visit([&](auto &e) {
             using T = std::decay_t<decltype(e)>;
-            if constexpr (std::is_same_v<T, BlockBox>) {
+            if constexpr (std::is_same_v<T, BlockBox> || std::is_same_v<T, FootnoteSectionBox>)
                 e.y = y;
-            } else if constexpr (std::is_same_v<T, FootnoteSectionBox>) {
-                e.y = y;
-            }
         }, positioned);
         currentPage.elements.append(positioned);
+        remember(positioned);
         y += elementHeight + spaceAfter;
         ++cursor->queueIndex;
     }
 
-    if (!currentPage.elements.isEmpty()) {
-        currentPage.contentHeight = y;
-        *outPage = currentPage;
-        cursor->y = 0;
-        cursor->currentPageNumber++;
-        // if queue exhausted
-        if (cursor->queueIndex >= cursor->queue.size()) {
-            cursor->finished = true;
-            cursor->queue.clear();
-            cursor->queueIndex = 0;
-        }
-        return true;
-    }
+    if (m_breakCancelled) return false;
+    if (!currentPage.elements.isEmpty())
+        return finish(true);
+    cursor->finished = true;
     return false;
 }
 
+QList<PageElement> Engine::layoutBlockNode(const Content::BlockNode &block, qreal availWidth)
+{
+    QList<PageElement> elements;
+    std::visit([&](const auto &b) {
+        using T = std::decay_t<decltype(b)>;
+        if constexpr (std::is_same_v<T, Content::Paragraph>) {
+            elements.append(layoutParagraphElements(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::Heading>) {
+            elements.append(layoutHeading(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::CodeBlock>) {
+            elements.append(layoutCodeBlock(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::BlockQuote>) {
+            elements.append(layoutBlockQuote(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::List>) {
+            elements.append(layoutList(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::Table>) {
+            elements.append(layoutTable(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::HorizontalRule>) {
+            elements.append(layoutHorizontalRule(b, availWidth));
+        } else if constexpr (std::is_same_v<T, Content::FootnoteSection>) {
+            elements.append(layoutFootnoteSection(b, availWidth));
+        }
+    }, block);
+    return elements;
+}
 // --- Inline text collection and shaping ---
 
 namespace {
@@ -893,12 +1033,11 @@ QList<LineBox> Engine::breakIntoLines(const QList<Content::InlineNode> &inlines,
         }
     }
 
-    // Store original text content in each glyph box (for ActualText in PDF)
-    if (m_markdownDecorations) {
-        for (auto &w : words) {
-            if (w.isNewline) continue;
-            w.gbox.text = collected.text.mid(w.gbox.textStart, w.gbox.textLength);
-        }
+    // Hit testing and PDF ActualText both read the source slice. Markdown
+    // decorations are optional; the text itself is not.
+    for (auto &w : words) {
+        if (w.isNewline) continue;
+        w.gbox.text = collected.text.mid(w.gbox.textStart, w.gbox.textLength);
     }
 
     // Apply markdown decorations to glyph boxes
@@ -1213,6 +1352,7 @@ BlockBox Engine::layoutParagraph(const Content::Paragraph &para, qreal availWidt
 {
     BlockBox box;
     box.type = BlockBox::ParagraphBlock;
+    box.blockId = para.blockId;
     box.spaceBefore = para.format.spaceBefore;
     box.spaceAfter = para.format.spaceAfter;
 
@@ -1243,9 +1383,13 @@ BlockBox Engine::layoutParagraph(const Content::Paragraph &para, qreal availWidt
     qreal effectiveWidth = availWidth - para.format.leftMargin - para.format.rightMargin;
 
     bool cacheHit = false;
+    auto collected = collectInlines(para.inlines, baseStyle, m_markdownDecorations);
+    quint64 contentHash = qHash(collected.text);
+    contentHash = qHashMulti(contentHash, int(para.format.alignment));
+    for (const auto &sr : collected.styleRuns)
+        contentHash = qHashMulti(contentHash, sr.start, sr.length, sr.fontFamily, sr.fontWeight,
+                                  int(sr.fontItalic), int(sr.fontSize * 100.0));
     if (m_fragmentCache) {
-        auto collected = collectInlines(para.inlines, baseStyle, m_markdownDecorations);
-        quint64 contentHash = qHash(collected.text);
         QList<Layout::LineBox> cachedLines;
         QList<quint32> cachedGlyphs;
         if (m_fragmentCache->loadParagraphBreaks(para.blockId, contentHash,
@@ -1253,22 +1397,22 @@ BlockBox Engine::layoutParagraph(const Content::Paragraph &para, qreal availWidt
                 baseStyle.italic, effectiveWidth, m_hyphenateJustifiedText,
                 &cachedLines, &cachedGlyphs)) {
             box.lines = cachedLines;
-            for (quint32 gid : cachedGlyphs)
-                m_fontManager->markGlyphUsed(nullptr, gid);
+            for (const auto &line : box.lines)
+                for (const auto &gb : line.glyphs)
+                    if (gb.font)
+                        for (const auto &g : gb.glyphs)
+                            m_fontManager->markGlyphUsed(gb.font, g.glyphId);
             cacheHit = true;
         }
     }
     if (!cacheHit)
         box.lines = breakIntoLines(para.inlines, baseStyle, para.format, effectiveWidth);
 
-    if (!cacheHit && m_fragmentCache) {
-        auto collected = collectInlines(para.inlines, baseStyle, m_markdownDecorations);
-        quint64 contentHash = qHash(collected.text);
-        QList<quint32> glyphs;
+    if (!cacheHit && !m_breakCancelled && m_fragmentCache && !box.lines.isEmpty()) {
         m_fragmentCache->storeParagraph(para.blockId, contentHash,
             baseStyle.fontFamily, int(baseStyle.fontSize * 100), baseStyle.fontWeight,
             baseStyle.italic, effectiveWidth, m_hyphenateJustifiedText,
-            box.lines, glyphs);
+            box.lines, {});
     }
 
     box.width = effectiveWidth;
@@ -1289,6 +1433,7 @@ BlockBox Engine::layoutHeading(const Content::Heading &heading, qreal availWidth
 {
     BlockBox box;
     box.type = BlockBox::HeadingBlock;
+    box.blockId = heading.blockId;
     box.headingLevel = heading.level;
     box.width = availWidth;
     box.spaceBefore = heading.format.spaceBefore;
@@ -1305,9 +1450,13 @@ BlockBox Engine::layoutHeading(const Content::Heading &heading, qreal availWidth
     }
 
     bool cacheHit = false;
+    auto collected = collectInlines(heading.inlines, baseStyle, m_markdownDecorations);
+    quint64 contentHash = qHash(collected.text);
+    contentHash = qHashMulti(contentHash, int(heading.format.alignment));
+    for (const auto &sr : collected.styleRuns)
+        contentHash = qHashMulti(contentHash, sr.start, sr.length, sr.fontFamily, sr.fontWeight,
+                                  int(sr.fontItalic), int(sr.fontSize * 100.0));
     if (m_fragmentCache) {
-        auto collected = collectInlines(heading.inlines, baseStyle, m_markdownDecorations);
-        quint64 contentHash = qHash(collected.text);
         QList<Layout::LineBox> cachedLines;
         QList<quint32> cachedGlyphs;
         if (m_fragmentCache->loadParagraphBreaks(heading.blockId, contentHash,
@@ -1315,20 +1464,22 @@ BlockBox Engine::layoutHeading(const Content::Heading &heading, qreal availWidth
                 baseStyle.italic, availWidth, m_hyphenateJustifiedText,
                 &cachedLines, &cachedGlyphs)) {
             box.lines = cachedLines;
+            for (const auto &line : box.lines)
+                for (const auto &gb : line.glyphs)
+                    if (gb.font)
+                        for (const auto &g : gb.glyphs)
+                            m_fontManager->markGlyphUsed(gb.font, g.glyphId);
             cacheHit = true;
         }
     }
     if (!cacheHit)
         box.lines = breakIntoLines(heading.inlines, baseStyle, heading.format, availWidth);
 
-    if (!cacheHit && m_fragmentCache) {
-        auto collected = collectInlines(heading.inlines, baseStyle, m_markdownDecorations);
-        quint64 contentHash = qHash(collected.text);
-        QList<quint32> glyphs;
+    if (!cacheHit && !m_breakCancelled && m_fragmentCache && !box.lines.isEmpty()) {
         m_fragmentCache->storeParagraph(heading.blockId, contentHash,
             baseStyle.fontFamily, int(baseStyle.fontSize * 100), baseStyle.fontWeight,
             baseStyle.italic, availWidth, m_hyphenateJustifiedText,
-            box.lines, glyphs);
+            box.lines, {});
     }
 
     if (m_markdownDecorations && !box.lines.isEmpty() && !box.lines.first().glyphs.isEmpty()) {
@@ -1364,6 +1515,7 @@ BlockBox Engine::layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth)
 {
     BlockBox box;
     box.type = BlockBox::CodeBlockType;
+    box.blockId = cb.blockId;
     box.width = availWidth - 24.0; // subtract left + right margins (12pt each)
     box.padding = cb.padding;
     box.background = cb.background;
@@ -1380,10 +1532,15 @@ BlockBox Engine::layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth)
 
     // Syntax highlighting spans for the whole fence
     QList<CodeSpanCollector::Span> spans;
+    const QString codeTheme = m_codeHighlighting ? m_codeTheme : PenelopeSettings::self()->codeHighlightTheme();
+    const bool highlightCode = m_codeHighlighting ? *m_codeHighlighting
+                                                  : PenelopeSettings::self()->syntaxHighlightingEnabled();
+    // An empty theme name follows the code surface. Light-theme tokens are
+    // dark, and on a dark code chip they disappear. A named theme stays as chosen.
+    const bool preferDarkTheme = codeTheme.isEmpty() && cb.background.isValid()
+        && cb.background.lightness() < 128;
     if (!cb.language.isEmpty()) {
-        CodeSpanCollector collector(
-            m_codeHighlighting ? m_codeTheme : PenelopeSettings::self()->codeHighlightTheme(),
-            m_codeHighlighting ? *m_codeHighlighting : PenelopeSettings::self()->syntaxHighlightingEnabled());
+        CodeSpanCollector collector(codeTheme, highlightCode, preferDarkTheme);
         spans = collector.highlight(cb.code, cb.language);
         std::sort(spans.begin(), spans.end(),
                   [](const auto &a, const auto &b) { return a.start < b.start; });
@@ -1454,23 +1611,28 @@ BlockBox Engine::layoutCodeBlock(const Content::CodeBlock &cb, qreal availWidth)
         // We'll call breakIntoLines; if returns empty, append one empty LineBox to preserve line.
         QList<Layout::LineBox> newLines;
         bool codeCacheHit = false;
+        const quint64 lineHash = qHashMulti(0, lineText, codeTheme, preferDarkTheme, highlightCode);
         if (m_fragmentCache) {
             QList<quint32> cachedGlyphs;
-            if (m_fragmentCache->loadCodeLine(cb.blockId, li, qHash(lineText), innerWidth, &newLines, &cachedGlyphs)) {
+            if (m_fragmentCache->loadCodeLine(cb.blockId, li, lineHash, innerWidth, &newLines, &cachedGlyphs)) {
                 codeCacheHit = true;
+                for (const auto &line : newLines)
+                    for (const auto &gb : line.glyphs)
+                        if (gb.font)
+                            for (const auto &g : gb.glyphs)
+                                m_fontManager->markGlyphUsed(gb.font, g.glyphId);
             }
         }
         if (!codeCacheHit) {
             newLines = breakIntoLines(inlines, cb.style, fmt, innerWidth, false);
+            if (m_breakCancelled) return BlockBox{};
             if (newLines.isEmpty() && lineText.isEmpty()) {
                 LineBox emptyLine;
                 emptyLine.height = cb.style.fontSize * 1.2;
                 newLines.append(emptyLine);
             }
-            if (m_fragmentCache) {
-                QList<quint32> glyphs;
-                m_fragmentCache->storeCodeLine(cb.blockId, li, qHash(lineText), innerWidth, newLines, glyphs);
-            }
+            if (m_fragmentCache && !m_breakCancelled)
+                m_fragmentCache->storeCodeLine(cb.blockId, li, lineHash, innerWidth, newLines, {});
         }
         if (newLines.isEmpty() && lineText.isEmpty()) {
             LineBox emptyLine;
@@ -1503,6 +1665,7 @@ BlockBox Engine::layoutHorizontalRule(const Content::HorizontalRule &hr, qreal a
 {
     BlockBox box;
     box.type = BlockBox::HRuleBlock;
+    box.blockId = hr.blockId;
     box.width = availWidth;
     box.height = 1.0;
     box.spaceBefore = hr.topMargin;
@@ -1516,6 +1679,7 @@ BlockBox Engine::layoutHorizontalRule(const Content::HorizontalRule &hr, qreal a
 TableBox Engine::layoutTable(const Content::Table &table, qreal availWidth)
 {
     TableBox tbox;
+    tbox.blockId = table.blockId;
     tbox.width = availWidth;
     tbox.borderWidth = table.borderWidth;
     tbox.borderColor = table.borderColor;
@@ -1727,7 +1891,8 @@ QList<PageElement> Engine::layoutBlockQuote(const Content::BlockQuote &bq, qreal
             }
         }, child);
     }
-
+    for (auto &el : elements)
+        std::visit([&](auto &e) { e.blockId = bq.blockId; }, el);
     return elements;
 }
 
@@ -1871,7 +2036,8 @@ QList<PageElement> Engine::layoutList(const Content::List &list, qreal availWidt
             }, child);
         }
     }
-
+    for (auto &el : elements)
+        std::visit([&](auto &e) { e.blockId = list.blockId; }, el);
     return elements;
 }
 
@@ -1881,6 +2047,7 @@ FootnoteSectionBox Engine::layoutFootnoteSection(const Content::FootnoteSection 
                                                   qreal availWidth)
 {
     FootnoteSectionBox sbox;
+    sbox.blockId = fs.blockId;
     sbox.width = availWidth;
     sbox.showSeparator = fs.showSeparator;
     sbox.separatorLength = fs.separatorLength;
@@ -2598,5 +2765,8 @@ QList<Layout::PageElement> Layout::Engine::layoutParagraphElements(
         } else text.inlines.append(node);
     }
     flush();
+    for (auto &el : result) {
+        std::visit([&](auto &e) { e.blockId = para.blockId; }, el);
+    }
     return result;
 }

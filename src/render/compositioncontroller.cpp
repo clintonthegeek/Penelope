@@ -9,6 +9,7 @@
 #include "contentbuilder.h"
 #include "blockidentity.h"
 #include <QElapsedTimer>
+#include <QSizeF>
 #include <exception>
 
 namespace {
@@ -111,45 +112,63 @@ public:
             engine.setFragmentCache(&m_fragmentCache);
             engine.setCancellationCheck([token] { return cancelled(token); });
             timer.restart();
-            if (r.startBlock > 0 && r.continuous) {
-                // resume cursor
-            }
+            const QString pageKey = pageCursorKey(r);
             if (r.continuous) {
-                if (r.maxBlocks > 0 || r.maxHeight > 0) {
+                if (r.maxBlocks > 0 || r.maxHeight > 0 || r.startBlock > 0) {
                     Layout::LayoutCursor cursor;
                     cursor.nextBlock = r.startBlock;
                     cursor.y = 0;
                     Layout::LayoutBudget budget;
                     budget.maxBlocks = r.maxBlocks;
                     budget.maxHeight = r.maxHeight;
-                    budget.onePage = r.onePage;
+                    budget.onePage = false;
                     result->continuousLayout = engine.layoutContinuousFrom(result->document, r.width, &cursor, budget);
                     result->cursor = cursor;
                     result->finished = cursor.finished;
                 } else {
                     result->continuousLayout = engine.layoutContinuous(result->document, r.width);
+                    result->cursor.finished = true;
+                    result->cursor.nextBlock = result->document.blocks.size();
                     result->finished = true;
                 }
             } else if (r.onePage) {
                 Layout::LayoutCursor cursor;
-                cursor.nextBlock = r.startBlock;
-                Layout::Page page;
-                bool ok = engine.layoutNextPage(result->document, r.pageLayout, &cursor, &page);
-                if (ok) {
-                    result->paginated.pages.append(page);
+                const bool resume = r.startBlock > 0 && r.startBlock == m_pageCursor.nextBlock
+                    && pageKey == m_pageCursorKey && !m_pageCursor.finished;
+                if (resume) {
+                    cursor = m_pageCursor;
+                } else {
+                    cursor.nextBlock = r.startBlock;
                 }
+                Layout::Page page;
+                const bool ok = engine.layoutNextPage(result->document, r.pageLayout, &cursor, &page);
+                if (ok)
+                    result->paginated.pages.append(page);
+                result->paginated.pageSize = r.pageLayout.pageSizePoints();
+                engine.recordSourceMap(result->paginated, r.pageLayout);
                 result->cursor = cursor;
                 result->finished = cursor.finished;
+                m_pageCursor = cursor;
+                m_pageCursorKey = pageKey;
             } else {
-                result->paginated = engine.layout(result->document, r.pageLayout);
+                const Layout::LayoutResult *previous = nullptr;
+                if (!r.geometryChanged && m_lastPrint && m_lastPrintKey == pageGeometryKey(r))
+                    previous = &m_lastPrint->paginated;
+                result->paginated = engine.layoutReusing(result->document, r.pageLayout, previous, r.geometryChanged);
+                result->cursor.finished = true;
+                result->cursor.nextBlock = result->document.blocks.size();
                 result->finished = true;
+                if (!cancelled(token)) {
+                    m_lastPrint = result;
+                    m_lastPrintKey = pageGeometryKey(r);
+                }
             }
             result->layoutNs = timer.nsecsElapsed();
             if (cancelled(token)) { m_shaper->setCancellationCheck({}); Q_EMIT completed(id, {}, {}); return; }
             m_shaper->setCancellationCheck({});
             result->shapeHits = m_shaper->cacheHits() - hits;
             result->shapeMisses = m_shaper->cacheMisses() - misses;
-            if (!r.continuous) {
+            if (!r.continuous && !r.interactivePages) {
                 PdfGenerator generator(m_fonts.get());
                 generator.setDocumentInfo(r.filename, r.title);
                 generator.setMaxJustifyGap(r.maxJustifyGap);
@@ -158,7 +177,7 @@ public:
                 timer.restart();
                 result->pdf = generator.generate(result->paginated, r.pageLayout, r.title);
                 result->pdfNs = timer.nsecsElapsed();
-                if (result->pdf.isEmpty() && !cancelled(token)) {
+                if (result->pdf.isEmpty() && !cancelled(token) && !result->paginated.pages.isEmpty()) {
                     Q_EMIT completed(id, {}, QStringLiteral("PDF generation failed")); return;
                 }
             }
@@ -172,6 +191,22 @@ public:
 Q_SIGNALS:
     void completed(quint64 id, CompositionResultPtr result, const QString &error);
 private:
+    static QString pageGeometryKey(const CompositionRequest &r) {
+        const QSizeF size = r.pageLayout.pageSizePoints();
+        return QString::number(size.width(), 'f', 2) + QLatin1Char('x')
+            + QString::number(size.height(), 'f', 2)
+            + QString::number(r.pageLayout.margins.left(), 'f', 2)
+            + QString::number(r.pageLayout.margins.top(), 'f', 2)
+            + QString::number(r.pageLayout.margins.right(), 'f', 2)
+            + QString::number(r.pageLayout.margins.bottom(), 'f', 2)
+            + (r.pageLayout.headerEnabled ? QStringLiteral("H") : QStringLiteral("h"))
+            + (r.pageLayout.footerEnabled ? QStringLiteral("F") : QStringLiteral("f"))
+            + r.pageLayout.headerLeft + r.pageLayout.headerCenter + r.pageLayout.headerRight
+            + r.pageLayout.footerLeft + r.pageLayout.footerCenter + r.pageLayout.footerRight;
+    }
+    static QString pageCursorKey(const CompositionRequest &r) {
+        return r.markdown + QLatin1Char('\n') + pageGeometryKey(r);
+    }
     static bool sameContent(const CompositionRequest &a, const CompositionRequest &b) {
         return a.markdown == b.markdown && a.basePath == b.basePath
             && a.semanticRevision == b.semanticRevision && a.renderImages == b.renderImages
@@ -182,6 +217,10 @@ private:
     std::shared_ptr<FontManager> m_fonts;
     std::unique_ptr<TextShaper> m_shaper;
     FragmentCache m_fragmentCache;
+    Layout::LayoutCursor m_pageCursor;
+    QString m_pageCursorKey;
+    CompositionResultPtr m_lastPrint;
+    QString m_lastPrintKey;
     std::optional<CompositionRequest> m_cached;
     Content::Document m_cachedDoc;
     QString m_processed;

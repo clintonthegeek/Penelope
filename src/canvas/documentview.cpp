@@ -1,5 +1,6 @@
 #include "documentview.h"
 #include "pdfpageitem.h"
+#include "boxpageitem.h"
 #include "rendercache.h"
 #include "webviewitem.h"
 #include "pagelayout.h"
@@ -52,6 +53,11 @@ DocumentView::DocumentView(QWidget *parent)
         Q_EMIT webRelayoutRequested();
     });
 
+    // Scrollbar keys, wheel steps, and dragging the bar are the reader moving.
+    // Layout and contents jumps also set the bar value, and must keep their target.
+    auto *bar = verticalScrollBar();
+    connect(bar, &QAbstractSlider::sliderPressed, this, [this]() { noteUserScroll(); });
+    connect(bar, &QAbstractSlider::actionTriggered, this, [this](int) { noteUserScroll(); });
 }
 
 DocumentView::~DocumentView()
@@ -70,6 +76,7 @@ void DocumentView::setPdfData(const QByteArray &pdf)
     clearSelection();
     // Clean up old PDF
     clearPdfPages();
+    clearBoxPages();
     m_scene->clear();
     m_webViewItem = nullptr;
 
@@ -116,6 +123,29 @@ void DocumentView::clearPdfPages()
     m_pdfPageItems.clear();
 }
 
+void DocumentView::clearBoxPages()
+{
+    for (auto *item : m_boxPageItems) {
+        m_scene->removeItem(item);
+        delete item;
+    }
+    m_boxPageItems.clear();
+}
+
+void DocumentView::layoutBoxPages()
+{
+    qreal yOffset = kPageGap;
+    const qreal pageWidth = m_pageSize.width() > 0 ? m_pageSize.width()
+                                                    : (m_boxPageItems.isEmpty() ? 0 : m_boxPageItems.first()->pageSize().width());
+    const qreal sceneWidth = pageWidth + kSceneMargin * 2;
+    for (auto *item : m_boxPageItems) {
+        const QSizeF pageSize = item->pageSize();
+        item->setPos((sceneWidth - pageSize.width()) / 2.0, yOffset);
+        yOffset += pageSize.height() + kPageGap;
+    }
+    m_scene->setSceneRect(0, 0, sceneWidth, yOffset + kPageGap);
+}
+
 void DocumentView::onPixmapReady(int pageNumber)
 {
     // Trigger repaint for the affected page item
@@ -149,6 +179,7 @@ void DocumentView::restoreViewState(const ViewState &state)
         return;
 
     m_skipAutoFit = true;
+    m_pendingPage = state.currentPage;
     setZoomPercent(state.zoomPercent);
 
     QTimer::singleShot(0, this, [this, state]() {
@@ -409,12 +440,8 @@ void DocumentView::setPageLayout(const PageLayout &layout)
     m_pageLayout = layout;
     m_pageSize = layout.pageSizePoints();
 
-    // Update web view backgrounds when palette changes
-    if (m_renderMode == WebMode) {
-        setBackgroundBrush(QBrush(m_pageLayout.pageBackground));
-        if (m_webViewItem)
-            m_webViewItem->setPageBackground(m_pageLayout.pageBackground);
-    }
+    if (m_renderMode == WebMode)
+        applyRenderChrome();
 
     if (m_pdfMode) {
         layoutPages();
@@ -435,9 +462,11 @@ void DocumentView::setZoomPercent(int percent)
     m_currentZoom = percent;
 
     if (m_renderMode == WebMode) {
-        // Web mode: scale + immediate relayout (no debounce — zoom is discrete)
+        // Zoom changes the column width. Coalesce with the resize timer so a
+        // zoom applied before the window has its real size does not install
+        // a throwaway layout.
         Q_EMIT zoomChanged(percent);
-        Q_EMIT webRelayoutRequested();
+        scheduleWebRelayout();
         return;
     }
 
@@ -502,7 +531,20 @@ void DocumentView::goToPage(int page)
 {
     if (page < 0 || page >= m_pageCount) return;
     m_currentPage = page;
-    if (!m_pdfMode) return;
+    if (!m_pdfMode) {
+        for (auto *item : m_boxPageItems) {
+            if (item->pageNumber() == page) {
+                // ensureVisible on a page taller than the viewport pins the
+                // bottom edge, so the center falls on the next page.
+                m_applyingScroll = true;
+                centerOn(item->sceneBoundingRect().center());
+                m_applyingScroll = false;
+                m_currentPage = page;
+                break;
+            }
+        }
+        return;
+    }
     if (!isContinuous()) {
         layoutPages();
     } else {
@@ -515,41 +557,159 @@ void DocumentView::goToPage(int page)
     }
 }
 
+void DocumentView::noteUserScroll()
+{
+    if (m_applyingScroll)
+        return;
+    m_scrollChase = false;
+    m_pendingHeadingLine = -1;
+}
+
 void DocumentView::scrollToPosition(int page, qreal yOffset)
 {
+    m_scrollChase = true;
+    m_scrollChasePage = page;
+    m_scrollChaseY = yOffset;
+    applyScrollChase();
+}
+
+void DocumentView::requestMoreLayout()
+{
+    if (m_layoutCursor.finished || m_moreRequested)
+        return;
+    m_moreRequested = true;
+    Q_EMIT moreLayoutRequested();
+}
+
+bool DocumentView::headingSceneY(const HeadingPosition &hp, qreal *sceneY) const
+{
     if (m_renderMode == WebMode && m_webViewItem) {
-        // Web mode: yOffset is absolute within the single WebViewItem
-        centerOn(0, yOffset);
-        return;
+        *sceneY = m_webViewItem->pos().y() + hp.yOffset;
+        return true;
     }
-
-    if (page < 0 || page >= m_pageCount)
-        return;
-    m_currentPage = page;
-
-    if (m_pdfMode) {
-        bool isContinuous = (m_viewMode == Continuous || m_viewMode == ContinuousFacing
-                             || m_viewMode == ContinuousFacingFirstAlone);
-
-        if (!isContinuous) {
-            layoutPages(); // relayout to show the target page
+    for (auto *item : m_boxPageItems) {
+        if (item->pageNumber() == hp.page) {
+            *sceneY = item->pos().y() + hp.yOffset;
+            return true;
         }
+    }
+    for (auto *item : m_pdfPageItems) {
+        if (item->pageNumber() == hp.page) {
+            *sceneY = item->pos().y() + hp.yOffset;
+            return true;
+        }
+    }
+    return false;
+}
 
-        // Find the page item and scroll to the y-offset within it
-        for (auto *item : m_pdfPageItems) {
+void DocumentView::applyScrollChase()
+{
+    if (!m_scrollChase)
+        return;
+
+    // Put the heading at the top of the viewport. Centering it leaves the
+    // previous heading as the one the contents list would highlight.
+    auto alignTop = [this](const QPointF &scenePoint) {
+        const qreal visibleH = mapToScene(viewport()->rect()).boundingRect().height();
+        constexpr qreal margin = 8;
+        centerOn(scenePoint.x(), scenePoint.y() + visibleH / 2.0 - margin);
+    };
+
+    const int page = m_scrollChasePage;
+    const qreal yOffset = m_scrollChaseY;
+    bool placed = false;
+    m_applyingScroll = true;
+    if (m_renderMode == WebMode && m_webViewItem) {
+        const QRectF bounds = m_webViewItem->mapRectToScene(m_webViewItem->boundingRect());
+        alignTop(QPointF(bounds.center().x(), m_webViewItem->pos().y() + yOffset));
+        placed = true;
+    } else {
+        for (auto *item : m_boxPageItems) {
             if (item->pageNumber() == page) {
-                QPointF targetPos = item->pos() + QPointF(0, yOffset);
-                centerOn(targetPos);
+                m_currentPage = page;
+                alignTop(item->pos() + QPointF(item->boundingRect().width() / 2.0, yOffset));
+                placed = true;
                 break;
             }
         }
+        if (!placed && m_pdfMode && page >= 0 && page < m_pageCount) {
+            m_currentPage = page;
+            const bool isContinuous = (m_viewMode == Continuous || m_viewMode == ContinuousFacing
+                                       || m_viewMode == ContinuousFacingFirstAlone);
+            if (!isContinuous)
+                layoutPages();
+            for (auto *item : m_pdfPageItems) {
+                if (item->pageNumber() == page) {
+                    alignTop(item->pos() + QPointF(item->boundingRect().width() / 2.0, yOffset));
+                    placed = true;
+                    break;
+                }
+            }
+        }
     }
+    m_applyingScroll = false;
+
+    HeadingPosition target;
+    target.page = page;
+    target.yOffset = yOffset;
+    qreal sceneY = 0;
+    const qreal viewTop = mapToScene(viewport()->rect().topLeft()).y();
+    const bool reached = placed && headingSceneY(target, &sceneY) && sceneY <= viewTop + 32;
+    if (reached || (placed && m_layoutCursor.finished))
+        m_scrollChase = false;
+    else {
+        if (!placed) {
+            m_applyingScroll = true;
+            if (auto *bar = verticalScrollBar())
+                bar->setValue(bar->maximum());
+            m_applyingScroll = false;
+        }
+        requestMoreLayout();
+    }
+    updateCurrentPage();
+}
+
+void DocumentView::maintainHeadingScroll()
+{
+    if (m_pendingHeadingLine > 0) {
+        for (const auto &hp : m_headingPositions) {
+            if (hp.sourceLine != m_pendingHeadingLine)
+                continue;
+            m_pendingHeadingLine = -1;
+            scrollToPosition(m_renderMode == WebMode ? 0 : hp.page, hp.yOffset);
+            return;
+        }
+        m_applyingScroll = true;
+        if (auto *bar = verticalScrollBar())
+            bar->setValue(bar->maximum());
+        m_applyingScroll = false;
+        requestMoreLayout();
+        updateCurrentPage();
+        return;
+    }
+    applyScrollChase();
+}
+
+void DocumentView::followHeading(int sourceLine)
+{
+    if (sourceLine <= 0)
+        return;
+    for (const auto &hp : m_headingPositions) {
+        if (hp.sourceLine == sourceLine) {
+            scrollToPosition(m_renderMode == WebMode ? 0 : hp.page, hp.yOffset);
+            return;
+        }
+    }
+    m_scrollChase = false;
+    m_pendingHeadingLine = sourceLine;
+    maintainHeadingScroll();
 }
 
 void DocumentView::setHeadingPositions(const QList<HeadingPosition> &positions)
 {
     m_headingPositions = positions;
-    m_currentHeadingLine = -1;
+    maintainHeadingScroll();
+    updateCurrentPage();
 }
 
 void DocumentView::previousPage()
@@ -572,30 +732,90 @@ void DocumentView::setViewMode(ViewMode mode)
         return;
     m_viewMode = mode;
 
-    bool continuous = (mode == Continuous || mode == ContinuousFacing || mode == ContinuousFacingFirstAlone);
-    setVerticalScrollBarPolicy(continuous ? Qt::ScrollBarAsNeeded : Qt::ScrollBarAlwaysOff);
+    // Web view is one continuous column. Page arrangement must not turn its scrollbar off.
+    if (m_renderMode == WebMode)
+        setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    else {
+        const bool continuous = (mode == Continuous || mode == ContinuousFacing
+                                 || mode == ContinuousFacingFirstAlone);
+        setVerticalScrollBarPolicy(continuous ? Qt::ScrollBarAsNeeded : Qt::ScrollBarAlwaysOff);
+    }
 
     layoutPages();
 }
 
 // --- Render mode ---
 
+void DocumentView::applyRenderChrome()
+{
+    const QColor page = m_pageLayout.pageBackground.isValid()
+        ? m_pageLayout.pageBackground : QColor(Qt::white);
+    const QColor bg = m_renderMode == WebMode ? page : QColor(0x3c, 0x3c, 0x3c);
+    setBackgroundBrush(bg);
+    if (m_renderMode == WebMode && m_webViewItem)
+        m_webViewItem->setPageBackground(page);
+    if (viewport()) {
+        QPalette pal = viewport()->palette();
+        pal.setColor(QPalette::Base, bg);
+        pal.setColor(QPalette::Window, bg);
+        viewport()->setPalette(pal);
+        viewport()->setAutoFillBackground(false);
+    }
+}
+
 void DocumentView::setRenderMode(RenderMode mode)
 {
-    if (m_renderMode == mode)
-        return;
-    m_renderMode = mode;
-
-    if (mode == WebMode)
-        setBackgroundBrush(QBrush(m_pageLayout.pageBackground));
-    else
-        setBackgroundBrush(QBrush(QColor(0x3c, 0x3c, 0x3c)));
-
+    if (m_renderMode != mode) {
+        m_renderMode = mode;
+        m_moreRequested = false;
+        m_scrollChase = false;
+        m_pendingHeadingLine = -1;
+        if (mode == WebMode) {
+            // One full repaint per update. The scroll blit plus a growing column
+            // leaves a second copy of the text offset from the first.
+            setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+            setTransformationAnchor(QGraphicsView::NoAnchor);
+            setResizeAnchor(QGraphicsView::NoAnchor);
+            // Drop print pages now. Waiting for the async web result leaves them
+            // painted under the new column, and single-page mode has no scrollbar.
+            clearPdfPages();
+            clearBoxPages();
+            m_pdfMode = false;
+            m_renderCache->setDocument(nullptr);
+            delete m_popplerDoc;
+            m_popplerDoc = nullptr;
+            m_pdfData.clear();
+            if (m_webViewItem)
+                m_scene->setSceneRect(m_webViewItem->mapRectToScene(m_webViewItem->boundingRect()));
+            else
+                m_scene->setSceneRect(0, 0, 1, 1);
+            setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        } else {
+            setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
+            setTransformationAnchor(QGraphicsView::AnchorViewCenter);
+            setResizeAnchor(QGraphicsView::AnchorViewCenter);
+        }
+        if (mode != WebMode && m_webViewItem) {
+            m_scene->removeItem(m_webViewItem);
+            delete m_webViewItem;
+            m_webViewItem = nullptr;
+            m_scene->setSceneRect(0, 0, 1, 1);
+            const bool continuous = isContinuous();
+            setVerticalScrollBarPolicy(continuous ? Qt::ScrollBarAsNeeded : Qt::ScrollBarAlwaysOff);
+        }
+    }
+    applyRenderChrome();
+    if (viewport())
+        viewport()->update();
 }
 
 void DocumentView::setWebContent(Layout::ContinuousLayoutResult &&result)
 {
     Q_ASSERT(m_webFontManager);
+    // Clearing the scene hides the scrollbar and showing the column brings it
+    // back. That resize must not schedule another full relayout.
+    m_applyingWebContent = true;
     clearSelection();
     m_renderCache->setDocument(nullptr);
     delete m_popplerDoc;
@@ -609,6 +829,8 @@ void DocumentView::setWebContent(Layout::ContinuousLayoutResult &&result)
     m_scene->clear();
     m_webViewItem = nullptr;
     m_pdfPageItems.clear();
+    m_boxPageItems.clear();
+    m_moreRequested = false;
 
     m_webViewItem = new WebViewItem(m_webFontManager, m_webFontOwner);
     m_webViewItem->setPageBackground(m_pageLayout.pageBackground);
@@ -623,16 +845,7 @@ void DocumentView::setWebContent(Layout::ContinuousLayoutResult &&result)
 
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    // Restore scroll position to the current heading after relayout
-    if (m_currentHeadingLine > 0) {
-        for (const auto &hp : m_headingPositions) {
-            if (hp.sourceLine == m_currentHeadingLine) {
-                centerOn(0, hp.yOffset);
-                break;
-            }
-        }
-    }
+    m_applyingWebContent = false;
 }
 
 void DocumentView::layoutExtended()
@@ -640,27 +853,107 @@ void DocumentView::layoutExtended()
     m_moreRequested = false;
 }
 
+void DocumentView::scheduleMoreLayout()
+{
+    QTimer::singleShot(0, this, [this]() {
+        if (m_renderMode == WebMode && !m_layoutCursor.finished)
+            Q_EMIT moreLayoutRequested();
+    });
+}
+
+void DocumentView::scheduleWebRelayout()
+{
+    if (m_renderMode == WebMode)
+        m_relayoutTimer.start();
+}
+
+void DocumentView::requestScrollToBlock(int blockIndex)
+{
+    m_scrollToBlock = blockIndex;
+}
+
+void DocumentView::integrateCursor(const Layout::LayoutCursor &cursor, int blockIndex, qreal blockY)
+{
+    m_layoutCursor = cursor;
+    if (blockIndex >= 0)
+        m_blockY.insert(blockIndex, blockY);
+    if (m_scrollToBlock >= 0 && cursor.nextBlock > m_scrollToBlock) {
+        m_scrollTargetY = m_blockY.value(m_scrollToBlock, blockY);
+        const int target = m_scrollToBlock;
+        m_scrollToBlock = -1;
+        if (m_renderMode == WebMode && m_webViewItem)
+            scrollToPosition(0, m_blockY.value(target, m_scrollTargetY));
+    }
+}
+
+void DocumentView::setBoxPages(const QList<std::shared_ptr<const Layout::Page>> &pages,
+                               std::shared_ptr<FontManager> fonts, const PageLayout &layout,
+                               bool append, const QString &fileName, const QString &title)
+{
+    m_pageLayout = layout;
+    m_pageSize = layout.pageSizePoints();
+    if (m_webViewItem) {
+        m_scene->removeItem(m_webViewItem);
+        delete m_webViewItem;
+        m_webViewItem = nullptr;
+    }
+    if (!append) {
+        clearSelection();
+        m_renderCache->setDocument(nullptr);
+        delete m_popplerDoc;
+        m_popplerDoc = nullptr;
+        m_pdfData.clear();
+        m_pdfMode = false;
+        m_linkCache.clear();
+        clearPdfPages();
+        clearBoxPages();
+        m_scene->clear();
+        m_webViewItem = nullptr;
+        m_pdfPageItems.clear();
+        m_boxPageItems.clear();
+    }
+    const int totalPages = append ? m_boxPageItems.size() + pages.size() : pages.size();
+    for (const auto &page : pages) {
+        auto *item = new BoxPageItem(page, m_pageSize, fonts);
+        item->setPageChrome(layout, qMax(1, totalPages), fileName, title);
+        m_scene->addItem(item);
+        m_boxPageItems.append(item);
+    }
+    for (auto *item : m_boxPageItems)
+        item->setPageChrome(layout, qMax(1, m_boxPageItems.size()), fileName, title);
+    m_pageCount = m_boxPageItems.size();
+    m_pdfMode = false;
+    layoutBoxPages();
+    if (!append)
+        m_currentPage = 0;
+    if (m_pendingPage >= 0 && m_pendingPage < m_pageCount)
+        goToPage(m_pendingPage);
+}
+
 void DocumentView::appendWebContent(Layout::ContinuousLayoutResult &&extra)
 {
     Q_ASSERT(m_webViewItem);
     Q_ASSERT(!m_pdfMode);
     auto &res = m_webViewItem->layoutResult();
-    qreal baseHeight = res.totalHeight;
-    for (auto &el : extra.elements) {
+    const qreal baseHeight = res.totalHeight;
+    for (auto &el : extra.elements)
         std::visit([&](auto &e) { e.y += baseHeight; }, el);
-        res.elements.append(el);
-    }
-    for (auto &sm : extra.sourceMap) {
+    for (auto &sm : extra.sourceMap)
         sm.rect.translate(0, baseHeight);
-        res.sourceMap.append(sm);
-    }
-    res.codeBlockRegions.append(extra.codeBlockRegions);
-    res.totalHeight += extra.totalHeight;
-    res.contentWidth = extra.contentWidth > 0 ? extra.contentWidth : res.contentWidth;
-    m_webViewItem->update();
-    qreal sceneW = m_webViewItem->boundingRect().width();
-    qreal sceneH = m_webViewItem->boundingRect().height();
+    const qreal newHeight = baseHeight + extra.totalHeight;
+    auto elements = std::move(extra.elements);
+    m_webViewItem->appendElements(std::move(elements), newHeight);
+    auto &stored = m_webViewItem->layoutResult();
+    stored.sourceMap.append(extra.sourceMap);
+    stored.codeBlockRegions.append(extra.codeBlockRegions);
+    if (extra.contentWidth > 0)
+        stored.contentWidth = extra.contentWidth;
+    m_sourceMap.append(extra.sourceMap);
+    m_codeBlockRegions.append(extra.codeBlockRegions);
+    const qreal sceneW = m_webViewItem->boundingRect().width();
+    const qreal sceneH = m_webViewItem->boundingRect().height();
     m_scene->setSceneRect(0, 0, sceneW, sceneH);
+    layoutExtended();
 }
 
 // --- Events ---
@@ -673,6 +966,7 @@ void DocumentView::wheelEvent(QWheelEvent *event)
         centerOn(mapToScene(event->position().toPoint()));
         event->accept();
     } else {
+        noteUserScroll();
         QGraphicsView::wheelEvent(event);
     }
 }
@@ -680,10 +974,11 @@ void DocumentView::wheelEvent(QWheelEvent *event)
 void DocumentView::resizeEvent(QResizeEvent *event)
 {
     QGraphicsView::resizeEvent(event);
+    if (m_applyingWebContent)
+        return;
     if (m_renderMode == WebMode
-        && event->size().width() != event->oldSize().width()) {
-        m_relayoutTimer.start();
-    }
+        && event->size().width() != event->oldSize().width())
+        scheduleWebRelayout();
 }
 
 void DocumentView::scrollContentsBy(int dx, int dy)
@@ -709,6 +1004,8 @@ void DocumentView::scrollContentsBy(int dx, int dy)
 
 void DocumentView::mousePressEvent(QMouseEvent *event)
 {
+    if (event->button() == Qt::LeftButton && m_cursorMode == HandTool)
+        noteUserScroll();
     if (event->button() == Qt::MiddleButton) {
         m_middleZooming = true;
         m_middleZoomOrigin = event->pos();
@@ -735,6 +1032,22 @@ void DocumentView::mousePressEvent(QMouseEvent *event)
         } else {
             QGraphicsView::mousePressEvent(event);
         }
+    } else if (event->button() == Qt::LeftButton && !m_boxPageItems.isEmpty() && m_cursorMode != SelectionTool) {
+        const QPointF scenePos = mapToScene(event->pos());
+        for (auto *item : m_boxPageItems) {
+            const QRectF itemRect = QRectF(0, 0, item->pageSize().width(), item->pageSize().height())
+                                        .translated(item->pos());
+            if (!itemRect.contains(scenePos))
+                continue;
+            const QString href = item->linkAt(item->mapFromScene(scenePos));
+            if (!href.isEmpty()) {
+                QDesktopServices::openUrl(QUrl(href));
+                event->accept();
+                return;
+            }
+            break;
+        }
+        QGraphicsView::mousePressEvent(event);
     } else if (event->button() == Qt::LeftButton && m_cursorMode == SelectionTool) {
         // B2: Start selection (don't select yet — wait for threshold)
         m_selectPressPos = mapToScene(event->pos());
@@ -1495,6 +1808,28 @@ void DocumentView::checkLinkHover(const QPointF &scenePos)
         return;
     }
 
+    if (!m_boxPageItems.isEmpty()) {
+        for (auto *item : m_boxPageItems) {
+            const QRectF itemRect = QRectF(0, 0, item->pageSize().width(), item->pageSize().height())
+                                        .translated(item->pos());
+            if (!itemRect.contains(scenePos))
+                continue;
+            const QString href = item->linkAt(item->mapFromScene(scenePos));
+            if (!href.isEmpty()) {
+                if (m_currentHoverLink != href) {
+                    m_currentHoverLink = href;
+                    viewport()->setCursor(Qt::PointingHandCursor);
+                    Q_EMIT statusHintChanged(href);
+                }
+            } else if (!m_currentHoverLink.isEmpty()) {
+                m_currentHoverLink.clear();
+                viewport()->setCursor(Qt::ArrowCursor);
+                Q_EMIT statusHintChanged(QString());
+            }
+            return;
+        }
+    }
+
     if (!m_pdfMode || !m_popplerDoc)
         return;
 
@@ -1534,46 +1869,40 @@ void DocumentView::updateCurrentPage()
 {
     QPointF center = mapToScene(viewport()->rect().center());
 
-    // Check PDF pages
-    for (int i = 0; i < m_pdfPageItems.size(); ++i) {
-        QRectF r = m_pdfPageItems[i]->boundingRect().translated(m_pdfPageItems[i]->pos());
-        if (r.contains(center)) {
-            int page = m_pdfPageItems[i]->pageNumber();
-            if (m_currentPage != page) {
-                m_currentPage = page;
-            }
-            break;
-        }
-    }
+    // Check pages under the viewport center
+    auto pageAt = [&](auto *item) {
+        const QRectF r = item->boundingRect().translated(item->pos());
+        if (!r.contains(center))
+            return;
+        const int page = item->pageNumber();
+        if (m_currentPage != page)
+            m_currentPage = page;
+    };
+    for (auto *item : m_boxPageItems)
+        pageAt(item);
+    for (auto *item : m_pdfPageItems)
+        pageAt(item);
 
     // --- Heading scroll-sync ---
     if (m_headingPositions.isEmpty())
         return;
 
-    QPointF viewTop = mapToScene(viewport()->rect().topLeft());
+    const QPointF viewTop = mapToScene(viewport()->rect().topLeft());
+    qreal limit = viewTop.y() + 32;
+    if (auto *bar = verticalScrollBar()) {
+        // A short last section cannot be scrolled to the top. At the end of
+        // the document the heading in view is the one the reader has reached.
+        if (bar->maximum() > 0 && bar->value() >= bar->maximum() - 2)
+            limit = mapToScene(viewport()->rect().bottomLeft()).y();
+    }
 
     int bestHeading = -1;
     for (int i = m_headingPositions.size() - 1; i >= 0; --i) {
         const auto &hp = m_headingPositions[i];
-        // Convert heading's page-local yOffset to scene coordinates
-        qreal headingSceneY = 0;
-        bool found = false;
-        if (m_renderMode == WebMode && m_webViewItem) {
-            // Web mode: heading yOffset is absolute within the item
-            headingSceneY = hp.yOffset;
-            found = true;
-        } else {
-            for (auto *item : m_pdfPageItems) {
-                if (item->pageNumber() == hp.page) {
-                    headingSceneY = item->pos().y() + hp.yOffset;
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found)
+        qreal sceneY = 0;
+        if (!headingSceneY(hp, &sceneY))
             continue;
-        if (headingSceneY <= viewTop.y()) {
+        if (sceneY <= limit) {
             bestHeading = i;
             break;
         }
@@ -1605,7 +1934,11 @@ QPair<int, int> DocumentView::selectedSourceLines() const
         }
     };
     if (m_webViewItem) collect(0, selected.translated(-m_webViewItem->pos()));
-    else for (auto *page : m_pdfPageItems)
+    else if (!m_boxPageItems.isEmpty()) {
+        for (auto *page : m_boxPageItems)
+            collect(page->pageNumber(), selected.translated(-page->pos()).intersected(
+                QRectF(QPointF(), page->pageSize())));
+    } else for (auto *page : m_pdfPageItems)
         collect(page->pageNumber(), selected.translated(-page->pos()).intersected(
             QRectF(QPointF(), page->pageSize())));
     return {first, last};

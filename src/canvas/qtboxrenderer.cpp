@@ -8,9 +8,11 @@
 
 #include <QGlyphRun>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPen>
 #include <QPolygonF>
 #include <QRawFont>
+#include <QTransform>
 
 QtBoxRenderer::QtBoxRenderer(FontManager *fontManager)
     : BoxTreeRenderer(fontManager)
@@ -103,6 +105,43 @@ void QtBoxRenderer::drawCheckmark(const QPolygonF &poly, const QColor &color,
     m_painter->restore();
 }
 
+// Qt's raster glyph cache silently drops glyphs whose rasterized pixel size
+// reaches 64px. Above this threshold drawGlyphs fills outlines instead of
+// using drawGlyphRun, so large text survives zoom instead of vanishing. The
+// margin keeps small raw fonts, which fail while upscaling, on the safe side.
+namespace {
+constexpr qreal kMaxGlyphRunPixelSize = 40.0;
+}
+
+qreal QtBoxRenderer::painterScale() const
+{
+    if (!m_painter)
+        return 1.0;
+    const QTransform t = m_painter->combinedTransform();
+    return qMax(qAbs(t.m11()), qAbs(t.m22()));
+}
+
+void QtBoxRenderer::drawGlyphsAsPaths(const QRawFont &rf, const GlyphRenderInfo &info,
+                                      const QColor &foreground,
+                                      qreal x, qreal baselineY)
+{
+    QPainterPath path;
+    for (int i = 0; i < info.glyphIds.size(); ++i) {
+        QPainterPath glyph = rf.pathForGlyph(info.glyphIds.at(i));
+        if (glyph.isEmpty())
+            continue;
+        const QPointF offset = i < info.positions.size() ? info.positions.at(i) : QPointF();
+        path.addPath(glyph.translated(offset));
+    }
+
+    m_painter->save();
+    m_painter->setPen(Qt::NoPen);
+    m_painter->setBrush(foreground);
+    m_painter->translate(x, baselineY);
+    m_painter->drawPath(path);
+    m_painter->restore();
+}
+
 void QtBoxRenderer::drawGlyphs(FontFace *face, qreal fontSize,
                                 const GlyphRenderInfo &info,
                                 const QColor &foreground,
@@ -112,13 +151,21 @@ void QtBoxRenderer::drawGlyphs(FontFace *face, qreal fontSize,
     if (!rf.isValid())
         return;
 
+    if (fontSize * painterScale() > kMaxGlyphRunPixelSize) {
+        drawGlyphsAsPaths(rf, info, foreground, x, baselineY);
+        return;
+    }
+
     QGlyphRun glyphRun;
     glyphRun.setRawFont(rf);
     glyphRun.setGlyphIndexes(info.glyphIds);
     glyphRun.setPositions(info.positions);
 
     m_painter->save();
-    m_painter->setPen(foreground);
+    m_painter->setPen(QPen(foreground));
+    // Glyph runs take their color from the pen. A solid brush left behind by a
+    // page shadow or a viewport fill must not replace it.
+    m_painter->setBrush(Qt::NoBrush);
     m_painter->drawGlyphRun(QPointF(x, baselineY), glyphRun);
     m_painter->restore();
 }

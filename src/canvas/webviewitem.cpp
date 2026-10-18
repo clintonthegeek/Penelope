@@ -28,12 +28,12 @@ void WebViewItem::setLayoutResult(Layout::ContinuousLayoutResult &&result)
 void WebViewItem::appendElements(QList<Layout::PageElement> elements, qreal newHeight)
 {
     prepareGeometryChange();
-    int oldCount = m_result.elements.size();
-    for (auto &el : elements) m_result.elements.append(el);
-    // adjust y? assume elements already have absolute y
+    const qreal oldHeight = m_result.totalHeight;
+    for (auto &el : elements)
+        m_result.elements.append(std::move(el));
     m_result.totalHeight = newHeight;
-    // append source maps? not available here; caller handles via result? Spec says appendElements updates height only.
-    update();
+    const qreal width = qMax(m_result.contentWidth, qreal(1));
+    update(QRectF(0, oldHeight, width, qMax<qreal>(1, newHeight - oldHeight)));
 }
 
 QRectF WebViewItem::boundingRect() const
@@ -65,6 +65,8 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
                          QWidget * /*widget*/)
 {
     QRectF exposed = option->exposedRect;
+    painter->save();
+    painter->setClipRect(exposed);
 
     // Page background
     painter->fillRect(exposed, m_pageBackground);
@@ -96,6 +98,7 @@ void WebViewItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     color.setAlpha(80);
     m_renderer.setLineClip(QRectF());
     for (const auto &rect : m_selectionRects) painter->fillRect(rect, color);
+    painter->restore();
 }
 
 QString WebViewItem::linkAt(const QPointF &pos) const

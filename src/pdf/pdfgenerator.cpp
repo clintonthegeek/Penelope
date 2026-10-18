@@ -8,6 +8,7 @@
 #include "fontmanager.h"
 #include "sfnt.h"
 #include "headerfooterrenderer.h"
+#include "headerfooterplan.h"
 
 #include <QColor>
 #include <QDateTime>
@@ -177,10 +178,8 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
 
         // Pre-scan all pages' header/footer text so glyphs are included
         // in the font subset (embedding happens before page rendering).
-        auto markGlyphs = [&](const QString &text, int pageNum) {
-            QString resolved = HeaderFooterRenderer::resolveField(
-                text, {pageNum, totalPages, m_filename, m_title});
-            for (QChar ch : resolved) {
+        auto markGlyphs = [&](const QString &text) {
+            for (QChar ch : text) {
                 FT_UInt gid = FT_Get_Char_Index(hfFont->ftFace, ch.unicode());
                 m_fontManager->markGlyphUsed(hfFont, gid);
             }
@@ -188,16 +187,17 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
 
         for (int pi = 0; pi < layout.pages.size(); ++pi) {
         if (m_cancelled && m_cancelled()) return {};
-            PageLayout resolved = pageLayout.resolvedForPage(pi);
-            if (resolved.headerEnabled) {
-                markGlyphs(resolved.headerLeft, pi);
-                markGlyphs(resolved.headerCenter, pi);
-                markGlyphs(resolved.headerRight, pi);
+            const HeaderFooterPlan plan = makeHeaderFooterPlan(
+                pageLayout, pi, totalPages, m_filename, m_title);
+            if (plan.headerEnabled) {
+                markGlyphs(plan.headerLeft.text);
+                markGlyphs(plan.headerCenter.text);
+                markGlyphs(plan.headerRight.text);
             }
-            if (resolved.footerEnabled) {
-                markGlyphs(resolved.footerLeft, pi);
-                markGlyphs(resolved.footerCenter, pi);
-                markGlyphs(resolved.footerRight, pi);
+            if (plan.footerEnabled) {
+                markGlyphs(plan.footerLeft.text);
+                markGlyphs(plan.footerCenter.text);
+                markGlyphs(plan.footerRight.text);
             }
         }
     }
@@ -637,12 +637,8 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
                                        int pageNumber, int totalPages,
                                        qreal pageWidth, qreal pageHeight)
 {
-    PageLayout resolved = pageLayout.resolvedForPage(pageNumber);
-
-    auto resolveField = [&](const QString &field) -> QString {
-        return HeaderFooterRenderer::resolveField(field, {pageNumber, totalPages,
-                                                          m_filename, m_title});
-    };
+    const HeaderFooterPlan plan = makeHeaderFooterPlan(
+        pageLayout, pageNumber, totalPages, m_filename, m_title);
 
     auto drawFields = [&](const QString &left, const QString &center, const QString &right,
                           qreal rectY, qreal rectHeight) {
@@ -678,29 +674,28 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
             }
         };
 
-        // Left field
-        QString leftText = resolveField(left);
-        if (!leftText.isEmpty()) {
-            stream += "1 0 0 1 " + pdfCoord(marginLeft) + " " + pdfCoord(textY) + " Tm\n";
-            emitText(leftText);
-        }
+        // ActualText keeps the resolved field, including spaces Poppler drops
+        // between number glyphs (it otherwise reads "1 / 1" as "1/1").
+        auto emitField = [&](const QString &text, qreal x) {
+            if (text.isEmpty())
+                return;
+            QByteArray hex = QByteArrayLiteral("FEFF");
+            for (QChar ch : text)
+                hex += QByteArray::number(ch.unicode(), 16).toUpper().rightJustified(4, '0');
+            stream += "/Span <</ActualText <" + hex + ">>> BDC\n";
+            stream += "1 0 0 1 " + pdfCoord(x) + " " + pdfCoord(textY) + " Tm\n";
+            emitText(text);
+            stream += "EMC\n";
+        };
 
-        // Center field
-        QString centerText = resolveField(center);
-        if (!centerText.isEmpty()) {
-            qreal textWidth = measureText(centerText);
-            qreal centerX = (pageWidth - textWidth) / 2;
-            stream += "1 0 0 1 " + pdfCoord(centerX) + " " + pdfCoord(textY) + " Tm\n";
-            emitText(centerText);
+        emitField(left, marginLeft);
+        if (!center.isEmpty()) {
+            qreal textWidth = measureText(center);
+            emitField(center, (pageWidth - textWidth) / 2);
         }
-
-        // Right field
-        QString rightText = resolveField(right);
-        if (!rightText.isEmpty()) {
-            qreal textWidth = measureText(rightText);
-            qreal rightX = pageWidth - marginRight - textWidth;
-            stream += "1 0 0 1 " + pdfCoord(rightX) + " " + pdfCoord(textY) + " Tm\n";
-            emitText(rightText);
+        if (!right.isEmpty()) {
+            qreal textWidth = measureText(right);
+            emitField(right, pageWidth - marginRight - textWidth);
         }
 
         stream += "ET\n";
@@ -710,9 +705,9 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
     qreal mBottom = pageLayout.margins.bottom() * 72.0 / 25.4;
 
     // Header
-    if (resolved.headerEnabled) {
+    if (plan.headerEnabled) {
         qreal headerY = pageHeight - mTop + PageLayout::kSeparatorGap;
-        drawFields(resolved.headerLeft, resolved.headerCenter, resolved.headerRight,
+        drawFields(plan.headerLeft.text, plan.headerCenter.text, plan.headerRight.text,
                    headerY, PageLayout::kHeaderHeight);
 
         // Separator line
@@ -726,9 +721,9 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
     }
 
     // Footer
-    if (resolved.footerEnabled) {
+    if (plan.footerEnabled) {
         qreal footerY = mBottom - PageLayout::kSeparatorGap;
-        drawFields(resolved.footerLeft, resolved.footerCenter, resolved.footerRight,
+        drawFields(plan.footerLeft.text, plan.footerCenter.text, plan.footerRight.text,
                    footerY, PageLayout::kFooterHeight);
 
         // Separator line

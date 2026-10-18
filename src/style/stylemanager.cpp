@@ -49,11 +49,26 @@ ParagraphStyle StyleManager::resolvedParagraphStyle(const QString &name)
     QSet<QString> visited;
     visited.insert(name);
 
-    // Cross-type linkage: fill unset char properties from the referenced
-    // character style. Applied BEFORE the paragraph parent chain so the
-    // character style's properties (e.g. Code → monospace font) win over
-    // inherited paragraph defaults (e.g. Default Paragraph Style → serif).
-    QString baseCharName = it.value().baseCharacterStyleName();
+    // Cross-type linkage: fill unset char properties from the nearest base
+    // character style on this style or an ancestor. Applied BEFORE the
+    // paragraph parent chain so Code's monospace face wins over the serif
+    // face inherited from Default Paragraph Style.
+    QString baseCharName;
+    {
+        QString look = name;
+        QSet<QString> seen;
+        while (!look.isEmpty() && !seen.contains(look)) {
+            seen.insert(look);
+            auto bit = m_paraStyles.find(look);
+            if (bit == m_paraStyles.end())
+                break;
+            if (bit->hasBaseCharacterStyle()) {
+                baseCharName = bit->baseCharacterStyleName();
+                break;
+            }
+            look = bit->parentStyleName();
+        }
+    }
     if (!baseCharName.isEmpty()) {
         CharacterStyle charResolved = resolvedCharacterStyle(baseCharName);
         if (!resolved.hasFontFamily() && charResolved.hasFontFamily())
@@ -104,6 +119,39 @@ CharacterStyle StyleManager::resolvedCharacterStyle(const QString &name)
     }
 
     return resolved;
+}
+
+CharacterStyle StyleManager::characterStyleOverrides(const QString &name)
+{
+    QList<CharacterStyle> chain;
+    QSet<QString> visited;
+    QString current = name;
+    while (!current.isEmpty()
+           && current != QLatin1String("Default Character Style")
+           && !visited.contains(current)) {
+        visited.insert(current);
+        auto it = m_charStyles.find(current);
+        if (it == m_charStyles.end())
+            break;
+        chain.append(it.value());
+        current = it->parentStyleName();
+    }
+
+    CharacterStyle result(name);
+    for (int i = chain.size() - 1; i >= 0; --i) {
+        const CharacterStyle &style = chain.at(i);
+        if (style.hasFontFamily()) result.setFontFamily(style.fontFamily());
+        if (style.hasFontSize()) result.setFontSize(style.fontSize());
+        if (style.hasFontWeight()) result.setFontWeight(style.fontWeight());
+        if (style.hasFontItalic()) result.setFontItalic(style.fontItalic());
+        if (style.hasFontUnderline()) result.setFontUnderline(style.fontUnderline());
+        if (style.hasFontStrikeOut()) result.setFontStrikeOut(style.fontStrikeOut());
+        if (style.hasForeground()) result.setForeground(style.foreground());
+        if (style.hasBackground()) result.setBackground(style.background());
+        if (style.hasLetterSpacing()) result.setLetterSpacing(style.letterSpacing());
+        if (style.hasFontFeatures()) result.setFontFeatures(style.fontFeatures());
+    }
+    return result;
 }
 
 void StyleManager::addTableStyle(const TableStyle &style)

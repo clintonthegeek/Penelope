@@ -20,8 +20,9 @@ public:
     QString parentStyleName() const { return m_parentStyleName; }
     void setParentStyleName(const QString &name) { m_parentStyleName = name; }
 
-    // Base character style — a character style whose text properties (font, etc.)
-    // fill in unset char properties after the paragraph parent chain walk.
+    // Base character style. Its own text properties fill unset paragraph
+    // properties before the paragraph parent chain, so a code face is not
+    // replaced by the inherited body face.
     QString baseCharacterStyleName() const { return m_baseCharStyleName; }
     void setBaseCharacterStyleName(const QString &name) { m_baseCharStyleName = name; }
     bool hasBaseCharacterStyle() const { return !m_baseCharStyleName.isEmpty(); }

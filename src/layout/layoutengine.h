@@ -165,6 +165,7 @@ struct BlockBox {
 
     // Source breadcrumb
     Content::SourceRange source;
+    quint64 blockId = 0;
 };
 
 struct TableCellBox {
@@ -206,6 +207,7 @@ struct TableBox {
 
     // Source breadcrumb
     Content::SourceRange source;
+    quint64 blockId = 0;
 };
 
 struct FootnoteBox {
@@ -225,6 +227,7 @@ struct FootnoteSectionBox {
     qreal y = 0;
     qreal width = 0;
     qreal height = 0;
+    quint64 blockId = 0;
 };
 
 // Split a block at a line boundary to fit within availableHeight.
@@ -261,6 +264,14 @@ struct Page {
     int pageNumber = 0;
     QList<PageElement> elements;
     qreal contentHeight = 0;
+    quint64 fingerprint = 0;
+    QList<quint64> blockIds;
+    quint64 contentHash = 0;
+    bool hasTable = false;
+    bool hasFootnote = false;
+    bool boundary = false;
+    int tableHeaderRows = 0;
+    int noteCount = 0;
 };
 
 struct LayoutResult {
@@ -301,9 +312,12 @@ public:
     Engine(FontManager *fontManager, TextShaper *textShaper);
 
     LayoutResult layout(const Content::Document &doc, const PageLayout &pageLayout);
+    LayoutResult layoutReusing(const Content::Document &doc, const PageLayout &pageLayout,
+                               const LayoutResult *previous, bool geometryChanged);
     ContinuousLayoutResult layoutContinuous(const Content::Document &doc, qreal availWidth);
     ContinuousLayoutResult layoutContinuousFrom(const Content::Document &doc, qreal width, LayoutCursor *cursor, const LayoutBudget &budget);
     bool layoutNextPage(const Content::Document &doc, const PageLayout &pageLayout, LayoutCursor *cursor, Page *outPage);
+    void recordSourceMap(LayoutResult &result, const PageLayout &pageLayout) const { buildSourceMap(result, pageLayout); }
 
     void setOptimalTableLayout(bool enabled) { m_optimalTableLayout = enabled; }
     void setCodeHighlighting(const QString &theme, bool enabled) {
@@ -316,6 +330,7 @@ public:
 
 private:
     // Block layout
+    QList<PageElement> layoutBlockNode(const Content::BlockNode &block, qreal availWidth);
     QList<PageElement> layoutParagraphElements(const Content::Paragraph &para, qreal availWidth);
     BlockBox layoutParagraph(const Content::Paragraph &para, qreal availWidth);
     BlockBox layoutHeading(const Content::Heading &heading, qreal availWidth);
@@ -347,6 +362,7 @@ private:
     void assignToPages(const QList<PageElement> &elements,
                        const PageLayout &pageLayout,
                        LayoutResult &result);
+    void buildSourceMap(LayoutResult &result, const PageLayout &pageLayout) const;
 
     // Table splitting across pages (repeats header rows)
     QList<TableBox> splitTable(const TableBox &table, qreal availHeight, qreal pageHeight);

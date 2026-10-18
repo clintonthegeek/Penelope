@@ -62,7 +62,7 @@ Content::TextStyle ContentBuilder::resolveCharStyle(const QString &charStyleName
     Content::TextStyle s = m_currentStyle; // inherit from current
     if (!m_styleManager)
         return s;
-    CharacterStyle cs = m_styleManager->resolvedCharacterStyle(charStyleName);
+    CharacterStyle cs = m_styleManager->characterStyleOverrides(charStyleName);
     if (cs.hasFontFamily()) s.fontFamily = cs.fontFamily();
     if (cs.hasFontSize()) s.fontSize = cs.fontSize();
     if (cs.hasFontWeight()) s.fontWeight = static_cast<int>(cs.fontWeight());
@@ -378,6 +378,7 @@ int ContentBuilder::enterBlock(MD_BLOCKTYPE type, void *detail)
         auto &children = currentBlocks();
         children.append(std::move(heading));
         auto *h = std::get_if<Content::Heading>(&children.last());
+        h->blockId = m_nextBlockId++;
         m_inlineStack.push(&h->inlines);
         break;
     }
@@ -742,12 +743,18 @@ int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
     switch (type) {
     case MD_SPAN_EM:
         m_styleStack.push(m_currentStyle);
-        m_currentStyle.italic = true;
+        if (m_styleManager && m_styleManager->characterStyle(QStringLiteral("Emphasis")))
+            m_currentStyle = resolveCharStyle(QStringLiteral("Emphasis"));
+        else
+            m_currentStyle.italic = true;
         break;
 
     case MD_SPAN_STRONG:
         m_styleStack.push(m_currentStyle);
-        m_currentStyle.fontWeight = 700;
+        if (m_styleManager && m_styleManager->characterStyle(QStringLiteral("Strong")))
+            m_currentStyle = resolveCharStyle(QStringLiteral("Strong"));
+        else
+            m_currentStyle.fontWeight = 700;
         break;
 
     case MD_SPAN_CODE:
@@ -787,7 +794,10 @@ int ContentBuilder::enterSpan(MD_SPANTYPE type, void *detail)
 
     case MD_SPAN_DEL:
         m_styleStack.push(m_currentStyle);
-        m_currentStyle.strikethrough = true;
+        if (m_styleManager && m_styleManager->characterStyle(QStringLiteral("Strikethrough")))
+            m_currentStyle = resolveCharStyle(QStringLiteral("Strikethrough"));
+        else
+            m_currentStyle.strikethrough = true;
         break;
 
     case MD_SPAN_U:

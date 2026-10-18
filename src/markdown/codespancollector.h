@@ -41,12 +41,16 @@ public:
         : CodeSpanCollector(PenelopeSettings::self()->codeHighlightTheme(),
                             PenelopeSettings::self()->syntaxHighlightingEnabled()) {}
 
-    CodeSpanCollector(const QString &themeName, bool enabled) : m_enabled(enabled)
+    CodeSpanCollector(const QString &themeName, bool enabled, bool preferDark = false)
+        : m_enabled(enabled)
     {
         // The repository and its definitions stay on the calling thread.
         static thread_local KSyntaxHighlighting::Repository repo;
         m_repo = &repo;
-        auto defaultTheme = repo.defaultTheme(KSyntaxHighlighting::Repository::LightTheme);
+        const auto fallbackKind = preferDark
+            ? KSyntaxHighlighting::Repository::DarkTheme
+            : KSyntaxHighlighting::Repository::LightTheme;
+        auto defaultTheme = repo.defaultTheme(fallbackKind);
         auto chosen = repo.theme(themeName);
         setTheme(chosen.isValid() ? chosen : defaultTheme);
     }

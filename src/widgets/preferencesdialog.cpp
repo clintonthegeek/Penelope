@@ -41,6 +41,10 @@ PenelopeConfigDialog::PenelopeConfigDialog(QWidget *parent)
 
     auto *autoReloadCheck = new QCheckBox(i18n("Auto-reload when file changes"));
     autoReloadCheck->setObjectName(QStringLiteral("kcfg_AutoReloadOnChange"));
+    autoReloadCheck->setToolTip(i18n(
+        "Replace the reader and source with the file on disk when it changes. "
+        "Reading and editing positions are kept. Unsaved edits are never replaced; "
+        "you are asked before they would be discarded."));
     filesGroupLayout->addWidget(autoReloadCheck);
 
     generalLayout->addWidget(filesGroup);

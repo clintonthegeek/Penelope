@@ -15,8 +15,11 @@ Both reader modes use the shared content and layout pipeline.
 Features include:
 
 - Tabs, a heading-based table of contents, file browser, and saved sessions.
-- Source editing and atomic Save, with unsaved-change prompts and file watching
-  that preserves edits when the disk file changes.
+- Source editing and atomic Save. Files are watched through Qt: an unmodified
+  file reloads automatically (configurable) while keeping the reading and
+  editing position, and a change to an edited file raises an in-tab
+  Reload/Ignore prompt instead of replacing the buffer. Deleted files are
+  reported the same way.
 - Headings, styled text, links, lists/task lists, quotes, code highlighting,
   tables with repeated headers across pages, and images with transparency.
 - Paragraph/character styles, themes, palettes, page templates, and configurable

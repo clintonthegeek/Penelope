@@ -1638,6 +1638,9 @@ void MainWindow::installComposition(quint64 id, CompositionResultPtr result)
     // Capture the latest scroll/zoom, not the state from when the job began.
     ViewState state = tab->takeInitialViewState().value_or(view->saveViewState());
     state.zoomPercent = view->zoomPercent();
+    // The source line under the viewport survives re-layout; a bare scroll
+    // fraction does not when the revision adds or removes text above it.
+    const ScrollAnchor anchor = view->viewportAnchor();
     view->setPageLayout(request.pageLayout);
     const auto sourceMap = request.continuous ? result->continuousLayout.sourceMap : result->paginated.sourceMap;
     const auto regions = request.continuous ? result->continuousLayout.codeBlockRegions : result->paginated.codeBlockRegions;
@@ -1698,7 +1701,7 @@ void MainWindow::installComposition(quint64 id, CompositionResultPtr result)
     view->integrateCursor(result->cursor);
     view->setHeadingPositions(headings);
     if (!continueWeb && !continuePrint)
-        view->restoreViewState(state);
+        view->restoreViewState(state, anchor);
     tab->setCompositionGeneration(request.semanticRevision);
     const int shownPages = request.continuous ? 0 : view->pageCount();
     if (request.continuous)
@@ -1981,8 +1984,8 @@ void MainWindow::openFile(const QUrl &url)
         int index = m_tabWidget->indexOf(tab);
         if (index >= 0) m_tabWidget->setTabText(index, fi.fileName() + (modified ? QStringLiteral(" *") : QString()));
     });
-    connect(tab, &DocumentTab::externalChangeDetected, this, [this, tab]() {
-        statusBar()->showMessage(i18n("%1 changed on disk; your unsaved edits have been kept.", tab->filePath()), 8000);
+    connect(tab, &DocumentTab::reloadedFromDisk, this, [this, tab]() {
+        statusBar()->showMessage(i18n("Reloaded %1", QFileInfo(tab->filePath()).fileName()), 4000);
     });
     connect(tab->documentView(), &DocumentView::webRelayoutRequested, this, [this, tab]() {
         if (currentDocumentTab() != tab || !PenelopeSettings::self()->useWebView()) {

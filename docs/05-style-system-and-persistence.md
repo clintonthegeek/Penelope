@@ -418,15 +418,50 @@ rapid slider/spinbox changes don't cause excessive relayout.
 
 ## File Watching
 
-When `AutoReloadOnChange` is enabled, Penelope watches the open `.md` file
-using `QFileSystemWatcher` + debounce timer (300ms). On change:
+Every open `.md` file is watched with `QFileSystemWatcher`, together with its
+parent directory so editor-style delete-and-recreate (Vim, Emacs, Kate,
+`QSaveFile`) keeps being observed. Notifications are debounced by 300 ms and
+`DocumentTab::inspectDiskFile()` re-reads the file. Detection does not depend
+on any preference; `AutoReloadOnChange` only chooses what happens to an
+unmodified buffer.
 
-1. Re-read file contents
-2. Check content hash prefix against stored metadata
-3. Re-run `DocumentBuilder::build()` with new content
-4. Re-apply code highlighting
-5. Attempt to preserve scroll position (by finding the nearest heading
-   or paragraph that still exists)
+On a content change:
 
-The parent directory is also watched to handle the delete-and-recreate pattern
-used by many editors (Vim, Emacs, Kate) when saving files.
+| Buffer | `AutoReloadOnChange` | Result |
+|---|---|---|
+| unmodified | on | replace silently; status bar says "Reloaded file.md" |
+| unmodified | off | in-tab warning with **Reload** / **Ignore** |
+| modified | either | warning with **Discard Edits and Reload** / **Keep My Edits** |
+| file removed | either | warning: the file was deleted or moved; the open copy is kept |
+
+Unsaved edits are never replaced without an explicit action. Ignoring keeps the
+edit buffer and leaves `hasExternalChanges()` true, so saving still asks before
+overwriting the newer disk copy. A file that reappears with content identical
+to the buffer clears the notice; a genuinely new revision raises it again.
+
+The notice is a `KMessageWidget` at the top of the tab, not a modal dialog, so
+a background tab can wait for the user. All filesystem work uses Qt
+(`QFileSystemWatcher`, `QFile`, `QFileInfo`, `QSaveFile`) for Windows and macOS
+portability; reads that fail while the file exists (Windows sharing
+violations) are retried briefly before being treated as an error.
+
+### Position preservation
+
+A reload replaces the source text and then re-runs the normal composition
+pipeline. Two independent positions are preserved:
+
+- **Source editor**: the cursor and selection block/column, and the first
+  visible block, are restored after `setPlainText()`.
+- **Reader**: `DocumentView` captures a `ScrollAnchor` from the layout being
+  replaced — the top source-map block's line, the offset fraction inside that
+  block, and its leading source text. After the new layout installs, the
+  anchor is resolved against the new source map, first by line and then by
+  matching the block text, so line insertions or deletions above the viewport
+  do not move the reading position. `installComposition()` passes the anchor
+  to `restoreViewState()`; the scroll fraction remains the fallback when no
+  source map exists.
+
+Partial continuous layouts install in chunks. If the anchored block is not laid
+out yet, the anchor stays pending and is retried from `setHeadingPositions()`
+as chunks are appended, instead of clamping to the end of the partial column.
+User scrolling, page navigation and contents jumps cancel the pending anchor.

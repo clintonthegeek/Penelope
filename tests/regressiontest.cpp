@@ -21,7 +21,9 @@
 #include <QToolButton>
 #include <KActionCollection>
 #include <KConfigGroup>
+#include <KMessageWidget>
 #include <KSharedConfig>
+#include <QAction>
 #include "pdfpageitem.h"
 #include "boxpageitem.h"
 #include <KLocalizedString>
@@ -202,6 +204,262 @@ private Q_SLOTS:
         QVERIFY(!tab.hasExternalChanges());
         QVERIFY(writeFile(path, "# Watched again\n"));
         QTRY_COMPARE_WITH_TIMEOUT(tab.sourceText(), QString("# Watched again\n"), 3000);
+    }
+    void externalChangePromptsWhenAutoReloadOff() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("notice.md");
+        QVERIFY(writeFile(path, "# Original\n"));
+        auto *settings = PenelopeSettings::self();
+        const bool previousAutoReload = settings->autoReloadOnChange();
+        settings->setAutoReloadOnChange(false);
+
+        DocumentTab tab;
+        tab.setFilePath(path);
+        tab.setSourceText("# Original\n");
+        auto *bar = tab.findChild<KMessageWidget *>();
+        QVERIFY(bar);
+        QVERIFY(bar->isHidden());
+
+        QSignalSpy reloaded(&tab, &DocumentTab::reloadedFromDisk);
+        QVERIFY(writeFile(path, "# External\n"));
+        QTRY_VERIFY_WITH_TIMEOUT(!bar->isHidden(), 3000);
+        QVERIFY2(bar->text().contains(QStringLiteral("changed on disk")), qPrintable(bar->text()));
+        QCOMPARE(tab.sourceText(), QStringLiteral("# Original\n"));
+        QCOMPARE(reloaded.count(), 0);
+
+        // Editing while the notice is visible must upgrade the warning.
+        QTextCursor cursor = tab.sourceEditor()->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        tab.sourceEditor()->setTextCursor(cursor);
+        tab.sourceEditor()->insertPlainText("edit");
+        QVERIFY(tab.isModified());
+        QTRY_VERIFY_WITH_TIMEOUT(bar->text().contains(QStringLiteral("unsaved edits")), 1000);
+        bool discardAction = false;
+        for (QAction *action : bar->actions())
+            discardAction |= action->text().contains(QStringLiteral("Discard Edits"));
+        QVERIFY(discardAction);
+
+        QAction *reload = nullptr;
+        for (QAction *action : bar->actions()) {
+            if (action->text().contains(QStringLiteral("Reload")))
+                reload = action;
+        }
+        QVERIFY(reload);
+        reload->trigger();
+        QCOMPARE(tab.sourceText(), QStringLiteral("# External\n"));
+        QVERIFY(bar->isHidden());
+        QCOMPARE(reloaded.count(), 1);
+        QVERIFY(!tab.hasExternalChanges());
+
+        settings->setAutoReloadOnChange(previousAutoReload);
+    }
+    void deletedFileIsReported() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("deleted.md");
+        QVERIFY(writeFile(path, "# Original\n"));
+        DocumentTab tab;
+        tab.setFilePath(path);
+        tab.setSourceText("# Original\n");
+        auto *bar = tab.findChild<KMessageWidget *>();
+        QVERIFY(bar);
+        QVERIFY(bar->isHidden());
+
+        QVERIFY(QFile::remove(path));
+        QTRY_VERIFY_WITH_TIMEOUT(!bar->isHidden(), 3000);
+        QVERIFY2(bar->text().contains(QStringLiteral("deleted")), qPrintable(bar->text()));
+        QVERIFY(tab.hasExternalChanges());
+        QCOMPARE(tab.sourceText(), QStringLiteral("# Original\n"));
+
+        // Recreating the file with the open content resolves the notice.
+        QVERIFY(writeFile(path, "# Original\n"));
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isHidden(), 3000);
+    }
+    void externalChangeKeepsUnsavedEdits() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("edited.md");
+        QVERIFY(writeFile(path, "# Original\n"));
+        auto *settings = PenelopeSettings::self();
+        const bool previousAutoReload = settings->autoReloadOnChange();
+        settings->setAutoReloadOnChange(true);
+
+        DocumentTab tab;
+        tab.setFilePath(path);
+        tab.setSourceText("# Original\n");
+        auto *bar = tab.findChild<KMessageWidget *>();
+        QVERIFY(bar);
+        QTextCursor cursor = tab.sourceEditor()->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        tab.sourceEditor()->setTextCursor(cursor);
+        tab.sourceEditor()->insertPlainText("my edits");
+        QVERIFY(tab.isModified());
+
+        QVERIFY(writeFile(path, "# External\n"));
+        QTRY_VERIFY_WITH_TIMEOUT(!bar->isHidden(), 3000);
+        QVERIFY(tab.sourceText().contains(QStringLiteral("my edits")));
+        QVERIFY(tab.hasExternalChanges());
+        QVERIFY2(bar->text().contains(QStringLiteral("unsaved edits")), qPrintable(bar->text()));
+
+        QAction *reload = nullptr;
+        for (QAction *action : bar->actions()) {
+            if (action->text().contains(QStringLiteral("Reload")))
+                reload = action;
+        }
+        QVERIFY(reload);
+        reload->trigger();
+        QCOMPARE(tab.sourceText(), QStringLiteral("# External\n"));
+        QVERIFY(!tab.isModified());
+        QVERIFY(!tab.hasExternalChanges());
+        QVERIFY(bar->isHidden());
+
+        settings->setAutoReloadOnChange(previousAutoReload);
+    }
+    void reloadKeepsEditorPosition() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("position.md");
+        QString original;
+        for (int i = 0; i < 60; ++i)
+            original += QStringLiteral("Line %1\n").arg(i);
+        QVERIFY(writeFile(path, original.toUtf8()));
+
+        DocumentTab tab;
+        tab.setSourceMode(true);
+        tab.setFilePath(path);
+        tab.setSourceText(original);
+        tab.resize(500, 400);
+        tab.show();
+        QTest::qWait(50);
+        auto *editor = tab.sourceEditor();
+        QTextCursor cursor = editor->textCursor();
+        cursor.movePosition(QTextCursor::Start);
+        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, 40);
+        cursor.movePosition(QTextCursor::EndOfBlock);
+        editor->setTextCursor(cursor);
+        QVERIFY(editor->verticalScrollBar()->maximum() > 35);
+        editor->verticalScrollBar()->setValue(35);
+
+        QString changed = original;
+        changed.replace(QStringLiteral("Line 59"), QStringLiteral("Line 59 changed on disk"));
+        QSignalSpy reloaded(&tab, &DocumentTab::reloadedFromDisk);
+        QVERIFY(writeFile(path, changed.toUtf8()));
+        QTRY_COMPARE_WITH_TIMEOUT(reloaded.count(), 1, 3000);
+        QCOMPARE(editor->textCursor().blockNumber(), 40);
+        QCOMPARE(editor->verticalScrollBar()->value(), 35);
+        QCOMPARE(tab.sourceText(), changed);
+    }
+    void scrollAnchorFollowsShiftedContent() {
+        auto makeMarkdown = [](const QString &insert) {
+            QString markdown = QStringLiteral("# Title\n\n");
+            markdown += insert;
+            for (int i = 0; i < 30; ++i)
+                markdown += QStringLiteral("Paragraph %1. The quick brown fox.\n\n").arg(i);
+            return markdown;
+        };
+        ContentBuilder builder;
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        auto layoutDoc = [&engine](const Content::Document &doc) {
+            Layout::LayoutCursor cursor;
+            Layout::LayoutBudget budget;
+            budget.maxBlocks = 1000;
+            return engine.layoutContinuousFrom(doc, 400, &cursor, budget);
+        };
+
+        DocumentView view;
+        view.resize(500, 220);
+        view.setRenderMode(DocumentView::WebMode);
+        view.setWebFontManager(&fonts);
+
+        const QString firstText = makeMarkdown({});
+        const Content::Document firstDoc = builder.build(firstText);
+        view.setWebContent(layoutDoc(firstDoc));
+        view.setSourceData(firstText, view.webViewItem()->layoutResult().sourceMap, firstDoc);
+        view.show();
+        QTest::qWait(20);
+
+        const int line = 3 + 2 * 12;
+        qreal y = -1;
+        for (const auto &entry : view.sourceMap()) {
+            if (line >= entry.startLine && line <= entry.endLine) {
+                y = entry.rect.top();
+                break;
+            }
+        }
+        QVERIFY2(y >= 0, qPrintable(QString::number(view.sourceMap().size())));
+        view.scrollToPosition(0, y);
+        QTest::qWait(20);
+        const ScrollAnchor anchor = view.viewportAnchor();
+        QVERIFY(anchor.isValid());
+        QVERIFY(anchor.context.contains(QStringLiteral("Paragraph 1")));
+        const ViewState state = view.saveViewState();
+
+        // Two paragraphs are inserted above the reading position; the line
+        // numbers shift, so only the block text identifies the place.
+        const QString shiftedText = makeMarkdown(QStringLiteral("Inserted A.\n\nInserted B.\n\n"));
+        const Content::Document shiftedDoc = builder.build(shiftedText);
+        view.setWebContent(layoutDoc(shiftedDoc));
+        view.setSourceData(shiftedText, view.webViewItem()->layoutResult().sourceMap, shiftedDoc);
+        view.restoreViewState(state, anchor);
+        QTest::qWait(50);
+        const ScrollAnchor restored = view.viewportAnchor();
+        QVERIFY(restored.isValid());
+        QVERIFY2(restored.context == anchor.context, qPrintable(restored.context));
+        QVERIFY(qAbs(restored.fraction - anchor.fraction) < 0.05);
+    }
+    void reloadKeepsReaderPositionAcrossLineShift() {
+        QTemporaryDir dir;
+        QString markdown = QStringLiteral("# Title\n\n");
+        for (int i = 0; i < 50; ++i)
+            markdown += QStringLiteral("Paragraph %1. The quick brown fox jumps over the lazy dog.\n\n").arg(i);
+        const QString file = dir.filePath("reader.md");
+        QVERIFY(writeFile(file, markdown.toUtf8()));
+
+        PenelopeSettings::self()->setUseWebView(true);
+        MainWindow window;
+        window.resize(1000, 700);
+        window.show();
+        window.openFile(QUrl::fromLocalFile(file));
+        auto *tabs = window.findChild<QTabWidget *>();
+        QVERIFY(tabs);
+        auto *tab = qobject_cast<DocumentTab *>(tabs->currentWidget());
+        QVERIFY(tab);
+        auto *view = tab->documentView();
+        QTRY_VERIFY_WITH_TIMEOUT(view->webViewItem() && view->layoutCursor().finished, 20000);
+
+        const int line = 3 + 2 * 25;
+        qreal y = -1;
+        for (const auto &entry : view->sourceMap()) {
+            if (line >= entry.startLine && line <= entry.endLine) {
+                y = entry.rect.top();
+                break;
+            }
+        }
+        QVERIFY(y >= 0);
+        view->scrollToPosition(0, y);
+        QTest::qWait(50);
+        const ScrollAnchor anchor = view->viewportAnchor();
+        QVERIFY(anchor.isValid());
+        QVERIFY(anchor.context.contains(QStringLiteral("Paragraph 2")));
+
+        QSignalSpy rendered(&window, &MainWindow::documentRendered);
+        QSignalSpy reloaded(tab, &DocumentTab::reloadedFromDisk);
+        QString shifted = markdown;
+        shifted.insert(QStringLiteral("# Title\n\n").size(),
+                       QStringLiteral("Inserted A.\n\nInserted B.\n\n"));
+        QVERIFY(writeFile(file, shifted.toUtf8()));
+        QTRY_COMPARE_WITH_TIMEOUT(reloaded.count(), 1, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(rendered.count() > 0 && view->layoutCursor().finished, 20000);
+
+        const ScrollAnchor restored = view->viewportAnchor();
+        QVERIFY(restored.isValid());
+        // Two inserted paragraphs shift every line below them by four. The
+        // top block may land one block earlier or later after alignment.
+        const int expectedLine = anchor.sourceLine + 4;
+        QVERIFY2(qAbs(restored.sourceLine - expectedLine) <= 3,
+                 qPrintable(QStringLiteral("restored %1 (expected ~%2): %3")
+                                .arg(restored.sourceLine)
+                                .arg(expectedLine)
+                                .arg(restored.context)));
     }
     void cacheDensityAndInvalidation() {
         ContentBuilder builder; auto doc = builder.build("# Cache\n\nContent.");

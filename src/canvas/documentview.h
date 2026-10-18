@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 
 #include "layoutengine.h"
@@ -40,6 +41,19 @@ struct HeadingPosition {
     int sourceLine = 0; // stable identifier from Content::SourceRange::startLine
 };
 
+// Content anchor for restoring the reading position after a rebuild. The
+// source line survives re-layout; the fraction keeps the offset inside a block
+// whose rendered height may change when text above it is edited. The context
+// is the block's leading source text, used to find the block again when lines
+// were inserted or removed above the viewport.
+struct ScrollAnchor
+{
+    int sourceLine = -1; // 1-based line in the processed markdown
+    qreal fraction = 0.0; // 0..1 inside the mapped source-map block
+    QString context; // trimmed leading source line of that block
+    bool isValid() const { return sourceLine > 0; }
+};
+
 class DocumentView : public QGraphicsView
 {
     Q_OBJECT
@@ -54,7 +68,14 @@ public:
     void setPageLayout(const PageLayout &layout);
 
     ViewState saveViewState() const;
-    void restoreViewState(const ViewState &state);
+    // The anchor takes precedence over the scroll fraction once the anchored
+    // block exists in the installed layout.
+    void restoreViewState(const ViewState &state, const ScrollAnchor &anchor = {});
+    // Top-of-viewport block as a content anchor, valid while a source map exists.
+    ScrollAnchor viewportAnchor() const;
+    // Restore an anchor, deferring until layout reaches it. User scrolling and
+    // explicit navigation cancel the pending anchor.
+    void scrollToAnchor(const ScrollAnchor &anchor);
 
     // Zoom
     void setZoomPercent(int percent);
@@ -182,6 +203,13 @@ private:
     void applyScrollChase();
     void requestMoreLayout();
     bool headingSceneY(const HeadingPosition &hp, qreal *sceneY) const;
+    bool sourceMapEntrySceneRect(const Layout::SourceMapEntry &entry, QRectF *rect) const;
+    // Maps an anchor line onto the installed revision's line numbering.
+    int resolveAnchorLine(const ScrollAnchor &anchor) const;
+    QString anchorContext(const Layout::SourceMapEntry &entry) const;
+    // Aligns the pending anchor block at the viewport top. Returns false while
+    // the block is not laid out yet.
+    bool applyPendingAnchor();
     void clearPdfPages();
     void clearBoxPages();
     void layoutBoxPages();
@@ -262,6 +290,7 @@ private:
     int m_currentHeadingLine = -1; // source line of current heading (stable ID)
     int m_pendingHeadingLine = -1;
     bool m_applyingScroll = false;
+    ScrollAnchor m_pendingAnchor;
     bool m_scrollChase = false;
     int m_scrollChasePage = 0;
     qreal m_scrollChaseY = 0;

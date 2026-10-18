@@ -173,7 +173,7 @@ ViewState DocumentView::saveViewState() const
     return state;
 }
 
-void DocumentView::restoreViewState(const ViewState &state)
+void DocumentView::restoreViewState(const ViewState &state, const ScrollAnchor &anchor)
 {
     if (!state.valid)
         return;
@@ -182,7 +182,7 @@ void DocumentView::restoreViewState(const ViewState &state)
     m_pendingPage = state.currentPage;
     setZoomPercent(state.zoomPercent);
 
-    QTimer::singleShot(0, this, [this, state]() {
+    QTimer::singleShot(0, this, [this, state, anchor]() {
         auto *vbar = verticalScrollBar();
         if (vbar && vbar->maximum() > 0) {
             vbar->setValue(qRound(state.scrollFraction * vbar->maximum()));
@@ -193,7 +193,184 @@ void DocumentView::restoreViewState(const ViewState &state)
                 || m_viewMode == ContinuousFacingFirstAlone;
             if (!continuous && !m_webViewItem) layoutPages();
         }
+        if (anchor.isValid())
+            scrollToAnchor(anchor);
     });
+}
+
+// Maps a source-map entry into scene coordinates. Web columns start at the
+// origin; paginated entries are offset by the page item they belong to.
+bool DocumentView::sourceMapEntrySceneRect(const Layout::SourceMapEntry &entry, QRectF *rect) const
+{
+    if (m_webViewItem && m_renderMode == WebMode) {
+        *rect = entry.rect.translated(m_webViewItem->pos());
+        return true;
+    }
+    for (auto *item : m_boxPageItems) {
+        if (item->pageNumber() == entry.pageNumber) {
+            *rect = entry.rect.translated(item->pos());
+            return true;
+        }
+    }
+    for (auto *item : m_pdfPageItems) {
+        if (item->pageNumber() == entry.pageNumber) {
+            *rect = entry.rect.translated(item->pos());
+            return true;
+        }
+    }
+    return false;
+}
+
+ScrollAnchor DocumentView::viewportAnchor() const
+{
+    ScrollAnchor anchor;
+    if (m_sourceMap.isEmpty() || !viewport())
+        return anchor;
+
+    const qreal top = mapToScene(viewport()->rect()).boundingRect().top();
+    const Layout::SourceMapEntry *best = nullptr;
+    QRectF bestRect;
+    const Layout::SourceMapEntry *first = nullptr;
+    QRectF firstRect;
+    for (const auto &entry : m_sourceMap) {
+        QRectF rect;
+        if (!sourceMapEntrySceneRect(entry, &rect) || rect.height() <= 0)
+            continue;
+        if (!first || rect.top() < firstRect.top()) {
+            first = &entry;
+            firstRect = rect;
+        }
+        if (rect.top() > top + 0.5)
+            continue;
+        if (!best || rect.top() > bestRect.top()) {
+            best = &entry;
+            bestRect = rect;
+        }
+    }
+    // Above the first mapped block the page margin is visible; anchor the
+    // leading block so the top of the content stays at the top.
+    if (!best) {
+        best = first;
+        bestRect = firstRect;
+    }
+    if (!best)
+        return anchor;
+
+    anchor.sourceLine = best->startLine;
+    anchor.fraction = qBound(0.0, (top - bestRect.top()) / bestRect.height(), 1.0);
+    anchor.context = anchorContext(*best);
+    return anchor;
+}
+
+// Leading source text of a block, used to find it again after line shifts.
+QString DocumentView::anchorContext(const Layout::SourceMapEntry &entry) const
+{
+    if (m_processedMarkdown.isEmpty() || entry.startLine <= 0)
+        return {};
+    const QStringList lines = m_processedMarkdown.split(QLatin1Char('\n'));
+    for (int line = entry.startLine; line <= entry.endLine && line <= lines.size(); ++line) {
+        const QString text = lines.at(line - 1).trimmed();
+        if (!text.isEmpty())
+            return text.left(120);
+    }
+    return {};
+}
+
+// Prefers the same line number, then the nearest line whose text still
+// matches. Unmatched anchors keep the old line as the best approximation.
+int DocumentView::resolveAnchorLine(const ScrollAnchor &anchor) const
+{
+    if (anchor.context.isEmpty() || m_processedMarkdown.isEmpty())
+        return anchor.sourceLine;
+
+    const QStringList lines = m_processedMarkdown.split(QLatin1Char('\n'));
+    auto matches = [&lines, &anchor](int line) {
+        return line >= 1 && line <= lines.size()
+            && lines.at(line - 1).trimmed().left(120) == anchor.context;
+    };
+    if (matches(anchor.sourceLine))
+        return anchor.sourceLine;
+
+    int best = -1;
+    int bestDistance = INT_MAX;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().left(120) != anchor.context)
+            continue;
+        const int distance = qAbs(i + 1 - anchor.sourceLine);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = i + 1;
+        }
+    }
+    return best > 0 ? best : anchor.sourceLine;
+}
+
+bool DocumentView::applyPendingAnchor()
+{
+    if (!m_pendingAnchor.isValid())
+        return false;
+
+    const int targetLine = resolveAnchorLine(m_pendingAnchor);
+    // Only a block that actually contains the line proves the revision has
+    // been laid out far enough. Picking the nearest earlier block would jump
+    // to the end of a partial chunk instead of waiting for the real target.
+    const Layout::SourceMapEntry *best = nullptr;
+    QRectF bestRect;
+    for (const auto &entry : m_sourceMap) {
+        if (entry.startLine > targetLine || entry.endLine < targetLine)
+            continue;
+        QRectF rect;
+        if (!sourceMapEntrySceneRect(entry, &rect) || rect.height() <= 0)
+            continue;
+        if (!best || entry.startLine > best->startLine) {
+            best = &entry;
+            bestRect = rect;
+        }
+    }
+    if (!best)
+        return false;
+
+    const qreal targetY = bestRect.top()
+        + qBound(0.0, m_pendingAnchor.fraction, 1.0) * bestRect.height();
+    const QRectF visible = mapToScene(viewport()->rect()).boundingRect();
+    m_applyingScroll = true;
+    centerOn(visible.center().x(), targetY + visible.height() / 2.0);
+    m_applyingScroll = false;
+
+    // A partial chunk can map the block before enough content follows it to
+    // bring it to the top. Keep the anchor until a later chunk makes it
+    // reachable; clearing it here would leave the view at the chunk edge.
+    const qreal viewTop = mapToScene(viewport()->rect().topLeft()).y();
+    if (qAbs(viewTop - targetY) >= 32.0) {
+        // At the end of the document the block may never reach the top.
+        if (m_layoutCursor.finished)
+            m_pendingAnchor = {};
+        else
+            requestMoreLayout();
+        return true;
+    }
+    m_pendingAnchor = {};
+    m_scrollChase = false;
+    updateCurrentPage();
+    return true;
+}
+
+void DocumentView::scrollToAnchor(const ScrollAnchor &anchor)
+{
+    if (!anchor.isValid()) {
+        m_pendingAnchor = {};
+        return;
+    }
+    m_pendingAnchor = anchor;
+    if (applyPendingAnchor())
+        return;
+    // The anchored block has not been laid out in this revision yet. Follow-up
+    // chunks call back through setHeadingPositions; until then the restored
+    // fraction stays in place instead of chasing the partial scene edge.
+    if (m_layoutCursor.finished)
+        m_pendingAnchor = {};
+    else
+        requestMoreLayout();
 }
 
 // --- Layout ---
@@ -530,6 +707,7 @@ void DocumentView::fitPage()
 void DocumentView::goToPage(int page)
 {
     if (page < 0 || page >= m_pageCount) return;
+    m_pendingAnchor = {};
     m_currentPage = page;
     if (!m_pdfMode) {
         for (auto *item : m_boxPageItems) {
@@ -563,6 +741,7 @@ void DocumentView::noteUserScroll()
         return;
     m_scrollChase = false;
     m_pendingHeadingLine = -1;
+    m_pendingAnchor = {};
 }
 
 void DocumentView::scrollToPosition(int page, qreal yOffset)
@@ -694,6 +873,7 @@ void DocumentView::followHeading(int sourceLine)
 {
     if (sourceLine <= 0)
         return;
+    m_pendingAnchor = {};
     for (const auto &hp : m_headingPositions) {
         if (hp.sourceLine == sourceLine) {
             scrollToPosition(m_renderMode == WebMode ? 0 : hp.page, hp.yOffset);
@@ -709,6 +889,9 @@ void DocumentView::setHeadingPositions(const QList<HeadingPosition> &positions)
 {
     m_headingPositions = positions;
     maintainHeadingScroll();
+    // Follow-up chunks extend the source map; the anchor may now be laid out.
+    if (m_pendingAnchor.isValid())
+        scrollToAnchor(m_pendingAnchor);
     updateCurrentPage();
 }
 

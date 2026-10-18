@@ -14,6 +14,8 @@ class QPlainTextEdit;
 class QStackedWidget;
 class DocumentView;
 class MarkdownHighlighter;
+class KMessageWidget;
+class QAction;
 
 class DocumentTab : public QWidget
 {
@@ -59,16 +61,35 @@ public:
 
 Q_SIGNALS:
     void sourceChanged();
-    void externalChangeDetected();
+    // The buffer was replaced with the current disk contents.
+    void reloadedFromDisk();
 
 private:
+    enum class DiskNotice {
+        None,
+        Changed,
+        Deleted,
+    };
+
     void replaceSourceText(const QString &text);
+    void inspectDiskFile();
     void reloadFromDisk();
+    void applyDiskContents(const QByteArray &data);
+    void showDiskNotice(DiskNotice notice);
+    void hideDiskNotice();
+    void ensureWatched();
+
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer;
     QByteArray m_diskContents;
     QString m_knownText;
     bool m_externalChanges = false;
+    bool m_diskMissing = false;
+    int m_readRetries = 0;
+    DiskNotice m_notice = DiskNotice::None;
+    KMessageWidget *m_changeBar = nullptr;
+    QAction *m_reloadAction = nullptr;
+    QAction *m_dismissAction = nullptr;
     QStackedWidget *m_stack = nullptr;
     DocumentView *m_documentView = nullptr;
     QPlainTextEdit *m_sourceEditor = nullptr;

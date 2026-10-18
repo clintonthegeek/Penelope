@@ -32,6 +32,10 @@ struct FontFace {
     QByteArray rawData; // kept alive for FreeType/HarfBuzz
 
     QSet<uint> usedGlyphs;
+    // What a glyph renders, in source characters: a ligature maps to several,
+    // and a shaped Arabic form maps back to its base letters. The PDF writer
+    // turns this into its ToUnicode CMap.
+    QHash<uint, QString> glyphText;
 
     // Hershey stroke font support
     bool isHershey = false;
@@ -55,6 +59,7 @@ public:
     FontFace *loadFontFromPath(const QString &filePath, int faceIndex = 0);
 
     void markGlyphUsed(FontFace *face, uint glyphId);
+    void markGlyphText(FontFace *face, uint glyphId, const QString &text);
     sfnt::SubsetResult subsetFont(FontFace *face) const;
     void resetUsage();
 
@@ -78,6 +83,9 @@ public:
     // One QRawFont per face and size, shared by every renderer that uses this
     // manager, so a document with many view items builds each raw font once.
     const QRawFont &rawFont(FontFace *face, qreal sizePoints);
+    // The first installed face fontconfig offers for a character, so a script
+    // the body font does not cover is still set in a font that has it.
+    FontFace *fontForCharacter(char32_t codePoint);
     // Structural instrumentation for the tests.
     int rawFontCreations() const { return m_rawFontCreations; }
     QString postScriptName(FontFace *face) const;
@@ -108,6 +116,7 @@ private:
     QString resolveFontPath(const QString &family, int weight, bool italic) const;
 
     QHash<QPair<FontFace *, int>, QRawFont> m_rawFonts; // key: (face, size * 100)
+    QHash<char32_t, FontFace *> m_characterFonts;
     int m_rawFontCreations = 0;
 };
 

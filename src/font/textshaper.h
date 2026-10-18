@@ -79,8 +79,12 @@ private:
         int script; // UScriptCode
         int styleIndex; // index into styles list
         bool useFallbackFont = false;
+        FontFace *overrideFace = nullptr; // a face fontconfig found for this run
     };
 
+    // The face that covers a character, in preference order: the primary face
+    // itself, the bundled symbol fallback, then whatever the system offers.
+    FontFace *faceForCharacter(FontFace *primary, char32_t codePoint) const;
     QList<InternalRun> itemizeBiDi(const QString &text) const;
     QList<InternalRun> itemizeScripts(const QString &text,
                                       const QList<InternalRun> &runs) const;

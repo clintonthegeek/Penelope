@@ -1088,15 +1088,26 @@ QByteArray PdfGenerator::buildToUnicodeCMap(FontFace *face)
     cmap += "/CMapType 2 def\n";
     cmap += "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n";
 
-    // Build glyph-to-unicode mapping using FreeType's charmap
-    QList<QPair<uint, uint>> mappings; // glyph ID → unicode
+    // Glyph to text. What the shaper recorded comes first, so a ligature maps
+    // to its letters and a shaped form to its base characters; the font's own
+    // charmap fills in anything the shaper did not see.
+    QList<QPair<uint, QString>> mappings; // glyph ID → text
+    QSet<uint> mapped;
+    for (auto it = face->glyphText.constBegin(); it != face->glyphText.constEnd(); ++it) {
+        if (!face->usedGlyphs.contains(it.key()))
+            continue;
+        mappings.append({it.key(), it.value()});
+        mapped.insert(it.key());
+    }
     if (face->ftFace) {
         FT_ULong charcode;
         FT_UInt gid;
         charcode = FT_Get_First_Char(face->ftFace, &gid);
         while (gid != 0) {
-            if (face->usedGlyphs.contains(gid))
-                mappings.append({gid, static_cast<uint>(charcode)});
+            if (face->usedGlyphs.contains(gid) && !mapped.contains(gid)) {
+                const char32_t cp = static_cast<char32_t>(charcode);
+                mappings.append({gid, QString::fromUcs4(&cp, 1)});
+            }
             charcode = FT_Get_Next_Char(face->ftFace, charcode, &gid);
         }
     }
@@ -1107,9 +1118,10 @@ QByteArray PdfGenerator::buildToUnicodeCMap(FontFace *face)
         int batchSize = qMin(100, mappings.size() - pos);
         cmap += Pdf::toPdf(batchSize) + " beginbfchar\n";
         for (int i = 0; i < batchSize; ++i) {
-            auto [gid, unicode] = mappings[pos + i];
-            const char32_t cp = unicode;
-            const QByteArray encoded = Pdf::toUTF16(QString::fromUcs4(&cp, 1)).mid(2).toHex().toUpper();
+            auto [gid, text] = mappings[pos + i];
+            // One glyph may stand for several characters (a ligature) or for a
+            // shaped form of one; the CMap holds the string either way.
+            const QByteArray encoded = Pdf::toUTF16(text).mid(2).toHex().toUpper();
             cmap += "<" + QByteArray::number(gid, 16).toUpper().rightJustified(4, '0') + "> "
                   + "<" + encoded + ">\n";
         }

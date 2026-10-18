@@ -769,6 +769,40 @@ icu::BreakIterator *Engine::lineBreakIterator()
     return m_lineBreakIterator.get();
 }
 
+void Engine::registerGlyphText(const GlyphBox &box)
+{
+    if (!box.font || box.glyphs.isEmpty() || box.text.isEmpty())
+        return;
+
+    QList<int> clusters;
+    clusters.reserve(box.glyphs.size());
+    for (const auto &glyph : box.glyphs)
+        clusters.append(glyph.cluster);
+    std::sort(clusters.begin(), clusters.end());
+    clusters.erase(std::unique(clusters.begin(), clusters.end()), clusters.end());
+    if (clusters.isEmpty())
+        return;
+    // The box's text covers this cluster range. RTL runs list their glyphs in
+    // visual order, so the first cluster is the highest one: anchor on the
+    // smallest cluster in the box rather than on the first glyph.
+    const int firstCluster = clusters.first();
+
+    for (const auto &glyph : box.glyphs) {
+        const int start = glyph.cluster - firstCluster;
+        if (start < 0 || start >= box.text.size())
+            continue;
+        int end = box.text.size();
+        for (int cluster : clusters) {
+            if (cluster > glyph.cluster) {
+                end = qBound(start + 1, cluster - firstCluster, box.text.size());
+                break;
+            }
+        }
+        m_fontManager->markGlyphText(box.font, glyph.glyphId,
+                                     box.text.mid(start, end - start));
+    }
+}
+
 FootnoteNumbering Engine::numberingContext() const
 {
     FootnoteNumbering numbering;
@@ -1419,7 +1453,24 @@ QList<LineBox> Engine::breakTextIntoLines(const QList<Content::InlineNode> &inli
     // decorations are optional; the text itself is not.
     for (auto &w : words) {
         if (w.isNewline) continue;
-        w.gbox.text = collected.text.mid(w.gbox.textStart, w.gbox.textLength);
+        // A word's characters are the range its clusters cover. An RTL run
+        // lists its glyphs in visual order, so the first glyph is not the first
+        // character: the old start/length arithmetic gave such a word two
+        // characters where it had five.
+        int firstCluster = INT_MAX;
+        int lastCluster = -1;
+        for (const auto &glyph : w.gbox.glyphs) {
+            firstCluster = qMin(firstCluster, glyph.cluster);
+            lastCluster = qMax(lastCluster, glyph.cluster);
+        }
+        if (firstCluster == INT_MAX)
+            continue;
+        const int start = qBound(0, firstCluster, qMax(0, collected.text.size() - 1));
+        const int end = qBound(start + 1, lastCluster + 1, collected.text.size());
+        w.gbox.textStart = start;
+        w.gbox.textLength = end - start;
+        w.gbox.text = collected.text.mid(start, end - start);
+        registerGlyphText(w.gbox);
     }
 
     // Apply markdown decorations to glyph boxes

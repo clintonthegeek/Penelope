@@ -406,6 +406,10 @@ private:
                                       qreal availWidth,
                                       bool markdownRanges);
     ImageBox makeInlineImageBox(const Content::InlineImage &image, qreal availWidth);
+    // Records, per shaped glyph, the characters it stands for. Ligatures cover
+    // several characters and RTL clusters run backwards, so the mapping comes
+    // from the sorted cluster boundaries rather than from glyph order.
+    void registerGlyphText(const GlyphBox &box);
     // Break opportunities for a run of text. One iterator is created per engine
     // and re-pointed at each call: the locale and the dictionary behind it are
     // expensive to build.

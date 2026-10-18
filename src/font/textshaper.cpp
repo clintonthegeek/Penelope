@@ -143,15 +143,40 @@ QList<TextShaper::InternalRun> TextShaper::itemizeStyles(
     return result;
 }
 
-// --- Font coverage itemization: split runs at primary/fallback boundaries ---
+// --- Font coverage itemization: split runs at font boundaries ---
+
+FontFace *TextShaper::faceForCharacter(FontFace *primary, char32_t codePoint) const
+{
+    if (primary && primary->ftFace && FT_Get_Char_Index(primary->ftFace, codePoint) != 0)
+        return nullptr;
+    if (m_fallbackFont && m_fallbackFont->ftFace
+        && FT_Get_Char_Index(m_fallbackFont->ftFace, codePoint) != 0)
+        return m_fallbackFont;
+    // The bundled fallback carries symbols, not scripts: ask the system for a
+    // face that actually has this character.
+    return m_fontManager->fontForCharacter(codePoint);
+}
+
+namespace {
+
+// Decodes one character, surrogate pair included, and reports its length.
+char32_t codePointAt(const QString &text, int pos, int end, int *length)
+{
+    if (pos + 1 < end && QChar::isHighSurrogate(text.at(pos).unicode())
+        && QChar::isLowSurrogate(text.at(pos + 1).unicode())) {
+        *length = 2;
+        return QChar::surrogateToUcs4(text.at(pos), text.at(pos + 1));
+    }
+    *length = 1;
+    return text.at(pos).unicode();
+}
+
+} // namespace
 
 QList<TextShaper::InternalRun> TextShaper::itemizeFontCoverage(
     const QString &text, const QList<InternalRun> &runs,
     const QList<StyleRun> &styles) const
 {
-    if (!m_fallbackFont || !m_fallbackFont->ftFace)
-        return runs;
-
     QList<InternalRun> result;
 
     for (const InternalRun &run : runs) {
@@ -168,114 +193,62 @@ QList<TextShaper::InternalRun> TextShaper::itemizeFontCoverage(
             continue;
         }
 
-        // Hershey font coverage check
+        // Hershey faces are stroke data; only the bundled fallback can stand in.
         if (primary->isHershey && primary->hersheyFont) {
             int pos = run.start;
-            int end = run.start + run.length;
+            const int end = run.start + run.length;
             while (pos < end) {
-                // Decode codepoint (handle surrogate pairs)
-                char32_t cp;
-                if (pos + 1 < end
-                    && QChar::isHighSurrogate(text.at(pos).unicode())
-                    && QChar::isLowSurrogate(text.at(pos + 1).unicode())) {
-                    cp = QChar::surrogateToUcs4(text.at(pos), text.at(pos + 1));
-                } else {
-                    cp = text.at(pos).unicode();
-                }
-                bool primaryHas = primary->hersheyFont->hasGlyph(cp);
-                bool useFallback = !primaryHas
-                    && m_fallbackFont && m_fallbackFont->ftFace
+                int length = 1;
+                const char32_t cp = codePointAt(text, pos, end, &length);
+                const bool primaryHas = primary->hersheyFont->hasGlyph(cp);
+                const bool useFallback = !primaryHas && m_fallbackFont && m_fallbackFont->ftFace
                     && FT_Get_Char_Index(m_fallbackFont->ftFace, cp) != 0;
-
-                int segStart = pos;
-                pos += (cp > 0xFFFF) ? 2 : 1;
-
-                // Consume consecutive chars with same font choice
+                const int segStart = pos;
+                pos += length;
                 while (pos < end) {
-                    char32_t cp2;
-                    if (pos + 1 < end
-                        && QChar::isHighSurrogate(text.at(pos).unicode())
-                        && QChar::isLowSurrogate(text.at(pos + 1).unicode())) {
-                        cp2 = QChar::surrogateToUcs4(text.at(pos), text.at(pos + 1));
-                    } else {
-                        cp2 = text.at(pos).unicode();
-                    }
-                    bool p2 = primary->hersheyFont->hasGlyph(cp2);
-                    bool f2 = !p2 && m_fallbackFont && m_fallbackFont->ftFace
+                    int nextLength = 1;
+                    const char32_t cp2 = codePointAt(text, pos, end, &nextLength);
+                    const bool p2 = primary->hersheyFont->hasGlyph(cp2);
+                    const bool f2 = !p2 && m_fallbackFont && m_fallbackFont->ftFace
                         && FT_Get_Char_Index(m_fallbackFont->ftFace, cp2) != 0;
                     if (f2 != useFallback)
                         break;
-                    pos += (cp2 > 0xFFFF) ? 2 : 1;
+                    pos += nextLength;
                 }
-
-                InternalRun sub;
+                InternalRun sub = run;
                 sub.start = segStart;
                 sub.length = pos - segStart;
-                sub.dir = run.dir;
-                sub.script = run.script;
-                sub.styleIndex = run.styleIndex;
                 sub.useFallbackFont = useFallback;
                 result.append(sub);
             }
-            continue; // skip FreeType coverage path
+            continue;
         }
 
-        // Existing FreeType coverage path continues...
         if (!primary->ftFace) {
             result.append(run);
             continue;
         }
 
         int pos = run.start;
-        int end = run.start + run.length;
-
+        const int end = run.start + run.length;
         while (pos < end) {
-            // Decode codepoint (handle surrogate pairs)
-            uint cp;
-            if (pos + 1 < end
-                && QChar::isHighSurrogate(text.at(pos).unicode())
-                && QChar::isLowSurrogate(text.at(pos + 1).unicode())) {
-                cp = QChar::surrogateToUcs4(text.at(pos), text.at(pos + 1));
-            } else {
-                cp = text.at(pos).unicode();
-            }
-
-            bool primaryHas = FT_Get_Char_Index(primary->ftFace, cp) != 0;
-            bool useFallback = !primaryHas
-                && FT_Get_Char_Index(m_fallbackFont->ftFace, cp) != 0;
-
-            int segStart = pos;
-            // Advance past first character
-            pos += (cp > 0xFFFF) ? 2 : 1;
-
-            // Consume consecutive characters with the same font choice
+            int length = 1;
+            const char32_t cp = codePointAt(text, pos, end, &length);
+            FontFace *choice = faceForCharacter(primary, cp);
+            const int segStart = pos;
+            pos += length;
             while (pos < end) {
-                uint cp2;
-                if (pos + 1 < end
-                    && QChar::isHighSurrogate(text.at(pos).unicode())
-                    && QChar::isLowSurrogate(text.at(pos + 1).unicode())) {
-                    cp2 = QChar::surrogateToUcs4(text.at(pos), text.at(pos + 1));
-                } else {
-                    cp2 = text.at(pos).unicode();
-                }
-
-                bool p2 = FT_Get_Char_Index(primary->ftFace, cp2) != 0;
-                bool f2 = !p2
-                    && FT_Get_Char_Index(m_fallbackFont->ftFace, cp2) != 0;
-
-                if (f2 != useFallback)
+                int nextLength = 1;
+                const char32_t cp2 = codePointAt(text, pos, end, &nextLength);
+                if (faceForCharacter(primary, cp2) != choice)
                     break;
-
-                pos += (cp2 > 0xFFFF) ? 2 : 1;
+                pos += nextLength;
             }
-
-            InternalRun sub;
+            InternalRun sub = run;
             sub.start = segStart;
             sub.length = pos - segStart;
-            sub.dir = run.dir;
-            sub.script = run.script;
-            sub.styleIndex = run.styleIndex;
-            sub.useFallbackFont = useFallback;
+            sub.useFallbackFont = (choice != nullptr && choice == m_fallbackFont);
+            sub.overrideFace = (choice != nullptr && choice != m_fallbackFont) ? choice : nullptr;
             result.append(sub);
         }
     }
@@ -338,7 +311,9 @@ QList<ShapedRun> TextShaper::shapeUncached(const QString &text, const QList<Styl
 
         // Load font (use fallback if coverage itemization flagged this run)
         FontFace *face;
-        if (run.useFallbackFont && m_fallbackFont) {
+        if (run.overrideFace) {
+            face = run.overrideFace;
+        } else if (run.useFallbackFont && m_fallbackFont) {
             face = m_fallbackFont;
         } else {
             face = m_fontManager->loadFont(

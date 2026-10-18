@@ -112,6 +112,38 @@ QString FontManager::resolveFontPath(const QString &family, int weight, bool ita
     return path;
 }
 
+FontFace *FontManager::fontForCharacter(char32_t codePoint)
+{
+    const auto known = m_characterFonts.constFind(codePoint);
+    if (known != m_characterFonts.constEnd())
+        return known.value();
+
+    FcConfig *config = FcInitLoadConfigAndFonts();
+    FcPattern *pat = FcPatternCreate();
+    FcCharSet *charset = FcCharSetCreate();
+    FcCharSetAddChar(charset, codePoint);
+    FcPatternAddCharSet(pat, FC_CHARSET, charset);
+    FcPatternAddBool(pat, FC_SCALABLE, FcTrue);
+    FcConfigSubstitute(config, pat, FcMatchPattern);
+    FcDefaultSubstitute(pat);
+
+    FontFace *face = nullptr;
+    FcResult fcResult;
+    if (FcPattern *match = FcFontMatch(config, pat, &fcResult)) {
+        FcChar8 *file = nullptr;
+        if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch && file) {
+            face = loadFontFromPath(QString::fromUtf8(reinterpret_cast<const char *>(file)));
+        }
+        FcPatternDestroy(match);
+    }
+    FcPatternDestroy(pat);
+    FcCharSetDestroy(charset);
+    FcConfigDestroy(config);
+
+    m_characterFonts.insert(codePoint, face);
+    return face;
+}
+
 FontFace *FontManager::loadFont(const QString &family, int weight, bool italic)
 {
     FontKey key{family, weight, italic};
@@ -313,6 +345,16 @@ const QRawFont &FontManager::rawFont(FontFace *face, qreal sizePoints)
     ++m_rawFontCreations;
     auto inserted = m_rawFonts.insert(key, font);
     return inserted.value();
+}
+
+void FontManager::markGlyphText(FontFace *face, uint glyphId, const QString &text)
+{
+    if (!face || text.isEmpty() || glyphId == 0)
+        return;
+    markGlyphUsed(face, glyphId);
+    // The first mapping wins: a glyph means the same thing wherever it appears.
+    if (!face->glyphText.contains(glyphId))
+        face->glyphText.insert(glyphId, text);
 }
 
 QString FontManager::postScriptName(FontFace *face) const

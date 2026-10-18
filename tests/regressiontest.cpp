@@ -3453,6 +3453,68 @@ private Q_SLOTS:
         Q_UNUSED(secondRenderer);
         QCOMPARE(fonts.rawFontCreations(), 2);
     }
+
+    // --- Quality (Q-01 …) ---
+
+    void q02PdfTextSemantics() {
+        const QString arabic = QStringLiteral("\u0645\u0631\u062d\u0628\u0627");
+        const QString hebrew = QStringLiteral("\u05e9\u05dc\u05d5\u05dd");
+        const QString source = QStringLiteral("office ffi ffl %1 %2 text").arg(arabic, hebrew);
+
+        ContentBuilder builder;
+        const auto doc = builder.build(source + QStringLiteral("\n"));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        // A body font with no Arabic or Hebrew: the system has to supply one.
+        shaper.setFallbackFont(
+            fonts.loadFontFromPath(QStringLiteral(":/fonts/PrettySymbolsFallback.ttf")));
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto layout = engine.layout(doc, pl);
+        QVERIFY(!layout.pages.isEmpty());
+
+        // The sentence is laid out in every script it contains: an RTL run's
+        // glyphs cover the characters its clusters span, not two of them.
+        QString drawn;
+        for (const auto &page : layout.pages) {
+            for (const auto &element : page.elements) {
+                const auto *box = std::get_if<Layout::BlockBox>(&element);
+                if (!box)
+                    continue;
+                for (const auto &line : box->lines)
+                    for (const auto &gbox : line.glyphs)
+                        drawn += gbox.text;
+            }
+        }
+        for (const QChar &ch : arabic)
+            QVERIFY2(drawn.contains(ch), qPrintable(drawn));
+        for (const QChar &ch : hebrew)
+            QVERIFY2(drawn.contains(ch), qPrintable(drawn));
+
+        // Extraction gives the letters, not the ligature codepoints, and the
+        // right-to-left words arrive as their own characters.
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(layout, pl, QStringLiteral("Multilingual"));
+        QVERIFY(!pdf.isEmpty());
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        QString extracted;
+        for (int i = 0; i < poppler->numPages(); ++i) {
+            std::unique_ptr<Poppler::Page> page(poppler->page(i));
+            if (page)
+                extracted += page->text(QRectF());
+        }
+        QVERIFY2(extracted.contains(QStringLiteral("office")), qPrintable(extracted));
+        QVERIFY2(extracted.contains(QStringLiteral("ffi")), qPrintable(extracted));
+        QVERIFY2(extracted.contains(QStringLiteral("ffl")), qPrintable(extracted));
+        QVERIFY2(!extracted.contains(QChar(0xFB03)), qPrintable(extracted));
+        QVERIFY2(!extracted.contains(QChar(0xFB04)), qPrintable(extracted));
+        for (const QChar &ch : arabic)
+            QVERIFY2(extracted.contains(ch), qPrintable(extracted));
+        for (const QChar &ch : hebrew)
+            QVERIFY2(extracted.contains(ch), qPrintable(extracted));
+    }
+
 };
 
 int main(int argc, char **argv) {

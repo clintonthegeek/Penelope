@@ -81,7 +81,10 @@ Help → About dialog and `penelope --version` show it, and CPack names the
 whose name (without `v`) differs from it.
 
 To release: change the version in `CMakeLists.txt`, commit, then tag
-`v<version>` and push the tag.
+`v<version>` and push the tag. The workflow builds the `.deb` and AppImage and
+generates `penelope-<version>-PKGBUILD` and `penelope-git-PKGBUILD` with
+`packaging/generate-pkgbuild.sh`; see [packaging/README.md](packaging/README.md)
+for the Arch packages and `.SRCINFO` generation.
 
 ## License
 

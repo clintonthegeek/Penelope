@@ -13,3 +13,4 @@ justify_debug.txt
 docs/PDF Reference*.txt
 docs/plans/*.pdf
 .worktrees/
+packaging/out/

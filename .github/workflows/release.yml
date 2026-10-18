@@ -73,6 +73,17 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      # ── Arch packages ───────────────────────────────────────────────
+      - name: Generate PKGBUILDs
+        run: |
+          packaging/generate-pkgbuild.sh "${{ steps.version.outputs.version }}" "$PWD/packaging/out"
+          cp "packaging/out/penelope/PKGBUILD" "penelope-${{ steps.version.outputs.version }}-PKGBUILD"
+          cp packaging/out/penelope-git/PKGBUILD penelope-git-PKGBUILD
+          # Sanity check the generated files before they reach the release.
+          for f in penelope-*-PKGBUILD; do
+            bash -n "$f"
+          done
+
       # ── .deb via CPack ──────────────────────────────────────────────
       - name: Package .deb
         run: cd build && cpack -G DEB
@@ -109,3 +120,4 @@ jobs:
           files: |
             build/penelope_*.deb
             Penelope-*.AppImage
+            penelope-*-PKGBUILD

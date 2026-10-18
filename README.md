@@ -1,54 +1,84 @@
 # Penelope
 
-![Penelope screenshot](docs/Screenshot.jpg)
+Penelope is a Markdown reader for KDE. It shows a document as a continuous
+column or as paginated pages, switches to a source editor without losing your
+place, and lets you tune the typography down to individual styles.
 
-Penelope is a Markdown reader for KDE with paginated PDF preview, a continuous
-reader, source editing, and configurable typography.
+![Penelope reading a Markdown document](docs/screenshot-reader.png)
 
-It parses Markdown with MD4C, shapes text with HarfBuzz, finds line breaks with
-ICU, and lays out a semantic content model. Its PDF writer embeds subsetted
-fonts; Poppler provides the preview through an asynchronous render cache.
-Reader composition runs in a worker with a bounded request queue and shaping
-cache. Source edits refresh the reader when returning from source view.
-Both reader modes use the shared content and layout pipeline.
+It parses Markdown with MD4C, shapes text with HarfBuzz, breaks lines with ICU,
+and lays out a semantic content model. Reader composition runs on a worker
+thread: a long document composes its first screenfuls immediately and keeps
+extending the page as you scroll. The PDF writer embeds subsetted fonts.
 
-Features include:
+## Features
 
-- Tabs, a heading-based table of contents, file browser, and saved sessions.
-- Source editing and atomic Save. Files are watched through Qt: an unmodified
-  file reloads automatically (configurable) while keeping the reading and
-  editing position, and a change to an edited file raises an in-tab
-  Reload/Ignore prompt instead of replacing the buffer. Deleted files are
-  reported the same way.
-- Headings, styled text, links, lists/task lists, quotes, code highlighting,
-  tables with repeated headers across pages, and images with transparency.
-- Paragraph/character styles, themes, palettes, page templates, and configurable
-  page sizes, orientation and margins.
-- First/odd/even headers and footers with page, filename, title and date fields.
-- Endnotes from PHP Markdown Extra footnote syntax, with configurable numbering
-  and separators; English hyphenation with bundled libhyphen dictionaries.
-- Six page arrangements, zoom/panning, source-region text selection, and
-  plain-text, Markdown and styled RTF clipboard output.
-- Per-file view state and code-language overrides, configurable code-highlight
-  themes, PDF/RTF export, and printing.
+**Reading**
 
-Some layout capabilities remain incomplete: page-bottom footnotes, per-page
-note numbering, page-specific body margins, oversized table-row splitting,
-and full inline-media/math rendering. See the
-[maintenance audit](docs/2026-10-03-maintenance-audit.md) for repaired defects,
-verification coverage and remaining limitations, and the
-[Markoff integration analysis](docs/2026-10-03-markoff-port-analysis.md) for the
-proposed reader/PDF library extraction.
+- Web, Print and Source views, switchable at any time.
+- Continuous scrolling or six page arrangements: Continuous Scroll, Single
+  Page, Facing Pages, Facing Pages (First Alone), Continuous Facing, and
+  Continuous Facing (First Alone).
+- Zoom from the toolbar, the status bar or Ctrl + mouse wheel; fit width or fit
+  page; hand-tool panning and middle-drag smooth zoom.
+- A heading tree that follows the page and jumps to a heading on click.
+- Per-file zoom, page and scroll position, remembered between sessions.
 
-The current implementation plan is the [ebook-reader roadmap](docs/2026-10-17-ebook-reader-roadmap.md):
-typeset the visible range, keep it, and resume. The [step list](docs/2026-10-17-ebook-reader-tasks.md)
-is the order to implement it in. Do one step at a time. The [long-document benchmark](docs/2026-10-17-long-document-benchmark.md)
-is the measurement for that work. The [composition implementation](docs/2026-10-04-composition-implementation.md)
-describes the worker already in place. The [October task list](docs/2026-10-04-performance-tasks.md)
-is superseded by the roadmap. The [legacy renderer removal](docs/2026-10-04-legacy-renderer-removal.md)
-records the consolidation of readers, exports and clipboard conversion.
+**Typography**
 
-## Building and testing
+- Paragraph and character styles, bundled type sets, palettes and page
+  templates, with a style tree that recomposes the page as you edit it.
+- Page size, orientation and margins.
+- First, odd and even headers and footers with `{page}`, `{pages}`,
+  `{filename}`, `{title}`, `{date}` and custom date formats.
+- Hyphenation with bundled English dictionaries, adjustable word length and
+  justification gap; short-word non-breaking; table layout Auto or Optimal.
+
+**Markdown**
+
+- Headings, emphasis, links, code blocks with themeable syntax highlighting,
+  lists and task lists, quotes, and images with transparency.
+- Tables whose header rows repeat on every page.
+- PHP Markdown Extra footnotes and endnotes, with number format, start value,
+  prefix/suffix and separator options.
+
+**Files and editing**
+
+- Tabs, recent files, a file browser and saved sessions.
+- Source editor with Markdown highlighting; atomic save and unsaved-change
+  prompts. Single-instance: opening a file from the file manager reuses the
+  running window.
+- The open file is watched. An unmodified file reloads automatically; a file
+  you are editing raises an in-tab notice with **Discard Edits and Reload** /
+  **Keep My Edits** instead of replacing your work; a deleted file is reported
+  and the open copy is kept.
+- Reload keeps your place: the source cursor and top line, and a reader
+  position anchored to the content, so text inserted above does not move you.
+
+**Export and printing**
+
+- PDF export with bookmarks, initial view, PDF page layout, page ranges, and
+  options for the embedded text and Markdown copy.
+- RTF export, plus clipboard copy as plain text, Markdown, styled RTF, or RTF
+  filtered through the copy-options dialog.
+- Printing with a page range.
+
+![A paginated A4 page in Penelope](docs/screenshot-print.png)
+
+## Install
+
+Release builds are attached to every
+[release](https://github.com/clintonthegeek/Penelope/releases):
+
+- **Arch / Manjaro** — download `penelope-<version>-PKGBUILD`, run `makepkg -si`
+  in its directory. `penelope-git-PKGBUILD` packages the default branch
+  instead.
+- **Debian / Ubuntu** — `sudo apt install ./penelope_<version>_amd64.deb`. The
+  package is built against the Qt 6 and KDE Frameworks 6 stack from KDE Neon's
+  Ubuntu 24.04 repository.
+- **AppImage** — `chmod +x Penelope-<version>-x86_64.AppImage`, then run it.
+
+## Building from source
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -56,36 +86,31 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Tests use Qt Test and run offscreen with isolated settings. Use
+Qt 6.6 or newer and KDE Frameworks 6 are required, along with Poppler's Qt 6
+bindings, FreeType, HarfBuzz (with ICU and subset support), ICU, fontconfig,
+libhyphen, MD4C and zlib. Qt Test is needed for the test suite; pass
 `-DBUILD_TESTING=OFF` for an application-only build.
 
-### Dependencies
-
-Qt 6.6+, KDE Frameworks 6, Poppler (Qt6), FreeType, HarfBuzz (with ICU and subset
-modules), ICU, fontconfig, libhyphen, md4c, zlib. Qt Test is needed for tests.
-
-On Arch/Manjaro:
+On Arch and Manjaro:
 
 ```sh
 pacman -S qt6-base extra-cmake-modules ki18n kcoreaddons kxmlgui kiconthemes \
-  kconfigwidgets kconfig kio syntax-highlighting poppler-qt6 freetype2 \
-  harfbuzz harfbuzz-icu icu fontconfig hyphen md4c zlib
+  kconfigwidgets kconfig kio syntax-highlighting kdbusaddons poppler-qt6 \
+  freetype2 harfbuzz harfbuzz-icu icu fontconfig hyphen md4c zlib
 ```
 
-## Versioning
+`kdbusaddons` enables single-instance activation on KDE; it is optional.
 
-`project(Penelope VERSION …)` at the top of `CMakeLists.txt` is the single
-source of truth. CMake passes it to the code as `PENELOPE_VERSION`, so the
-Help → About dialog and `penelope --version` show it, and CPack names the
-`.deb` from it. The release workflow reads the same line and refuses a tag
-whose name (without `v`) differs from it.
+## Known limitations
 
-To release: change the version in `CMakeLists.txt`, commit, then tag
-`v<version>` and push the tag. The workflow builds the `.deb` and AppImage and
-generates `penelope-<version>-PKGBUILD` and `penelope-git-PKGBUILD` with
-`packaging/generate-pkgbuild.sh`; see [packaging/README.md](packaging/README.md)
-for the Arch packages and `.SRCINFO` generation.
+- Footnotes are always endnotes; page-bottom placement is not implemented.
+- Footnote numbering restarts per document, not per page.
+- Body margins are shared by every page; per-page margins apply only to headers
+  and footers.
+- A table row taller than a page can overflow.
+- No math rendering.
 
 ## License
 
-GPLv3. See [COPYING](COPYING) and the third-party notices in [LICENSES](LICENSES).
+GPLv3. See [COPYING](COPYING) and the third-party notices in
+[LICENSES](LICENSES).

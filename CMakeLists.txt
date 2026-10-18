@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(Penelope VERSION 0.1.0 LANGUAGES CXX)
+project(Penelope VERSION 0.2 LANGUAGES CXX)
 
 # The project version above is the only place the application version is
 # defined. The About dialog and --version read this definition, CPack names

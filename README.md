@@ -22,7 +22,11 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
 - Zoom from the toolbar, the status bar or Ctrl + mouse wheel; fit width or fit
   page; hand-tool panning and middle-drag smooth zoom.
 - A heading tree that follows the page and jumps to a heading on click.
+- Hover hints for links and images, and navigation between a citation and its
+  note.
 - Per-file zoom, page and scroll position, remembered between sessions.
+- Assistive technology reads the document: per-block headings, lists, tables and
+  paragraphs with their text.
 
 **Typography**
 
@@ -33,6 +37,8 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
   `{filename}`, `{title}`, `{date}` and custom date formats.
 - Hyphenation with bundled English dictionaries, adjustable word length and
   justification gap; short-word non-breaking; table layout Auto or Optimal.
+- Optional smart punctuation: curly quotes, en and em dashes, ellipses. Code
+  spans and code blocks keep their characters.
 
 **Markdown**
 
@@ -40,8 +46,18 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
   lists and task lists, quotes, and images with transparency.
 - Tables whose header rows repeat on each page (a header block taller than half
   a page is not repeated).
-- PHP Markdown Extra footnotes and endnotes, with number format, start value,
-  prefix/suffix and separator options.
+- Footnotes that print at the foot of the page that cites them, with real
+  Markdown inside them, numbering by document or by page, a hover hint on a
+  citation, and a click through to the note and back. Endnote placement is a
+  setting. Number format, start value, prefix/suffix and separator are
+  configurable.
+- Math spans are kept as a model node: inline math flows with the text, display
+  math is centred on its own line. A LaTeX engine typesets them later; see
+  [Known limitations](#known-limitations).
+- Front matter is read as metadata rather than shown; `_underscore_` is
+  emphasis; raw HTML is set as markup; HTML entities decode; `[[Page|label]]`
+  links and `![[Note]]` embeds keep their targets; image titles are hover
+  hints.
 
 **Files and editing**
 
@@ -104,12 +120,15 @@ pacman -S qt6-base extra-cmake-modules ki18n kcoreaddons kxmlgui kiconthemes \
 
 ## Known limitations
 
-- Footnotes are always endnotes; page-bottom placement is not implemented.
-- Footnote numbering restarts per document, not per page.
 - Body margins are shared by every page; per-page margins apply only to headers
   and footers.
 - A table row taller than a page can overflow.
-- No math rendering.
+- Math is set, not typeset: no LaTeX engine renders formulas yet, and plain
+  text extraction of the PDF gives the LaTeX source of a formula.
+- Styled copy is accurate to the run: copying part of a paragraph in the PDF
+  reader still copies whole blocks, and copying in the paginated reader takes
+  the runs the selection covers rather than individual characters.
+- Definition lists are not recognised.
 
 ## License
 

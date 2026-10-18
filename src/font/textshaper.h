@@ -55,6 +55,7 @@ public:
 
     void setFallbackFont(FontFace *face) { m_fallbackFont = face; m_cache.clear(); }
     void setCacheLimit(int bytes) { m_cache.setMaxCost(qMax(0, bytes)); }
+    int cacheLimit() const { return m_cache.maxCost(); }
     void setCancellationCheck(std::function<bool()> check) { m_cancellationCheck = std::move(check); }
     quint64 cacheHits() const { return m_cacheHits; }
     quint64 cacheMisses() const { return m_cacheMisses; }
@@ -62,7 +63,11 @@ public:
 
 private:
     struct CachedShape { QList<ShapedRun> runs; };
-    QCache<QByteArray, CachedShape> m_cache{8 * 1024 * 1024};
+    // A layout holds a paragraph's runs at a time, so a few megabytes cover a
+    // long prose document while an entry larger than the budget (one enormous
+    // fence line) is laid out and simply not stored.
+    static constexpr int kDefaultCacheBytes = 8 * 1024 * 1024;
+    QCache<QByteArray, CachedShape> m_cache{kDefaultCacheBytes};
     quint64 m_cacheHits = 0;
     quint64 m_cacheMisses = 0;
     std::function<bool()> m_cancellationCheck;

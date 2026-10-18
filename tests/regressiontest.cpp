@@ -3385,6 +3385,45 @@ private Q_SLOTS:
         QVERIFY(!manyLayout.pages.isEmpty());
         QVERIFY2(engine.imageDecodes() >= 40, "each distinct picture decodes once");
     }
+    void q06ShapingCacheBudget() {
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        QVERIFY2(shaper.cacheLimit() >= 1024 * 1024, "the shaping cache keeps more than a handful of runs");
+
+        // Reusing the same run is a hit, and it costs something.
+        const QString prose = QStringLiteral("The quick brown fox jumps over the lazy dog.");
+        QList<StyleRun> styles;
+        StyleRun style;
+        style.start = 0;
+        style.length = prose.size();
+        style.fontFamily = QStringLiteral("Noto Serif");
+        style.fontSize = 11.0;
+        styles.append(style);
+        shaper.shape(prose, styles);
+        const quint64 missesAfterFirst = shaper.cacheMisses();
+        shaper.shape(prose, styles);
+        QCOMPARE(shaper.cacheMisses(), missesAfterFirst);
+        QCOMPARE(shaper.cacheHits(), quint64(1));
+        QVERIFY(shaper.cacheCost() > 0);
+
+        // A single run larger than the budget is laid out, not stored, and it
+        // does not evict what is already there.
+        const int costBefore = shaper.cacheCost();
+        QString fence;
+        fence.reserve(400000);
+        while (fence.size() < 400000)
+            fence += QStringLiteral("int value = compute(argument);\n");
+        QList<StyleRun> fenceStyles;
+        StyleRun fenceStyle;
+        fenceStyle.start = 0;
+        fenceStyle.length = fence.size();
+        fenceStyle.fontFamily = QStringLiteral("JetBrains Mono");
+        fenceStyle.fontSize = 10.0;
+        fenceStyles.append(fenceStyle);
+        shaper.shape(fence, fenceStyles);
+        QCOMPARE(shaper.cacheCost(), costBefore);
+        QVERIFY2(fence.size() > 200000, "the run is far larger than a paragraph");
+    }
 };
 
 int main(int argc, char **argv) {

@@ -24,6 +24,131 @@ cmake --build build
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
+## Interim alignment
+
+Cheap changes that fix fidelity bugs and remove divergence from `markoff-core`
+before the rebase described in [the roadmap](roadmap.md#5-later-the-markoff-core-rebase).
+
+### AL-01 — Front matter is metadata, not content
+
+**Touch:** `src/markdown/` (a pre-pass, beside the footnote parser),
+`src/model/contentbuilder.{h,cpp}`, `src/model/contentmodel.h`,
+`tests/regressiontest.cpp`.
+
+**Do:**
+
+1. Mirror `markoff-parser/src/Document.cpp:38-65` exactly: only when the source
+   starts with `---\n` or `---\r\n`, the frontmatter runs to the next `\n---`
+   line and the body starts after that line's newline. No closing line, no
+   frontmatter — except the EOF-close case, where the closing `---` ends the
+   file and the body is empty.
+2. Keep the raw frontmatter text on `Content::Document` (`frontmatterRaw`), not
+   parsed.
+3. Blank the frontmatter lines in the text handed to MD4C, the way
+   `FootnoteParser` blanks definition lines, so line numbers and the source map
+   still address the original file.
+
+**Do not:** add a YAML dependency, parse the values, or treat a `---` anywhere
+but offset 0 as frontmatter.
+
+**Test:** slot `al01FrontmatterIsMetadata`. A document starting
+`---\ntitle: X\n---\n\n# Body` renders `Body` and no `title:`; the heading's
+source line is its line in the file; `frontmatterRaw()` returns the YAML; a `---`
+after the first paragraph is still a thematic break; CRLF input works.
+
+**Done when:** the slot passes and a document without frontmatter renders
+identically to today.
+
+### AL-02 — `_underscore_` is emphasis
+
+**Touch:** `src/model/contentbuilder.cpp`, `src/app/penelope.kcfg` (only if a
+setting documents the dialect), `tests/regressiontest.cpp`.
+
+**Do:** drop `MD_FLAG_UNDERLINE`. MD4C's underline extension disables `_`
+emphasis, so `_x_` currently renders underlined instead of italic; CommonMark and
+Markoff treat it as emphasis. Underline remains a style-system property that
+themes may set; nothing in the dialect produces it.
+
+**Do not:** add another underline syntax, or change how styles resolve.
+
+**Test:** slot `al02UnderscoreIsEmphasis`. `_x_` produces italic and not
+underline; `*x*` and `__x__` are unchanged; a theme that sets underline still
+round-trips through the style tree.
+
+**Done when:** the slot passes and `styleResolutionFollowsTypeSetAndPalette` is
+unchanged.
+
+### AL-03 — Unreferenced footnote definitions disappear
+
+**Touch:** `src/markdown/footnoteparser.cpp`, `tests/regressiontest.cpp`.
+
+**Do:** keep only definitions that a reference cites, numbered in
+first-reference order. Markoff does the same (`markoff-parser/src/Document.cpp:121-124`,
+the `fn.number > 0` filter) and so does PHP Markdown Extra. A reference with no
+definition keeps rendering literally.
+
+**Do not:** change the numbering of cited notes.
+
+**Test:** slot `al03UnreferencedNotesAreDropped`. One cited and one uncited
+definition produce a single note, and the plain-text export contains no text from
+the uncited definition.
+
+**Done when:** the slot passes and `footnoteLiterals` passes.
+
+### AL-04 — Copy uses the note's printed marker
+
+**Touch:** `src/model/contentplaintext.cpp`, `tests/regressiontest.cpp`.
+
+**Do:** use the reference's resolved label instead of `QString::number(n.index)`
+(0-based), and build the note-section prefix from the note's label instead of
+`i + 1`, so the configured format, prefix and suffix reach the clipboard. RTF
+already uses `n.label`.
+
+**Test:** slot `al04CopyUsesNoteMarkers`. With Roman numbering and a prefix, the
+plain-text copy of a paragraph containing a reference, and of the note section,
+both contain the formatted marker, and no bare index appears.
+
+**Done when:** the slot passes and `contentPlainTextPreservesVisibleContent` is
+unchanged.
+
+### AL-05 — Links keep their target, title and kind
+
+**Touch:** `src/model/contentmodel.h`, `src/model/contentbuilder.cpp`,
+`src/layout/hitindex.cpp`, `src/canvas/documentview.cpp`,
+`tests/regressiontest.cpp`.
+
+**Do:** record the link title (`MD_SPAN_A_DETAIL::title`, dropped today) and,
+for `MD_SPAN_WIKILINK`, the target (`MD_SPAN_WIKILINK_DETAIL::target`), beside
+the existing `linkHref`. Classify as external, file, wikilink, tag or anchor, in
+the spirit of Markoff's `LinkKind` and `LinkInfo::Type`. Show a title in the
+hover hint when one exists.
+
+**Do not:** implement anchor navigation, wiki-file resolution, or embeds.
+
+**Test:** slot `al05LinkTargetsAndTitles`. A standard link keeps href and title;
+`[[Page|label]]` records `Page` and renders `label`; `[[Page]]` records `Page`;
+`#tag` classifies as a tag; hovering a titled link reports the title.
+
+**Done when:** the slot passes and external links still open.
+
+### AL-06 — HTML blocks are shown, not deleted
+
+**Touch:** `src/model/contentbuilder.cpp`, `src/model/contentmodel.h`,
+`tests/regressiontest.cpp`.
+
+**Do:** stop discarding `MD_BLOCK_HTML` (which deletes the block *and* its inner
+text) and `MD_TEXT_HTML`. Emit the bytes as visible plain text runs, preserving
+line structure. Markoff keeps `HtmlBlock` as a first-class block kind, so
+keeping the content is the aligned behaviour.
+
+**Do not:** build an HTML renderer or a sanitizer; a filtered subset is a later
+decision.
+
+**Test:** slot `al06HtmlIsKept`. A `<div>…</div>` block's inner text appears in
+the document and in the plain-text export; an inline `<span>` keeps its content.
+
+**Done when:** the slot passes and no existing test regresses.
+
 ## Footnotes
 
 ### FN-01 — Note bodies keep their Markdown structure
@@ -240,13 +365,15 @@ literal text inside a code span survives untouched.
 
 | Id | Outcome |
 |---|---|
-| MD-01 | Math spans become a model node and are typeset, then exported to PDF, RTF and the clipboard. Needs a renderer decision (the sibling Markoff project typesets with jkqtmathtext). |
-| MD-02 | A recorded policy for raw HTML blocks and inline HTML, implemented: drop, literal, or filtered subset. See the roadmap's open decisions. |
-| MD-03 | Wikilink targets reach the model and resolve to an internal anchor or a file. |
+| MD-01 | Math spans become a model node and are typeset, then exported to PDF, RTF and the clipboard. Markoff renders LaTeX in its leaves with vendored jkqtmathtext, the same library a rebase would use. |
+| MD-02 | Beyond AL-06: a filtered HTML subset, or styling for literal HTML. |
 | MD-06 | Optional smart punctuation: curly quotes, en/em dashes, ellipses. Must not touch code spans, code blocks or attributes. |
-| MD-07 | Link and image titles become hover tooltips. |
+| MD-07 | Image titles become hover tooltips; link titles arrive with AL-05. |
 | MD-08 | Fence info strings, `)`-delimited ordered lists and tight/loose list spacing are preserved where they change rendering. |
-| MD-09 | Definition lists, and a front-matter policy. Both are preprocessor work in the footnote parser's style. |
+
+MD-03 (wikilink targets) is absorbed by AL-05; MD-09's front-matter half by
+AL-01. Definition lists are not planned: neither MD4C nor Markoff's parser has
+them.
 
 ## Quality
 

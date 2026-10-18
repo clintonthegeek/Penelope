@@ -738,6 +738,24 @@ bool Engine::layoutNextPage(const Content::Document &doc, const PageLayout &page
 
 
 
+QImage Engine::cachedImage(const QByteArray &data)
+{
+    if (data.isEmpty())
+        return {};
+    const QString key = QString::number(qHashBits(data.constData(), data.size()), 16);
+    if (const QImage *cached = m_imageCache.object(key))
+        return *cached;
+    QImage loaded = QImage::fromData(data);
+    if (loaded.isNull())
+        return {};
+    ++m_imageDecodes;
+    if (m_imageCache.maxCost() == 0)
+        m_imageCache.setMaxCost(kImageCacheBytes);
+    m_imageCache.insert(key, new QImage(loaded),
+                        qMax(1, int(loaded.sizeInBytes() / 1024)));
+    return loaded;
+}
+
 icu::BreakIterator *Engine::lineBreakIterator()
 {
     if (!m_lineBreakIterator) {
@@ -1217,13 +1235,13 @@ QList<LineBox> Engine::breakIntoLines(const QList<Content::InlineNode> &inlines,
     return result;
 }
 
-ImageBox Engine::makeInlineImageBox(const Content::InlineImage &image, qreal availWidth) const
+ImageBox Engine::makeInlineImageBox(const Content::InlineImage &image, qreal availWidth)
 {
     ImageBox box;
     box.altText = image.altText;
     if (image.resolvedImageData.isEmpty())
         return box;
-    QImage loaded = QImage::fromData(image.resolvedImageData);
+    QImage loaded = cachedImage(image.resolvedImageData);
     if (loaded.isNull())
         return box;
 
@@ -2159,8 +2177,7 @@ BlockBox Engine::layoutImage(const Content::InlineImage &img, qreal availWidth)
     box.spaceBefore = 6.0;
     box.spaceAfter = 6.0;
 
-    QImage qimg;
-    qimg.loadFromData(img.resolvedImageData);
+    QImage qimg = cachedImage(img.resolvedImageData);
     if (qimg.isNull()) {
         box.height = 0;
         return box;

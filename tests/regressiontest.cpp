@@ -3343,6 +3343,48 @@ private Q_SLOTS:
         // paragraph: the locale's dictionary is expensive to build.
         QCOMPARE(engine.breakIteratorCreations(), 1);
     }
+    void q05ImagesAreDecodedOnce() {
+        QTemporaryDir dir;
+        const QString first = dir.filePath(QStringLiteral("a.png"));
+        const QString second = dir.filePath(QStringLiteral("b.png"));
+        QImage picture(24, 16, QImage::Format_ARGB32_Premultiplied);
+        picture.fill(QColor(10, 120, 30, 255));
+        QVERIFY(picture.save(first));
+        picture.fill(QColor(200, 20, 60, 255));
+        QVERIFY(picture.save(second));
+
+        ContentBuilder builder;
+        const auto doc = builder.build(QStringLiteral("![a](%1)\n\n![b](%2)\n\nText.\n")
+                                           .arg(first, second));
+        FontManager fonts;
+        TextShaper shaper(&fonts);
+        Layout::Engine engine(&fonts, &shaper);
+        PageLayout pl;
+        const auto firstLayout = engine.layout(doc, pl);
+        QVERIFY(!firstLayout.pages.isEmpty());
+        const int decodesAfterFirstPass = engine.imageDecodes();
+        QCOMPARE(decodesAfterFirstPass, 2);
+
+        // A second pass (a resize, a theme change) reuses the decoded images.
+        const auto secondLayout = engine.layout(doc, pl);
+        QVERIFY(!secondLayout.pages.isEmpty());
+        QCOMPARE(engine.imageDecodes(), decodesAfterFirstPass);
+
+        // The cache is bounded, so a document full of pictures cannot grow it
+        // without limit.
+        QString many;
+        for (int i = 0; i < 40; ++i) {
+            QImage large(64, 64, QImage::Format_ARGB32_Premultiplied);
+            large.fill(QColor(i * 5 % 255, 60, 120, 255));
+            const QString path = dir.filePath(QStringLiteral("many%1.png").arg(i));
+            QVERIFY(large.save(path));
+            many += QStringLiteral("![m](%1)\n\n").arg(path);
+        }
+        const auto manyDoc = builder.build(many);
+        const auto manyLayout = engine.layout(manyDoc, pl);
+        QVERIFY(!manyLayout.pages.isEmpty());
+        QVERIFY2(engine.imageDecodes() >= 40, "each distinct picture decodes once");
+    }
 };
 
 int main(int argc, char **argv) {

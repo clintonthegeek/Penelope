@@ -16,6 +16,7 @@
 
 #include <QColor>
 #include <QImage>
+#include <QCache>
 #include <QList>
 
 #include <memory>
@@ -353,6 +354,9 @@ public:
     // Structural instrumentation for the tests: one ICU line-break iterator per
     // engine instead of one per paragraph.
     int breakIteratorCreations() const { return m_breakIteratorCreations; }
+    // Images are decoded once per engine, so a resize or a theme change does not
+    // decode them again. The cache is bounded by decoded bytes.
+    int imageDecodes() const { return m_imageDecodes; }
 
     LayoutResult layout(const Content::Document &doc, const PageLayout &pageLayout);
     LayoutResult layoutReusing(const Content::Document &doc, const PageLayout &pageLayout,
@@ -401,11 +405,13 @@ private:
                                       const Content::ParagraphFormat &format,
                                       qreal availWidth,
                                       bool markdownRanges);
-    ImageBox makeInlineImageBox(const Content::InlineImage &image, qreal availWidth) const;
+    ImageBox makeInlineImageBox(const Content::InlineImage &image, qreal availWidth);
     // Break opportunities for a run of text. One iterator is created per engine
     // and re-pointed at each call: the locale and the dictionary behind it are
     // expensive to build.
     icu::BreakIterator *lineBreakIterator();
+    // A decoded image, by the hash of its bytes.
+    QImage cachedImage(const QByteArray &data);
 
     QList<LineBox> shapeAndBreak(const QString &text,
                                  const Content::TextStyle &style,
@@ -446,6 +452,9 @@ private:
     bool m_breakCancelled = false;
     std::unique_ptr<icu::BreakIterator> m_lineBreakIterator;
     int m_breakIteratorCreations = 0;
+    QCache<QString, QImage> m_imageCache;
+    int m_imageDecodes = 0;
+    static constexpr int kImageCacheBytes = 64 * 1024 * 1024;
     FragmentCache *m_fragmentCache = nullptr;
     FontManager *m_fontManager;
     TextShaper *m_textShaper;

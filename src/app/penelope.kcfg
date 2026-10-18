@@ -84,6 +84,10 @@
       <min>4.0</min>
       <max>40.0</max>
     </entry>
+    <entry name="SmartPunctuationEnabled" type="Bool">
+      <label>Curly quotes, en and em dashes, and ellipses.</label>
+      <default>true</default>
+    </entry>
     <entry name="ShortWordsEnabled" type="Bool">
       <label>Insert non-breaking spaces after short prepositions and articles.</label>
       <default>true</default>

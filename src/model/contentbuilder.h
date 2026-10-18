@@ -37,6 +37,7 @@ public:
     QString processedMarkdown() const { return m_processedMarkdown; }
 
     void setRenderImages(bool enabled) { m_renderImages = enabled; }
+    void setSmartPunctuation(bool enabled) { m_smartPunctuation = enabled; }
     void setCancellationCheck(std::function<bool()> check) { m_cancelled = std::move(check); }
     void setBasePath(const QString &basePath);
     void setStyleManager(StyleManager *sm);
@@ -119,6 +120,7 @@ private:
     // Link tracking (href flows through TextStyle on each TextRun inside the span)
     QString m_linkHref;
     int m_linkSpanDepth = 0;
+    bool m_smartPunctuation = true;
     bool m_inMath = false;
     bool m_mathDisplay = false;
     QList<QList<Content::FootnoteRefSite>> m_footnoteRefSites;

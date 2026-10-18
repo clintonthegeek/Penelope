@@ -200,6 +200,14 @@ PenelopeConfigDialog::PenelopeConfigDialog(QWidget *parent)
     swGroupLayout->addWidget(swCheck);
     typoLayout->addWidget(swGroup);
 
+    auto *punctuationGroup = new QGroupBox(i18n("Punctuation"));
+    auto *punctuationLayout = new QVBoxLayout(punctuationGroup);
+    auto *smartPunctuation = new QCheckBox(i18n("Curly quotes, en and em dashes, ellipses"));
+    smartPunctuation->setObjectName(QStringLiteral("kcfg_SmartPunctuationEnabled"));
+    smartPunctuation->setToolTip(i18n("Applies to prose: code spans and code blocks keep their characters."));
+    punctuationLayout->addWidget(smartPunctuation);
+    typoLayout->addWidget(punctuationGroup);
+
     auto *tableGroup = new QGroupBox(i18n("Tables"));
     auto *tableGroupLayout = new QVBoxLayout(tableGroup);
     auto *tableAlgoRow = new QHBoxLayout;

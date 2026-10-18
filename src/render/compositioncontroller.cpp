@@ -45,6 +45,7 @@ Content::Document buildCompositionContent(const CompositionRequest &r, QString *
     builder.setStyleManager(&styles);
     builder.setFootnoteStyle(r.footnotes);
     builder.setRenderImages(r.renderImages);
+    builder.setSmartPunctuation(r.smartPunctuation);
     builder.setCancellationCheck([cancel] { return cancelled(cancel); });
     if (r.hyphenation || r.hyphenateJustified) {
         hyphenator.loadDictionary(r.language);

@@ -38,6 +38,7 @@ struct CompositionRequest {
     int startBlock = 0;
     qreal width = 500;
     bool renderImages = true;
+    bool smartPunctuation = true;
     bool hyphenation = false;
     bool hyphenateJustified = true;
     bool shortWords = false;

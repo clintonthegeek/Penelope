@@ -16,6 +16,8 @@ add_library(PenelopeCore STATIC
     markdown/frontmatterparser.h
     markdown/entitytable.cpp
     markdown/entitytable.h
+    markdown/smartpunctuation.cpp
+    markdown/smartpunctuation.h
     canvas/documentview.cpp
     canvas/documentview.h
     canvas/pdfpageitem.cpp

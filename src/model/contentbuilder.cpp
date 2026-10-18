@@ -14,6 +14,7 @@
 #include "footnoteparser.h"
 #include "frontmatterparser.h"
 #include "entitytable.h"
+#include "smartpunctuation.h"
 
 #include <algorithm>
 
@@ -171,6 +172,8 @@ QString ContentBuilder::processTypography(const QString &text) const
     if (text.isEmpty())
         return text;
     QString result = text;
+    if (m_smartPunctuation)
+        result = applySmartPunctuation(result);
     if (m_shortWords)
         result = m_shortWords->process(result);
     if (m_hyphenator && m_hyphenator->isLoaded())

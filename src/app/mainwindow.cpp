@@ -934,6 +934,7 @@ void MainWindow::onFileExportPdf()
     if (PenelopeSettings::self()->shortWordsEnabled())
         contentBuilder.setShortWords(m_shortWords);
     contentBuilder.setFootnoteStyle(styleManager->footnoteStyle());
+    contentBuilder.setSmartPunctuation(PenelopeSettings::self()->smartPunctuationEnabled());
     Content::Document contentDoc = contentBuilder.build(markdown);
     view->applyLanguageOverrides(contentDoc);
 
@@ -1589,6 +1590,7 @@ CompositionRequest MainWindow::compositionRequest(DocumentTab *tab) const
     request.characters = styles->characterStyles();
     request.tables = styles->tableStyles();
     request.footnotes = styles->footnoteStyle();
+    request.smartPunctuation = PenelopeSettings::self()->smartPunctuationEnabled();
     request.pageLayout = m_pageDockWidget->currentPageLayout();
     auto *view = tab->documentView();
     request.languageOverrides = view->codeBlockLanguageOverrides();

@@ -3133,6 +3133,43 @@ private Q_SLOTS:
             copied += buildHitIndex(page).lineText.join(QLatin1Char(' '));
         QVERIFY(!copied.contains(QStringLiteral("$$")));
     }
+    void md06SmartPunctuation() {
+        ContentBuilder builder;
+        QVERIFY(PenelopeSettings::self()->smartPunctuationEnabled());
+        const auto doc = builder.build(QStringLiteral(
+            "\"Quoted\" words, don't stop -- really --- stop... and `\"code\" -- ...` stays.\n"));
+        const QString text = Content::toPlainText(doc);
+        QVERIFY2(text.contains(QStringLiteral("\u201CQuoted\u201D")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("don\u2019t")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("\u2013")), qPrintable(text));  // en dash
+        QVERIFY2(text.contains(QStringLiteral("\u2014")), qPrintable(text));  // em dash
+        QVERIFY2(text.contains(QStringLiteral("\u2026")), qPrintable(text));  // ellipsis
+
+        // Code spans keep their characters.
+        const auto *para = std::get_if<Content::Paragraph>(&doc.blocks.first());
+        QVERIFY(para);
+        bool codeUntouched = false;
+        for (const auto &node : para->inlines) {
+            if (const auto *code = std::get_if<Content::InlineCode>(&node)) {
+                if (code->text.contains(QStringLiteral("\"code\" -- ...")))
+                    codeUntouched = true;
+            }
+        }
+        QVERIFY2(codeUntouched, "a code span is not transformed");
+
+        // The preference turns it off.
+        builder.setSmartPunctuation(false);
+        const auto plain = builder.build(QStringLiteral("\"Quoted\" -- really --- stop...\n"));
+        QCOMPARE(Content::toPlainText(plain).trimmed(),
+                 QStringLiteral("\"Quoted\" -- really --- stop..."));
+
+        // The code-block path never runs typography either.
+        ContentBuilder codeBuilder;
+        const auto codeDoc = codeBuilder.build(QStringLiteral("```\n\"quoted\" -- ...\n```\n"));
+        const auto *codeBlock = std::get_if<Content::CodeBlock>(&codeDoc.blocks.first());
+        QVERIFY(codeBlock);
+        QCOMPARE(codeBlock->code.trimmed(), QStringLiteral("\"quoted\" -- ..."));
+    }
 };
 
 int main(int argc, char **argv) {

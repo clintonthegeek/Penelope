@@ -266,15 +266,23 @@ PageLayout HeaderFooterDialog::result() const
     pl.footerCenter = m_footerCenterEdit->text();
     pl.footerRight = m_footerRightEdit->text();
 
-    // Clear master pages we manage (preserve margin overrides from other sources)
-    pl.masterPages.remove(QStringLiteral("first"));
-    pl.masterPages.remove(QStringLiteral("left"));
-    pl.masterPages.remove(QStringLiteral("right"));
+    // This dialog owns the six header/footer fields of each page type. Every
+    // other override — the enabled flags and the margins, which the page panel
+    // sets — belongs to the page layout widget and has to survive an OK here.
+    auto applyFields = [&pl](const QString &type,
+                             const DropTargetLineEdit *hL, const DropTargetLineEdit *hC,
+                             const DropTargetLineEdit *hR, const DropTargetLineEdit *fL,
+                             const DropTargetLineEdit *fC, const DropTargetLineEdit *fR) {
+        auto it = pl.masterPages.find(type);
+        MasterPage mp = (it == pl.masterPages.end()) ? MasterPage{} : it.value();
+        mp.name = type;
 
-    // First page
-    if (m_firstPageGroup->isChecked()) {
-        MasterPage mp;
-        mp.name = QStringLiteral("first");
+        mp.headerLeft.clear();   mp.hasHeaderLeft = false;
+        mp.headerCenter.clear(); mp.hasHeaderCenter = false;
+        mp.headerRight.clear();  mp.hasHeaderRight = false;
+        mp.footerLeft.clear();   mp.hasFooterLeft = false;
+        mp.footerCenter.clear(); mp.hasFooterCenter = false;
+        mp.footerRight.clear();  mp.hasFooterRight = false;
 
         auto setIfNonEmpty = [](const DropTargetLineEdit *edit, QString &field, bool &hasField) {
             if (!edit->text().isEmpty()) {
@@ -282,51 +290,66 @@ PageLayout HeaderFooterDialog::result() const
                 hasField = true;
             }
         };
+        setIfNonEmpty(hL, mp.headerLeft,   mp.hasHeaderLeft);
+        setIfNonEmpty(hC, mp.headerCenter, mp.hasHeaderCenter);
+        setIfNonEmpty(hR, mp.headerRight,  mp.hasHeaderRight);
+        setIfNonEmpty(fL, mp.footerLeft,   mp.hasFooterLeft);
+        setIfNonEmpty(fC, mp.footerCenter, mp.hasFooterCenter);
+        setIfNonEmpty(fR, mp.footerRight,  mp.hasFooterRight);
 
-        setIfNonEmpty(m_firstHeaderLeftEdit,   mp.headerLeft,   mp.hasHeaderLeft);
-        setIfNonEmpty(m_firstHeaderCenterEdit,  mp.headerCenter, mp.hasHeaderCenter);
-        setIfNonEmpty(m_firstHeaderRightEdit,   mp.headerRight,  mp.hasHeaderRight);
-        setIfNonEmpty(m_firstFooterLeftEdit,    mp.footerLeft,   mp.hasFooterLeft);
-        setIfNonEmpty(m_firstFooterCenterEdit,  mp.footerCenter, mp.hasFooterCenter);
-        setIfNonEmpty(m_firstFooterRightEdit,   mp.footerRight,  mp.hasFooterRight);
+        if (mp.isDefault())
+            pl.masterPages.remove(type);
+        else
+            pl.masterPages.insert(type, mp);
+    };
 
-        if (!mp.isDefault())
-            pl.masterPages.insert(QStringLiteral("first"), mp);
+    if (m_firstPageGroup->isChecked()) {
+        applyFields(QStringLiteral("first"),
+                    m_firstHeaderLeftEdit, m_firstHeaderCenterEdit, m_firstHeaderRightEdit,
+                    m_firstFooterLeftEdit, m_firstFooterCenterEdit, m_firstFooterRightEdit);
+    } else {
+        // The dialog no longer manages this page type's fields; anything else
+        // the page panel set for it stays.
+        auto it = pl.masterPages.find(QStringLiteral("first"));
+        if (it != pl.masterPages.end()) {
+            MasterPage mp = it.value();
+            mp.headerLeft.clear();   mp.hasHeaderLeft = false;
+            mp.headerCenter.clear(); mp.hasHeaderCenter = false;
+            mp.headerRight.clear();  mp.hasHeaderRight = false;
+            mp.footerLeft.clear();   mp.hasFooterLeft = false;
+            mp.footerCenter.clear(); mp.hasFooterCenter = false;
+            mp.footerRight.clear();  mp.hasFooterRight = false;
+            if (mp.isDefault())
+                pl.masterPages.remove(QStringLiteral("first"));
+            else
+                pl.masterPages.insert(QStringLiteral("first"), mp);
+        }
     }
 
-    // Odd/even pages
     if (m_differentOddEven->isChecked()) {
-        auto buildMasterPage = [](const QString &name,
-                                   const DropTargetLineEdit *hL, const DropTargetLineEdit *hC, const DropTargetLineEdit *hR,
-                                   const DropTargetLineEdit *fL, const DropTargetLineEdit *fC, const DropTargetLineEdit *fR) {
-            MasterPage mp;
-            mp.name = name;
-            auto setIfNonEmpty = [](const DropTargetLineEdit *edit, QString &field, bool &hasField) {
-                if (!edit->text().isEmpty()) {
-                    field = edit->text();
-                    hasField = true;
-                }
-            };
-            setIfNonEmpty(hL, mp.headerLeft,   mp.hasHeaderLeft);
-            setIfNonEmpty(hC, mp.headerCenter, mp.hasHeaderCenter);
-            setIfNonEmpty(hR, mp.headerRight,  mp.hasHeaderRight);
-            setIfNonEmpty(fL, mp.footerLeft,   mp.hasFooterLeft);
-            setIfNonEmpty(fC, mp.footerCenter, mp.hasFooterCenter);
-            setIfNonEmpty(fR, mp.footerRight,  mp.hasFooterRight);
-            return mp;
-        };
-
-        MasterPage leftMp = buildMasterPage(QStringLiteral("left"),
-            m_leftHeaderLeftEdit, m_leftHeaderCenterEdit, m_leftHeaderRightEdit,
-            m_leftFooterLeftEdit, m_leftFooterCenterEdit, m_leftFooterRightEdit);
-        if (!leftMp.isDefault())
-            pl.masterPages.insert(QStringLiteral("left"), leftMp);
-
-        MasterPage rightMp = buildMasterPage(QStringLiteral("right"),
-            m_rightHeaderLeftEdit, m_rightHeaderCenterEdit, m_rightHeaderRightEdit,
-            m_rightFooterLeftEdit, m_rightFooterCenterEdit, m_rightFooterRightEdit);
-        if (!rightMp.isDefault())
-            pl.masterPages.insert(QStringLiteral("right"), rightMp);
+        applyFields(QStringLiteral("left"),
+                    m_leftHeaderLeftEdit, m_leftHeaderCenterEdit, m_leftHeaderRightEdit,
+                    m_leftFooterLeftEdit, m_leftFooterCenterEdit, m_leftFooterRightEdit);
+        applyFields(QStringLiteral("right"),
+                    m_rightHeaderLeftEdit, m_rightHeaderCenterEdit, m_rightHeaderRightEdit,
+                    m_rightFooterLeftEdit, m_rightFooterCenterEdit, m_rightFooterRightEdit);
+    } else {
+        for (const QString &type : {QStringLiteral("left"), QStringLiteral("right")}) {
+            auto it = pl.masterPages.find(type);
+            if (it == pl.masterPages.end())
+                continue;
+            MasterPage mp = it.value();
+            mp.headerLeft.clear();   mp.hasHeaderLeft = false;
+            mp.headerCenter.clear(); mp.hasHeaderCenter = false;
+            mp.headerRight.clear();  mp.hasHeaderRight = false;
+            mp.footerLeft.clear();   mp.hasFooterLeft = false;
+            mp.footerCenter.clear(); mp.hasFooterCenter = false;
+            mp.footerRight.clear();  mp.hasFooterRight = false;
+            if (mp.isDefault())
+                pl.masterPages.remove(type);
+            else
+                pl.masterPages.insert(type, mp);
+        }
     }
 
     return pl;

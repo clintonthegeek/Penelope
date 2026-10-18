@@ -20,13 +20,15 @@ QString resolveField(const QString &text, const PageMetadata &meta)
                    QLocale().toString(QDate::currentDate(), QLocale::ShortFormat));
 
     // Custom date format: {date:yyyy-MM-dd}
+    // Every occurrence, not just the first: a field may carry two date formats.
     static const QRegularExpression dateRx(
         QStringLiteral(R"(\{date:([^}]+)\})"));
-    QRegularExpressionMatch match = dateRx.match(result);
-    if (match.hasMatch()) {
-        QString fmt = match.captured(1);
-        result.replace(match.captured(0),
-                       QDate::currentDate().toString(fmt));
+    const QDate today = QDate::currentDate();
+    auto match = dateRx.match(result);
+    while (match.hasMatch()) {
+        const QString rendered = today.toString(match.captured(1));
+        result.replace(match.capturedStart(), match.capturedLength(), rendered);
+        match = dateRx.match(result, match.capturedStart() + rendered.size());
     }
 
     return result;

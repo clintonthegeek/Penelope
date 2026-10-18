@@ -62,6 +62,11 @@
 #include "hitindex.h"
 #include "pagefingerprint.h"
 #include "headerfooterplan.h"
+#include "headerfooterrenderer.h"
+#include "headerfooterdialog.h"
+#include <QGroupBox>
+#include <QLabel>
+#include <QLayout>
 #include "printcontroller.h"
 #include "themecomposer.h"
 #include "thememanager.h"
@@ -3786,6 +3791,109 @@ private Q_SLOTS:
         QVERIFY2(text.contains(QStringLiteral("e^{i\\pi} + 1 = 0")), qPrintable(text));
         QVERIFY2(text.contains(QStringLiteral("\\frac{a}{b}")), qPrintable(text));
         QVERIFY2(text.contains(QStringLiteral("Inline")), qPrintable(text));
+    }
+    // The dialog owns the six header/footer fields of a page type; the enabled
+    // flags and the margins belong to the page panel and must survive an OK.
+    void pageDialogKeepsPerPageOverrides() {
+        PageLayout pl; pl.pageSizeId = QPageSize::A4;
+        pl.footerCenter = QStringLiteral("{page} / {pages}");
+        MasterPage first; first.name = QStringLiteral("first");
+        first.marginTop = 50.0; first.marginBottom = 40.0;
+        first.marginLeft = 30.0; first.marginRight = 30.0;
+        first.headerEnabled = 0;
+        first.footerEnabled = 1;
+        first.hasHeaderCenter = true; first.headerCenter = QStringLiteral("first header");
+        pl.masterPages.insert(QStringLiteral("first"), first);
+
+        HeaderFooterDialog dlg(pl);
+        QGroupBox *firstGroup = nullptr;
+        QGroupBox *mainGroup = nullptr;
+        for (auto *group : dlg.findChildren<QGroupBox *>()) {
+            if (group->title() == QStringLiteral("First Page")) firstGroup = group;
+            if (group->title() == QStringLiteral("Main")) mainGroup = group;
+        }
+        QVERIFY(firstGroup && mainGroup);
+        QVERIFY2(firstGroup->isChecked(), "the group opens checked for a page that has fields");
+        // Find the footer's centre field by its label, so the test does not
+        // depend on the order Qt hands out children.
+        auto editAfterLabel = [](QWidget *container, const QString &labelText,
+                                 const QString &fieldText) -> QLineEdit * {
+            if (!container || !container->layout())
+                return nullptr;
+            const auto *layout = container->layout();
+            for (int i = 0; i + 1 < layout->count(); ++i) {
+                const auto *label = qobject_cast<QLabel *>(layout->itemAt(i)->widget());
+                if (!label || label->text() != labelText)
+                    continue;
+                QWidget *row = layout->itemAt(i + 1)->widget();
+                if (!row || !row->layout())
+                    continue;
+                for (int j = 0; j + 1 < row->layout()->count(); ++j) {
+                    const auto *fieldLabel =
+                        qobject_cast<QLabel *>(row->layout()->itemAt(j)->widget());
+                    if (fieldLabel && fieldLabel->text() == fieldText)
+                        return qobject_cast<QLineEdit *>(row->layout()->itemAt(j + 1)->widget());
+                }
+            }
+            return nullptr;
+        };
+        QLabel *footerLabel = nullptr;
+        for (auto *label : mainGroup->findChildren<QLabel *>()) {
+            if (label->text() == QStringLiteral("Footer:")) {
+                footerLabel = label;
+                break;
+            }
+        }
+        QVERIFY(footerLabel);
+        QLineEdit *footerCenter = editAfterLabel(footerLabel->parentWidget(),
+                                                 QStringLiteral("Footer:"),
+                                                 QStringLiteral("Center:"));
+        QVERIFY(footerCenter);
+        QCOMPARE(footerCenter->text(), QStringLiteral("{page} / {pages}"));
+        footerCenter->setText(QStringLiteral("p. {page} of {pages}"));
+
+        const PageLayout out = dlg.result();
+        QCOMPARE(out.footerCenter, QStringLiteral("p. {page} of {pages}"));
+        const MasterPage kept = out.masterPages.value(QStringLiteral("first"));
+        QCOMPARE(kept.marginTop, 50.0);
+        QCOMPARE(kept.marginBottom, 40.0);
+        QCOMPARE(kept.marginLeft, 30.0);
+        QCOMPARE(kept.marginRight, 30.0);
+        QCOMPARE(kept.headerEnabled, 0);
+        QCOMPARE(kept.footerEnabled, 1);
+        QCOMPARE(kept.headerCenter, QStringLiteral("first header"));
+
+        // Unchecking the group drops the dialog's fields and nothing else.
+        firstGroup->setChecked(false);
+        const PageLayout cleared = dlg.result();
+        const MasterPage after = cleared.masterPages.value(QStringLiteral("first"));
+        QVERIFY(!after.hasHeaderCenter);
+        QVERIFY(after.headerCenter.isEmpty());
+        QCOMPARE(after.marginTop, 50.0);
+        QCOMPARE(after.headerEnabled, 0);
+        QCOMPARE(after.footerEnabled, 1);
+
+        // A page type with only margins set is not deleted by touching the dialog.
+        PageLayout marginsOnly;
+        MasterPage leftPage; leftPage.name = QStringLiteral("left");
+        leftPage.marginLeft = 35.0;
+        marginsOnly.masterPages.insert(QStringLiteral("left"), leftPage);
+        HeaderFooterDialog other(marginsOnly);
+        const PageLayout otherOut = other.result();
+        QCOMPARE(otherOut.masterPages.value(QStringLiteral("left")).marginLeft, 35.0);
+    }
+
+    void headerFooterDateTokensAllRender() {
+        const PageMetadata meta{0, 1, QStringLiteral("f.md"), QStringLiteral("T")};
+        const QString field = QStringLiteral("{date:yyyy-MM-dd} and {date:d MMMM yyyy}");
+        const QString resolved = HeaderFooterRenderer::resolveField(field, meta);
+        const QString today = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        const QString longToday = QDate::currentDate().toString(QStringLiteral("d MMMM yyyy"));
+        QCOMPARE(resolved, today + QStringLiteral(" and ") + longToday);
+        QVERIFY2(HeaderFooterRenderer::resolveField(QStringLiteral("{date:nonsense}"), meta).isEmpty()
+                 || !HeaderFooterRenderer::resolveField(QStringLiteral("{date:nonsense}"), meta)
+                         .contains(QStringLiteral("{date:")),
+                 "a format Qt cannot render leaves nothing behind");
     }
 };
 

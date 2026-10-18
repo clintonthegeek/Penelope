@@ -2,7 +2,7 @@
 
 Superseded by the [ebook-reader roadmap](2026-10-17-ebook-reader-roadmap.md). Implement from that document. The tasks below are the notes it absorbs (PERF-02, INCR-01..03, PREVIEW-01..05) or explicitly defers (PERF-01, PERF-03..07). Do not start a PREVIEW or INCR branch from this file.
 
-The hard scheduling and font-ownership boundary is implemented in [CompositionController](../src/render/compositioncontroller.h); see [implementation notes](2026-10-04-composition-implementation.md). These tasks were designed to be assigned individually. Complete the listed acceptance checks and report limitations with each change. Do not combine the direct-preview tasks into an unsolicited rewrite of DocumentView.
+The hard scheduling and font-ownership boundary is implemented in [CompositionController](../../src/render/compositioncontroller.h); see [implementation notes](2026-10-04-composition-implementation.md). These tasks were designed to be assigned individually. Complete the listed acceptance checks and report limitations with each change. Do not combine the direct-preview tasks into an unsolicited rewrite of DocumentView.
 
 For each task, read its named files and relevant existing regression cases. Use an optimized build for performance measurements, preserve working-tree changes, and run the Qt regression suite. Do not spawn/delegate or commit unless instructed. Keep GUI widgets/settings out of worker code. Never share mutable FreeType/HarfBuzz instances between export and composition threads.
 

@@ -19,7 +19,7 @@ On the recorded run, a 1.5 MB prose file spent about 140 ms parsing, 620 ms layi
 
 ## What stays
 
-Keep the worker boundary in [CompositionController](../src/render/compositioncontroller.h). Requests stay value copies. The worker owns FreeType and HarfBuzz. GUI painters touch immutable font bytes and Hershey data. One job runs at a time, with one pending replacement. Export does not borrow the reader's mutable engine or its font context.
+Keep the worker boundary in [CompositionController](../../src/render/compositioncontroller.h). Requests stay value copies. The worker owns FreeType and HarfBuzz. GUI painters touch immutable font bytes and Hershey data. One job runs at a time, with one pending replacement. Export does not borrow the reader's mutable engine or its font context.
 
 Keep the semantic document, the box tree, `QtBoxRenderer`, and the shaping cache. Whole-document `Engine::layout()` and `Engine::layoutContinuous()` remain the definition of a correct full result. The cursor-driven path has to agree with them. PDF generation stays the export and print-dialog implementation.
 

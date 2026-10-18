@@ -13,7 +13,7 @@ Implemented the scheduling, ownership and shaping-cache foundations from the per
 
 ## Ownership and thread boundary
 
-[CompositionRequest](../src/render/compositioncontroller.h) contains value copies of source, style definitions, page geometry, language overrides, image/typography/highlighting/table settings and revisions. Requests do not refer to widgets or GUI-owned QObjects. A worker-local StyleManager/ContentBuilder and typography objects build the semantic document.
+[CompositionRequest](../../src/render/compositioncontroller.h) contains value copies of source, style definitions, page geometry, language overrides, image/typography/highlighting/table settings and revisions. Requests do not refer to widgets or GUI-owned QObjects. A worker-local StyleManager/ContentBuilder and typography objects build the semantic document.
 
 The worker owns a persistent FontManager/TextShaper context, separate from GUI export fonts. FontManager is now an ordinary C++ resource owner: it never needed QObject signals, parenting or thread affinity. FreeType/HarfBuzz state and glyph usage are mutated exclusively by the worker. GUI continuous painting accesses immutable raw font bytes and immutable Hershey artwork, not the worker's mutable FreeType glyph state.
 

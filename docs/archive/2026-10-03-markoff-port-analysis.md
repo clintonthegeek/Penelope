@@ -43,18 +43,18 @@ public dependency for Markoff.
 
 Markoff's current direction is its QWidget canvas leaf, not its former QML
 live-preview leaf. `MARKOFF_BUILD_LIVE` defaults OFF in the actual
-[CMake file](../../Markoff/CMakeLists.txt); the live leaf is retired. The
-[status board](../../Markoff/docs/STATUS.md) says canvas production and the
+[CMake file](../../../Markoff/CMakeLists.txt); the live leaf is retired. The
+[status board](../../../Markoff/docs/STATUS.md) says canvas production and the
 accessibility arc are closed; styled is bug-fix-only and source is frozen.
 The README's three-view account is historical. The status board also contains
 older, inconsistent test totals below its latest entry; this analysis does
 not treat them as a freshly verified test run.
 
 The relevant integration seam is
-[`MarkdownView`](../../Markoff/libs/markoff-core/include/markoff/core/MarkdownView.h).
-[`Canvas::EditorWidget`](../../Markoff/libs/markoff-canvas/include/markoff/canvas/EditorWidget.h)
+[`MarkdownView`](../../../Markoff/libs/markoff-core/include/markoff/core/MarkdownView.h).
+[`Canvas::EditorWidget`](../../../Markoff/libs/markoff-canvas/include/markoff/canvas/EditorWidget.h)
 shows how an interchangeable leaf wraps a concrete view.
-[`MarkoffDocument`](../../Markoff/libs/markoff-core/include/markoff/core/MarkoffDocument.h)
+[`MarkoffDocument`](../../../Markoff/libs/markoff-core/include/markoff/core/MarkoffDocument.h)
 provides `serializeForSave()`, `blockText()`, `blockKind()`, `blockAttrs()`,
 `inlineSpansFor()`, and document/block-change signals. Its model is the
 content authority. Deprecated `toMarkdown()` and `toMarkdownUtf8()` read a
@@ -119,7 +119,7 @@ For the durable bridge, project the per-block model and cached inline spans
 to the typesetting IR. This removes the extra parser and supports targeted
 projection invalidation, but it needs explicit block-specific handling.
 Markoff's parser
-[`TopLevelBlock`](../../Markoff/libs/markoff-parser/include/markoff/parser/Document.h)
+[`TopLevelBlock`](../../../Markoff/libs/markoff-parser/include/markoff/parser/Document.h)
 is a useful snapshot interface, not a complete nested print tree by itself.
 
 | Markoff content | Projection requirement |
@@ -148,8 +148,8 @@ model destruction cleanly. Wire only the attached document's notifications.
 Implement `fontScale`, themes, copy flavors and ephemeral scroll state.
 Decide whether a navigation cursor is exposed; do not advertise editing/caret
 support just to satisfy an assumed interface shape. Apply the current
-[view guide](../../Markoff/docs/VIEW-IMPLEMENTORS-GUIDE.md) and
-[invariants](../../Markoff/docs/INVARIANTS.md) before implementation.
+[view guide](../../../Markoff/docs/VIEW-IMPLEMENTORS-GUIDE.md) and
+[invariants](../../../Markoff/docs/INVARIANTS.md) before implementation.
 
 ## Rendering ownership and quality gates
 

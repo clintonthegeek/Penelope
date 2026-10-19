@@ -64,6 +64,7 @@
 #include "headerfooterplan.h"
 #include "headerfooterrenderer.h"
 #include "headerfooterdialog.h"
+#include <QCheckBox>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLayout>
@@ -4177,6 +4178,190 @@ private Q_SLOTS:
 
         PenelopeSettings::self()->setUseWebView(true);
         PenelopeSettings::self()->save();
+    }
+    // The chrome settings have to reach the reader and the PDF, and the rules
+    // the PDF draws have to appear on screen too.
+    void chromeTypographyReachesBothRenderers() {
+        FontManager fonts; TextShaper shaper(&fonts); Layout::Engine engine(&fonts, &shaper);
+        ContentBuilder builder;
+        auto doc = builder.build(QStringLiteral("# T\n\none line of text\n"));
+        PageLayout pl; pl.pageSizeId = QPageSize::A4; pl.margins = QMarginsF(20, 20, 20, 20);
+        pl.headerEnabled = true; pl.headerCenter = QStringLiteral("header text");
+        pl.footerEnabled = true; pl.footerCenter = QStringLiteral("footer text");
+        pl.chromeFontSize = 14.0;
+        pl.chromeColor = QColor(0xcc, 0x00, 0x00);
+        pl.chromeBold = true;
+
+        const auto plan = makeHeaderFooterPlan(pl, 0, 1, QStringLiteral("f.md"), QStringLiteral("T"));
+        QCOMPARE(plan.fontSize, 14.0);
+        QCOMPARE(plan.color, QColor(0xcc, 0x00, 0x00));
+        QVERIFY(plan.bold);
+        QVERIFY(plan.hasHeaderRule);
+        QVERIFY(plan.hasFooterRule);
+        QVERIFY(plan.headerRule.width() > 0);
+        QVERIFY2(plan.headerRule.top() > plan.headerCenter.rect.bottom() - 1.0,
+                 "the rule sits below the header text");
+        QVERIFY2(plan.footerRule.top() >= plan.footerCenter.rect.bottom() - 1.0,
+                 "the rule sits below the footer text");
+
+        // The reader paints the fields in that colour and draws the rules.
+        auto sharedFonts = std::make_shared<FontManager>();
+        auto result = engine.layout(doc, pl);
+        QVERIFY(!result.pages.isEmpty());
+        BoxPageItem item(std::make_shared<Layout::Page>(result.pages.first()), result.pageSize, sharedFonts);
+        item.setPageChrome(pl, 1, QStringLiteral("f.md"), QStringLiteral("T"));
+        QImage image(int(result.pageSize.width()), int(result.pageSize.height()),
+                     QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        QStyleOptionGraphicsItem option;
+        option.exposedRect = item.boundingRect();
+        item.paint(&painter, &option, nullptr);
+        painter.end();
+
+        auto hasColour = [&](const QColor &wanted, const QRectF &area) {
+            for (int y = int(area.top()); y < int(area.bottom()); ++y) {
+                for (int x = int(area.left()); x < int(area.right()); ++x) {
+                    if (x < 0 || y < 0 || x >= image.width() || y >= image.height())
+                        continue;
+                    const QColor pixel = image.pixelColor(x, y);
+                    if (qAbs(pixel.red() - wanted.red()) < 60
+                        && qAbs(pixel.green() - wanted.green()) < 60
+                        && qAbs(pixel.blue() - wanted.blue()) < 60)
+                        return true;
+                }
+            }
+            return false;
+        };
+        QVERIFY2(hasColour(QColor(0xcc, 0x00, 0x00), plan.headerCenter.rect),
+                 "the header is painted in the configured colour");
+
+        // The PDF carries the same colour, and a rule at the plan's position.
+        PdfGenerator generator(&fonts);
+        const QByteArray pdf = generator.generate(result, pl, QStringLiteral("T"));
+        QVERIFY(!pdf.isEmpty());
+        auto poppler = Poppler::Document::loadFromData(pdf);
+        QVERIFY(poppler);
+        const QString text = poppler->page(0)->text(QRectF());
+        QVERIFY2(text.contains(QStringLiteral("header text")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("footer text")), qPrintable(text));
+
+        // The page as a raster, so the check does not depend on how the
+        // streams are compressed: the chrome is painted in the configured
+        // colour and the rules are drawn where the plan puts them.
+        const QImage raster = poppler->page(0)->renderToImage(72, 72);
+        QVERIFY(!raster.isNull());
+        auto rasterHasColour = [&](const QColor &wanted, const QRectF &area) {
+            for (int y = int(area.top()); y < int(area.bottom()) && y < raster.height(); ++y) {
+                for (int x = int(area.left()); x < int(area.right()) && x < raster.width(); ++x) {
+                    if (x < 0 || y < 0)
+                        continue;
+                    const QColor pixel = raster.pixelColor(x, y);
+                    if (qAbs(pixel.red() - wanted.red()) < 70
+                        && qAbs(pixel.green() - wanted.green()) < 70
+                        && qAbs(pixel.blue() - wanted.blue()) < 70)
+                        return true;
+                }
+            }
+            return false;
+        };
+        QVERIFY2(rasterHasColour(QColor(0xcc, 0x00, 0x00), plan.headerCenter.rect),
+                 "the PDF paints the header in the configured colour");
+        QVERIFY2(rasterHasColour(QColor(0xcc, 0x00, 0x00), plan.footerCenter.rect),
+                 "and the footer");
+
+        // A grey rule under the header, at the plan's y.
+        auto rowIsGreyLine = [&](qreal y, const QRectF &rule) {
+            int grey = 0;
+            for (int x = int(rule.left()); x < int(rule.right()) && x < raster.width(); ++x) {
+                const QColor pixel = raster.pixelColor(x, qBound(0, int(y), raster.height() - 1));
+                if (pixel.red() > 180 && pixel.red() < 240
+                    && qAbs(pixel.red() - pixel.green()) < 12
+                    && qAbs(pixel.green() - pixel.blue()) < 12)
+                    ++grey;
+            }
+            return grey > (rule.width() * 0.5);
+        };
+        QVERIFY2(rowIsGreyLine(plan.headerRule.top(), plan.headerRule), "the header rule is in the PDF");
+        QVERIFY2(rowIsGreyLine(plan.footerRule.top(), plan.footerRule), "the footer rule is in the PDF");
+
+        // The settings survive a template round trip.
+        const PageLayout back = PageLayout::fromJson(pl.toPageLayoutJson(), {});
+        QCOMPARE(back.chromeFontSize, 14.0);
+        QCOMPARE(back.chromeColor, QColor(0xcc, 0x00, 0x00));
+        QVERIFY(back.chromeBold);
+    }
+    // The dialog styles the chrome, inserts tokens on a click, and shows what
+    // the page will look like before it is accepted.
+    void headerDialogEditsChromeAndTokens() {
+        PageLayout pl; pl.pageSizeId = QPageSize::A4;
+        pl.headerEnabled = true; pl.headerCenter = QStringLiteral("Title");
+        pl.footerCenter = QStringLiteral("{page} / {pages}");
+        pl.footerRight.clear();
+        HeaderFooterDialog dlg(pl);
+        dlg.resize(760, 640);
+        dlg.show();
+        QTest::qWait(120);
+
+        auto *sizeSpin = dlg.findChild<QDoubleSpinBox *>();
+        auto *colourCombo = dlg.findChild<QComboBox *>();
+        QVERIFY(sizeSpin && colourCombo);
+        sizeSpin->setValue(13.5);
+        // The second preset is black; the first is grey.
+        colourCombo->setCurrentIndex(1);
+        // The KDE style inserts mnemonics, so compare without them.
+        auto labelText = [](const QString &text) {
+            QString plain = text;
+            plain.remove(QLatin1Char('&'));
+            return plain;
+        };
+        QCheckBox *bold = nullptr;
+        for (auto *box : dlg.findChildren<QCheckBox *>()) {
+            if (labelText(box->text()) == QStringLiteral("Bold"))
+                bold = box;
+        }
+        QVERIFY(bold);
+        bold->setChecked(true);
+
+        const PageLayout out = dlg.result();
+        QCOMPARE(out.chromeFontSize, 13.5);
+        QCOMPARE(out.chromeColor, QColor(0x1a, 0x1a, 0x1a));
+        QVERIFY(out.chromeBold);
+
+        // Clicking a tile inserts its token into the focused field.
+        QLineEdit *footerLeft = nullptr;
+        for (auto *edit : dlg.findChildren<QLineEdit *>()) {
+            if (edit->isEnabled() && edit->isVisible() && edit->text().isEmpty()) {
+                footerLeft = edit;
+                break;
+            }
+        }
+        QVERIFY(footerLeft);
+        footerLeft->setFocus();
+        QTest::qWait(20);
+        QLabel *tile = nullptr;
+        for (auto *label : dlg.findChildren<QLabel *>()) {
+            if (label->text() == QStringLiteral("Page X of Y"))
+                tile = label;
+        }
+        QVERIFY(tile);
+        QTest::mouseClick(tile, Qt::LeftButton);
+        QTRY_VERIFY(footerLeft->text().contains(QStringLiteral("{page}")));
+        QVERIFY(footerLeft->text().contains(QStringLiteral("{pages}")));
+
+        // The preview paints the page, not a blank rectangle.
+        QWidget *previewWidget = dlg.findChild<QWidget *>(QStringLiteral("headerFooterPreview"));
+        QVERIFY2(previewWidget, "the dialog carries a preview");
+        const QImage shot = previewWidget->grab().toImage();
+        QVERIFY(shot.width() > 100 && shot.height() > 50);
+        int dark = 0;
+        for (int y = 0; y < shot.height(); ++y) {
+            for (int x = 0; x < shot.width(); ++x) {
+                if (shot.pixelColor(x, y).lightness() < 200)
+                    ++dark;
+            }
+        }
+        QVERIFY2(dark > 200, "the preview draws page chrome");
     }
 };
 

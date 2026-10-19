@@ -6,8 +6,11 @@
 #include "pagelayout.h"
 
 class QCheckBox;
+class QComboBox;
+class QDoubleSpinBox;
 class QGroupBox;
 class DropTargetLineEdit;
+class HeaderFooterPreview;
 
 class HeaderFooterDialog : public QDialog
 {
@@ -20,6 +23,12 @@ public:
 
 private:
     QWidget *createTilePalette();
+    QWidget *createTextRow();
+    // Insert a token from the palette into the field the user is working in.
+    void insertToken(const QString &token);
+    // The layout the fields currently describe, for the preview.
+    PageLayout currentLayout() const;
+    void refreshPreview();
     QWidget *createFieldRow(DropTargetLineEdit *&leftEdit,
                             DropTargetLineEdit *&centerEdit,
                             DropTargetLineEdit *&rightEdit);
@@ -60,6 +69,13 @@ private:
     DropTargetLineEdit *m_rightFooterLeftEdit = nullptr;
     DropTargetLineEdit *m_rightFooterCenterEdit = nullptr;
     DropTargetLineEdit *m_rightFooterRightEdit = nullptr;
+
+    // Header/footer text styling
+    QDoubleSpinBox *m_sizeSpin = nullptr;
+    QComboBox *m_colourCombo = nullptr;
+    QCheckBox *m_boldCheck = nullptr;
+    QCheckBox *m_italicCheck = nullptr;
+    HeaderFooterPreview *m_preview = nullptr;
 
     // Copy of incoming layout for fields we don't edit
     PageLayout m_baseLayout;

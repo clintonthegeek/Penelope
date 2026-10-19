@@ -7,6 +7,7 @@
 
 #include "pagelayout.h"
 
+class QLabel;
 class ItemSelectorBar;
 class PageLayoutWidget;
 class PageTemplateManager;
@@ -43,6 +44,9 @@ private:
 
     ItemSelectorBar *m_selectorBar = nullptr;
     PageLayoutWidget *m_pageLayoutWidget = nullptr;
+    // Builtin templates cannot be saved, so say what an edit does.
+    QLabel *m_templateHint = nullptr;
+    void updateTemplateHint();
 };
 
 #endif // PENELOPE_PAGEDOCKWIDGET_H

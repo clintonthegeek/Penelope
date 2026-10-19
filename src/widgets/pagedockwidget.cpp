@@ -6,6 +6,7 @@
 #include "pagetemplate.h"
 #include "pagetemplatemanager.h"
 
+#include <QLabel>
 #include <QMessageBox>
 #include <QVBoxLayout>
 
@@ -46,6 +47,13 @@ void PageDockWidget::buildUI()
 
     connect(m_pageLayoutWidget, &PageLayoutWidget::pageLayoutChanged,
             this, &PageDockWidget::pageLayoutChanged);
+
+    // A builtin template is read-only: edits change this document only.
+    m_templateHint = new QLabel;
+    m_templateHint->setWordWrap(true);
+    m_templateHint->setTextFormat(Qt::RichText);
+    m_templateHint->setVisible(false);
+    layout->addWidget(m_templateHint);
 }
 
 void PageDockWidget::populateSelector()
@@ -90,8 +98,23 @@ void PageDockWidget::onTemplateSelectionChanged(const QString &id)
     PageTemplate tmpl = m_templateManager->pageTemplate(id);
     if (!tmpl.id.isEmpty()) {
         m_pageLayoutWidget->setPageLayout(tmpl.pageLayout);
+        updateTemplateHint();
         Q_EMIT templateChanged(id);
     }
+}
+
+void PageDockWidget::updateTemplateHint()
+{
+    if (!m_templateHint)
+        return;
+    const QString id = m_selectorBar->currentId();
+    const bool builtin = !id.isEmpty() && m_templateManager->isBuiltin(id);
+    if (builtin) {
+        m_templateHint->setText(tr("<i>%1</i> is built in: changes apply to this document. "
+                                   "Use Duplicate to keep them.")
+                                    .arg(m_templateManager->templateName(id).toHtmlEscaped()));
+    }
+    m_templateHint->setVisible(builtin);
 }
 
 void PageDockWidget::onDuplicate()

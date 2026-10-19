@@ -1,8 +1,17 @@
 #include "headerfooterdialog.h"
 #include "droptargetlineedit.h"
 
+#include "headerfooterplan.h"
+#include "headerfooterrenderer.h"
+
 #include <QApplication>
 #include <QCheckBox>
+#include <QColorDialog>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QFocusEvent>
+#include <QPainter>
+#include <QPageSize>
 #include <QDialogButtonBox>
 #include <QDrag>
 #include <QGroupBox>
@@ -17,22 +26,38 @@
 class DragTileLabel : public QLabel
 {
 public:
-    DragTileLabel(const QString &displayText, const QString &insertText, QWidget *parent = nullptr)
+    DragTileLabel(const QString &displayText, const QString &insertText,
+                  std::function<void(const QString &)> insert, QWidget *parent = nullptr)
         : QLabel(displayText, parent)
         , m_insertText(insertText)
+        , m_insert(std::move(insert))
     {
         setFrameStyle(QFrame::StyledPanel | QFrame::Raised);
         setMargin(6);
-        setCursor(Qt::OpenHandCursor);
-        setToolTip(insertText);
+        setCursor(Qt::PointingHandCursor);
+        setToolTip(tr("Click to insert %1, or drag it into a field").arg(insertText));
     }
 
 protected:
     void mousePressEvent(QMouseEvent *event) override
     {
-        if (event->button() == Qt::LeftButton)
+        if (event->button() == Qt::LeftButton) {
             m_dragStartPos = event->pos();
+            m_pressed = true;
+        }
         QLabel::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        // A click, not a drag: insert into the field the user last worked in.
+        if (m_pressed && event->button() == Qt::LeftButton && m_insert
+            && (event->pos() - m_dragStartPos).manhattanLength()
+                   < QApplication::startDragDistance()) {
+            m_insert(m_insertText);
+        }
+        m_pressed = false;
+        QLabel::mouseReleaseEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
@@ -52,7 +77,116 @@ protected:
 
 private:
     QString m_insertText;
+    std::function<void(const QString &)> m_insert;
     QPoint m_dragStartPos;
+    bool m_pressed = false;
+};
+
+// --- HeaderFooterPreview: the page as the fields describe it ---
+
+class HeaderFooterPreview : public QWidget
+{
+public:
+    explicit HeaderFooterPreview(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setMinimumHeight(190);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+    void setLayout(const PageLayout &layout)
+    {
+        m_layout = layout;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.fillRect(rect(), palette().window());
+
+        const QSizeF page = m_layout.pageSizePoints();
+        if (page.isEmpty())
+            return;
+        // Two pages: the first page, and a regular one, so a first-page or
+        // odd/even override is visible before it is accepted.
+        const qreal gap = 18.0;
+        const qreal availW = (width() - gap * 3) / 2.0;
+        const qreal availH = height() - 26.0;
+        const qreal scale = qMin(availW / page.width(), availH / page.height());
+        const QSizeF drawn(page.width() * scale, page.height() * scale);
+        const int pages[2] = {0, 1};
+        const QString labels[2] = {tr("First page"), tr("Page 2")};
+
+        for (int i = 0; i < 2; ++i) {
+            const QPointF origin(gap + i * (drawn.width() + gap), 6.0);
+            const QRectF pageRect(origin, drawn);
+            painter.fillRect(pageRect, m_layout.pageBackground.isValid()
+                                             ? m_layout.pageBackground : QColor(Qt::white));
+            painter.setPen(QPen(QColor(0xb0, 0xb0, 0xb0), 1));
+            painter.drawRect(pageRect);
+
+            const HeaderFooterPlan plan = makeHeaderFooterPlan(
+                m_layout, pages[i], 3, QStringLiteral("document.md"), QStringLiteral("Title"));
+            painter.setPen(QPen(QColor(0xc0, 0xc0, 0xd0), 0.5, Qt::DotLine));
+            painter.drawRect(pageRect.adjusted(plan.headerLeft.rect.left() * scale,
+                                               plan.headerLeft.rect.top() * scale,
+                                               -plan.headerLeft.rect.left() * scale,
+                                               -(plan.headerLeft.rect.top() * scale)));
+
+            QFont font(QStringLiteral("Noto Sans"));
+            font.setPointSizeF(qMax(4.0, plan.fontSize * scale));
+            font.setBold(plan.bold);
+            font.setItalic(plan.italic);
+            painter.setFont(font);
+            painter.setPen(plan.color);
+            auto drawField = [&](const HeaderFooterField &field, Qt::Alignment align) {
+                if (field.text.isEmpty())
+                    return;
+                const QRectF target(origin.x() + field.rect.left() * scale,
+                                    origin.y() + field.rect.top() * scale,
+                                    field.rect.width() * scale,
+                                    qMax(8.0, field.rect.height() * scale));
+                painter.drawText(target, int(align) | Qt::AlignVCenter, field.text);
+            };
+            if (plan.headerEnabled) {
+                drawField(plan.headerLeft, Qt::AlignLeft);
+                drawField(plan.headerCenter, Qt::AlignHCenter);
+                drawField(plan.headerRight, Qt::AlignRight);
+            }
+            if (plan.footerEnabled) {
+                drawField(plan.footerLeft, Qt::AlignLeft);
+                drawField(plan.footerCenter, Qt::AlignHCenter);
+                drawField(plan.footerRight, Qt::AlignRight);
+            }
+            painter.setPen(QPen(QColor(0xcc, 0xcc, 0xcc), 0.6));
+            if (plan.hasHeaderRule)
+                painter.drawLine(QPointF(origin.x() + plan.headerRule.left() * scale,
+                                         origin.y() + plan.headerRule.top() * scale),
+                                 QPointF(origin.x() + plan.headerRule.right() * scale,
+                                         origin.y() + plan.headerRule.top() * scale));
+            if (plan.hasFooterRule)
+                painter.drawLine(QPointF(origin.x() + plan.footerRule.left() * scale,
+                                         origin.y() + plan.footerRule.top() * scale),
+                                 QPointF(origin.x() + plan.footerRule.right() * scale,
+                                         origin.y() + plan.footerRule.top() * scale));
+
+            painter.setPen(palette().color(QPalette::WindowText));
+            QFont labelFont = font;
+            labelFont.setPointSizeF(8.0);
+            labelFont.setBold(false);
+            labelFont.setItalic(false);
+            painter.setFont(labelFont);
+            painter.drawText(QRectF(origin.x(), origin.y() + drawn.height() + 2.0,
+                                    drawn.width(), 18.0),
+                             Qt::AlignHCenter, labels[i]);
+        }
+    }
+
+private:
+    PageLayout m_layout;
 };
 
 // --- HeaderFooterDialog ---
@@ -68,6 +202,14 @@ HeaderFooterDialog::HeaderFooterDialog(const PageLayout &layout, QWidget *parent
 
     // Tile palette
     mainLayout->addWidget(createTilePalette());
+
+    // What the fields look like on the page
+    m_preview = new HeaderFooterPreview(this);
+    m_preview->setObjectName(QStringLiteral("headerFooterPreview"));
+    mainLayout->addWidget(m_preview);
+
+    // Header/footer text styling
+    mainLayout->addWidget(createTextRow());
 
     // --- First Page (checkable group box) ---
     m_firstPageGroup = new QGroupBox(tr("First Page"));
@@ -150,6 +292,128 @@ HeaderFooterDialog::HeaderFooterDialog(const PageLayout &layout, QWidget *parent
     // Load initial values
     loadFromLayout(layout);
     updateFieldStates();
+
+    // Any edit redraws the preview.
+    for (auto *edit : findChildren<DropTargetLineEdit *>())
+        connect(edit, &QLineEdit::textChanged, this, &HeaderFooterDialog::refreshPreview);
+    if (m_firstPageGroup)
+        connect(m_firstPageGroup, &QGroupBox::toggled, this, &HeaderFooterDialog::refreshPreview);
+    if (m_differentOddEven)
+        connect(m_differentOddEven, &QCheckBox::toggled, this, &HeaderFooterDialog::refreshPreview);
+    refreshPreview();
+}
+
+// The header and footer text styling, applied to both page renderers.
+QWidget *HeaderFooterDialog::createTextRow()
+{
+    auto *row = new QWidget;
+    auto *layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    layout->addWidget(new QLabel(tr("Text:")));
+    m_sizeSpin = new QDoubleSpinBox;
+    m_sizeSpin->setRange(5.0, 36.0);
+    m_sizeSpin->setDecimals(1);
+    m_sizeSpin->setSuffix(QStringLiteral(" pt"));
+    layout->addWidget(m_sizeSpin);
+
+    m_colourCombo = new QComboBox;
+    const struct { const char *name; QColor colour; } colours[] = {
+        {QT_TR_NOOP("Grey"), QColor(0x88, 0x88, 0x88)},
+        {QT_TR_NOOP("Black"), QColor(0x1a, 0x1a, 0x1a)},
+        {QT_TR_NOOP("Accent"), QColor(0x3d, 0xae, 0xe9)},
+        {QT_TR_NOOP("Warm grey"), QColor(0xa0, 0x8a, 0x7a)},
+        {QT_TR_NOOP("Custom..."), QColor()},
+    };
+    for (const auto &entry : colours) {
+        m_colourCombo->addItem(tr(entry.name), entry.colour);
+        if (entry.colour.isValid())
+            m_colourCombo->setItemData(m_colourCombo->count() - 1,
+                                       QBrush(entry.colour), Qt::DecorationRole);
+    }
+    layout->addWidget(m_colourCombo);
+
+    m_boldCheck = new QCheckBox(tr("Bold"));
+    layout->addWidget(m_boldCheck);
+    m_italicCheck = new QCheckBox(tr("Italic"));
+    layout->addWidget(m_italicCheck);
+    layout->addStretch();
+
+    connect(m_sizeSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &HeaderFooterDialog::refreshPreview);
+    connect(m_colourCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+                const QColor chosen = m_colourCombo->itemData(index, Qt::UserRole).value<QColor>();
+                if (!chosen.isValid()) {
+                    const QColor custom = QColorDialog::getColor(m_baseLayout.chromeColor, this,
+                                                                tr("Header and footer colour"));
+                    if (custom.isValid()) {
+                        m_colourCombo->setItemData(index, custom, Qt::UserRole);
+                        m_colourCombo->setItemData(index, QBrush(custom), Qt::DecorationRole);
+                    } else {
+                        // Cancelled: go back to the colour already in use.
+                        const int current = m_colourCombo->findData(
+                            QVariant::fromValue(m_baseLayout.chromeColor), Qt::UserRole);
+                        if (current >= 0)
+                            m_colourCombo->setCurrentIndex(current);
+                    }
+                }
+                refreshPreview();
+            });
+    connect(m_boldCheck, &QCheckBox::toggled, this, &HeaderFooterDialog::refreshPreview);
+    connect(m_italicCheck, &QCheckBox::toggled, this, &HeaderFooterDialog::refreshPreview);
+
+    return row;
+}
+
+void HeaderFooterDialog::insertToken(const QString &token)
+{
+    auto *target = qobject_cast<DropTargetLineEdit *>(QApplication::focusWidget());
+    if (!target || !isAncestorOf(target) || !target->isEnabled()) {
+        // Nothing focused: take the first empty field of an enabled group.
+        for (auto *edit : findChildren<DropTargetLineEdit *>()) {
+            if (edit->isEnabled() && edit->isVisible() && edit->text().isEmpty()) {
+                target = edit;
+                break;
+            }
+        }
+    }
+    if (!target) {
+        for (auto *edit : findChildren<DropTargetLineEdit *>()) {
+            if (edit->isEnabled() && edit->isVisible()) {
+                target = edit;
+                break;
+            }
+        }
+    }
+    if (!target)
+        return;
+    target->insert(token);
+    target->setFocus();
+    refreshPreview();
+}
+
+// The layout the fields describe right now, without accepting the dialog.
+PageLayout HeaderFooterDialog::currentLayout() const
+{
+    PageLayout pl = result();
+    pl.headerEnabled = m_baseLayout.headerEnabled;
+    pl.footerEnabled = m_baseLayout.footerEnabled;
+    return pl;
+}
+
+void HeaderFooterDialog::refreshPreview()
+{
+    if (!m_preview)
+        return;
+    PageLayout pl = currentLayout();
+    pl.chromeFontSize = m_sizeSpin->value();
+    const QVariant chosen = m_colourCombo->currentData(Qt::UserRole);
+    if (chosen.isValid() && chosen.value<QColor>().isValid())
+        pl.chromeColor = chosen.value<QColor>();
+    pl.chromeBold = m_boldCheck->isChecked();
+    pl.chromeItalic = m_italicCheck->isChecked();
+    m_preview->setLayout(pl);
 }
 
 QWidget *HeaderFooterDialog::createTilePalette()
@@ -169,7 +433,9 @@ QWidget *HeaderFooterDialog::createTilePalette()
     };
 
     for (const auto &tile : tiles) {
-        layout->addWidget(new DragTileLabel(tile.label, tile.insert, group));
+        layout->addWidget(new DragTileLabel(tile.label, tile.insert,
+                                            [this](const QString &token) { insertToken(token); },
+                                            group));
     }
     layout->addStretch();
 
@@ -209,6 +475,30 @@ void HeaderFooterDialog::updateFieldStates()
 
 void HeaderFooterDialog::loadFromLayout(const PageLayout &layout)
 {
+    if (m_sizeSpin)
+        m_sizeSpin->setValue(layout.chromeFontSize);
+    if (m_boldCheck)
+        m_boldCheck->setChecked(layout.chromeBold);
+    if (m_italicCheck)
+        m_italicCheck->setChecked(layout.chromeItalic);
+    if (m_colourCombo) {
+        int index = -1;
+        for (int i = 0; i < m_colourCombo->count(); ++i) {
+            const QColor candidate = m_colourCombo->itemData(i, Qt::UserRole).value<QColor>();
+            if (candidate.isValid() && candidate == layout.chromeColor) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            // Not one of the presets: keep it on the Custom entry.
+            index = m_colourCombo->count() - 1;
+            m_colourCombo->setItemData(index, layout.chromeColor, Qt::UserRole);
+            m_colourCombo->setItemData(index, QBrush(layout.chromeColor), Qt::DecorationRole);
+        }
+        m_colourCombo->setCurrentIndex(index);
+    }
+
     // Default fields
     m_headerLeftEdit->setText(layout.headerLeft);
     m_headerCenterEdit->setText(layout.headerCenter);
@@ -257,6 +547,15 @@ void HeaderFooterDialog::loadFromLayout(const PageLayout &layout)
 PageLayout HeaderFooterDialog::result() const
 {
     PageLayout pl = m_baseLayout;
+
+    if (m_sizeSpin) {
+        pl.chromeFontSize = m_sizeSpin->value();
+        const QVariant chosen = m_colourCombo->currentData(Qt::UserRole);
+        if (chosen.isValid() && chosen.value<QColor>().isValid())
+            pl.chromeColor = chosen.value<QColor>();
+        pl.chromeBold = m_boldCheck->isChecked();
+        pl.chromeItalic = m_italicCheck->isChecked();
+    }
 
     // Write back default fields
     pl.headerLeft = m_headerLeftEdit->text();

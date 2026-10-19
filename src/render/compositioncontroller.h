@@ -34,6 +34,8 @@ struct CompositionRequest {
     qreal maxHeight = 0;
     bool onePage = false;
     bool interactivePages = false;
+    // The page-number oracle only needs the page structure, not the PDF.
+    bool skipPdf = false;
     bool geometryChanged = false;
     int startBlock = 0;
     qreal width = 500;

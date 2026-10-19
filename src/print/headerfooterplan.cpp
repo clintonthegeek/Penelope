@@ -26,7 +26,10 @@ HeaderFooterPlan makeHeaderFooterPlan(const PageLayout &pageLayout,
     const PageLayout resolved = pageLayout.resolvedForPage(pageNumber);
     const PageMetadata meta{pageNumber, totalPages, fileName, title};
     HeaderFooterPlan plan;
-    plan.fontSize = 9.0;
+    plan.fontSize = resolved.chromeFontSize;
+    plan.color = resolved.chromeColor;
+    plan.bold = resolved.chromeBold;
+    plan.italic = resolved.chromeItalic;
     plan.headerEnabled = resolved.headerEnabled;
     plan.footerEnabled = resolved.footerEnabled;
     const QSizeF pageSize = pageLayout.pageSizePoints();
@@ -56,6 +59,14 @@ HeaderFooterPlan makeHeaderFooterPlan(const PageLayout &pageLayout,
     plan.footerLeft.rect = band(marginLeft, footerY, contentWidth, PageLayout::kFooterHeight, 0);
     plan.footerCenter.rect = band(marginLeft, footerY, contentWidth, PageLayout::kFooterHeight, 1);
     plan.footerRight.rect = band(marginLeft, footerY, contentWidth, PageLayout::kFooterHeight, 2);
+
+    // The rules the PDF draws: on the top margin line, and just below the
+    // footer band.
+    plan.hasHeaderRule = resolved.headerEnabled;
+    plan.headerRule = QRectF(marginLeft, headerY + PageLayout::kHeaderHeight + PageLayout::kSeparatorGap,
+                             contentWidth, 0.5);
+    plan.hasFooterRule = resolved.footerEnabled;
+    plan.footerRule = QRectF(marginLeft, footerY + PageLayout::kFooterHeight, contentWidth, 0.5);
     return plan;
 }
 

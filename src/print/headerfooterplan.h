@@ -3,6 +3,7 @@
 
 #include "pagelayout.h"
 
+#include <QColor>
 #include <QRectF>
 #include <QString>
 
@@ -20,8 +21,16 @@ struct HeaderFooterPlan {
     HeaderFooterField footerRight;
     QRectF pageRect;
     qreal fontSize = 9.0;
+    QColor color = QColor(0x88, 0x88, 0x88);
+    bool bold = false;
+    bool italic = false;
     bool headerEnabled = false;
     bool footerEnabled = false;
+    // Where the header and footer rules sit, and how far they span.
+    QRectF headerRule;
+    QRectF footerRule;
+    bool hasHeaderRule = false;
+    bool hasFooterRule = false;
 };
 
 HeaderFooterPlan makeHeaderFooterPlan(const PageLayout &pageLayout,

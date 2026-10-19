@@ -4,6 +4,7 @@
 #include <KXmlGuiWindow>
 #include <QPointer>
 #include "compositioncontroller.h"
+#include "layoutengine.h"
 #include "documenttab.h"
 
 class QAction;
@@ -12,6 +13,7 @@ class QLabel;
 class QSlider;
 class QSplitter;
 class QSpinBox;
+class QTimer;
 class QTabWidget;
 class KActionMenu;
 class KRecentFilesAction;
@@ -66,6 +68,9 @@ private Q_SLOTS:
     void onCompositionApplied();
     void onStyleOverrideChanged();
     void onPageLayoutChanged();
+    void refreshPageIndicator();
+    void schedulePageOracle();
+    void startPageOracle();
     void onZoomIn();
     void onZoomOut();
     void onFitWidth();
@@ -120,6 +125,19 @@ private:
     QSlider *m_zoomSlider = nullptr;
     QSpinBox *m_zoomSpinBox = nullptr;
     QLabel *m_filePathLabel = nullptr;
+    // Where the reader is in the printed page sequence, in either view mode.
+    QLabel *m_pageIndicator = nullptr;
+    // A background pagination of the current document, so the continuous
+    // reader can say which printed page it is on. Only run when a header or
+    // footer actually asks for page numbers.
+    CompositionController *m_pageOracle = nullptr;
+    QTimer *m_pageOracleDebounce = nullptr;
+    quint64 m_pageOracleRequest = 0;
+    QString m_pageOracleKey;
+    int m_pageOracleTotal = 0;
+    QList<Layout::SourceMapEntry> m_pageOracleMap;
+    QMetaObject::Connection m_pageIndicatorScroll;
+    void attachPageIndicator(DocumentTab *tab);
 
     // PDF rendering pipeline (Phase 4)
     CompositionController *m_compositionController = nullptr;

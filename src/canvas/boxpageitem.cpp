@@ -126,12 +126,21 @@ void BoxPageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
                                                        m_fileName, m_title);
     QFont font(QStringLiteral("Noto Sans"));
     font.setPointSizeF(plan.fontSize);
+    font.setBold(plan.bold);
+    font.setItalic(plan.italic);
     painter->setFont(font);
-    painter->setPen(QColor(0x88, 0x88, 0x88));
+    painter->setPen(plan.color);
     auto drawField = [&](const HeaderFooterField &field, Qt::Alignment align) {
         if (!field.text.isEmpty())
             painter->drawText(field.rect, int(align) | Qt::AlignVCenter, field.text);
     };
+    // The rules the PDF draws under the header and below the footer.
+    painter->setPen(QPen(QColor(0xcc, 0xcc, 0xcc), 0.5));
+    if (plan.hasHeaderRule)
+        painter->drawLine(plan.headerRule.topLeft(), plan.headerRule.topRight());
+    if (plan.hasFooterRule)
+        painter->drawLine(plan.footerRule.topLeft(), plan.footerRule.topRight());
+    painter->setPen(plan.color);
     if (plan.headerEnabled) {
         drawField(plan.headerLeft, Qt::AlignLeft);
         drawField(plan.headerCenter, Qt::AlignHCenter);

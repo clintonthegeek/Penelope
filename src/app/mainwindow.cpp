@@ -26,6 +26,7 @@
 #include "shortwords.h"
 #include "tocwidget.h"
 #include "printcontroller.h"
+#include "headerfooterplan.h"
 #include "stylemanager.h"
 #include "typedockwidget.h"
 #include "themepickerdock.h"
@@ -126,6 +127,9 @@ MainWindow::MainWindow(QWidget *parent)
             if (m_filePathLabel)
                 m_filePathLabel->clear();
         }
+        attachPageIndicator(tab);
+        schedulePageOracle();
+        refreshPageIndicator();
 
         // Sync view mode actions with current tab state
         if (tab && tab->isSourceMode()) {
@@ -189,6 +193,27 @@ MainWindow::MainWindow(QWidget *parent)
         QStringLiteral(":/fonts/PrettySymbolsFallback.ttf"));
     m_textShaper->setFallbackFont(fallback);
 
+    m_pageOracle = new CompositionController(this);
+    m_pageOracleDebounce = new QTimer(this);
+    m_pageOracleDebounce->setSingleShot(true);
+    m_pageOracleDebounce->setInterval(500);
+    connect(m_pageOracleDebounce, &QTimer::timeout, this, &MainWindow::startPageOracle);
+    connect(m_pageOracle, &CompositionController::ready, this,
+            [this](quint64 id, CompositionResultPtr result) {
+                if (id != m_pageOracleRequest || !result)
+                    return;
+                m_pageOracleTotal = result->paginated.pages.size();
+                m_pageOracleMap = result->paginated.sourceMap;
+                refreshPageIndicator();
+            });
+    connect(m_pageOracle, &CompositionController::failed, this, [this](quint64 id, const QString &) {
+        if (id == m_pageOracleRequest) {
+            m_pageOracleTotal = 0;
+            m_pageOracleMap.clear();
+            refreshPageIndicator();
+        }
+    });
+
     m_compositionController = new CompositionController(this);
     connect(m_compositionController, &CompositionController::ready,
             this, &MainWindow::installComposition);
@@ -237,6 +262,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_filePathLabel = new QLabel;
     m_filePathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(m_filePathLabel, 1);
+
+    // Page position: the printed page the reader is on, in either view mode.
+    m_pageIndicator = new QLabel;
+    m_pageIndicator->setObjectName(QStringLiteral("pageIndicator"));
+    m_pageIndicator->setToolTip(i18n("Position in the printed page sequence"));
+    m_pageIndicator->setMinimumWidth(90);
+    statusBar()->addPermanentWidget(m_pageIndicator);
 
     // A5: Zoom slider + spinbox on status bar (permanent, right side)
     m_zoomSlider = new QSlider(Qt::Horizontal);
@@ -304,6 +336,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    delete m_pageOracle;
+    m_pageOracle = nullptr;
     delete m_compositionController;
     m_compositionController = nullptr;
     delete m_hyphenator;
@@ -1241,9 +1275,132 @@ void MainWindow::onStyleOverrideChanged()
     rebuildCurrentDocument();
 }
 
+
+namespace {
+
+// The page a source line falls on, from a paginated source map.
+int pageForSourceLine(const QList<Layout::SourceMapEntry> &map, int line)
+{
+    if (line <= 0 || map.isEmpty())
+        return 1;
+    int page = map.first().pageNumber + 1;
+    for (const auto &entry : map) {
+        if (entry.startLine <= line && line <= entry.endLine)
+            return entry.pageNumber + 1;
+        if (entry.startLine <= line)
+            page = entry.pageNumber + 1;
+    }
+    return page;
+}
+
+} // namespace
+
+// Keep the page indicator tied to the current tab's scroll position.
+void MainWindow::attachPageIndicator(DocumentTab *tab)
+{
+    if (m_pageIndicatorScroll)
+        disconnect(m_pageIndicatorScroll);
+    m_pageIndicatorScroll = {};
+    if (!tab)
+        return;
+    auto *view = tab->documentView();
+    if (!view)
+        return;
+    m_pageIndicatorScroll = connect(view->verticalScrollBar(), &QScrollBar::valueChanged,
+                                    this, &MainWindow::refreshPageIndicator);
+}
+
+void MainWindow::refreshPageIndicator()
+{
+    if (!m_pageIndicator)
+        return;
+    auto *tab = currentDocumentTab();
+    if (!tab || tab->isSourceMode()) {
+        m_pageIndicator->clear();
+        return;
+    }
+    auto *view = tab->documentView();
+    if (!view) {
+        m_pageIndicator->clear();
+        return;
+    }
+
+    if (view->renderMode() == DocumentView::PrintMode) {
+        const int page = qMax(1, view->currentPage() + 1);
+        const int total = qMax(page, view->pageCount());
+        m_pageIndicator->setText(i18n("Page %1 / %2", page, total));
+        return;
+    }
+
+    // Continuous reading has no pages of its own; the printed sequence comes
+    // from the background pagination.
+    const PageLayout layout = m_pageDockWidget->currentPageLayout();
+    if (!headerFooterUsesPageToken(layout)) {
+        m_pageIndicator->clear();
+        return;
+    }
+    const int page = pageForSourceLine(m_pageOracleMap, view->viewportAnchor().sourceLine);
+    if (m_pageOracleTotal > 0)
+        m_pageIndicator->setText(i18n("Page %1 / %2", page, m_pageOracleTotal));
+    else
+        m_pageIndicator->setText(i18n("Page %1", page));
+}
+
+void MainWindow::schedulePageOracle()
+{
+    if (m_pageOracleDebounce)
+        m_pageOracleDebounce->start();
+}
+
+void MainWindow::startPageOracle()
+{
+    auto *tab = currentDocumentTab();
+    if (!tab || tab->isSourceMode() || !m_pageOracle) {
+        m_pageOracleTotal = 0;
+        m_pageOracleMap.clear();
+        refreshPageIndicator();
+        return;
+    }
+    const PageLayout layout = m_pageDockWidget->currentPageLayout();
+    if (!headerFooterUsesPageToken(layout)) {
+        m_pageOracleTotal = 0;
+        m_pageOracleMap.clear();
+        refreshPageIndicator();
+        return;
+    }
+
+    const QString key = QStringLiteral("%1|%2|%3|%4")
+                            .arg(tab->filePath())
+                            .arg(tab->sourceRevision())
+                            .arg(m_compositionGeneration)
+                            .arg(QString::number(layout.pageSizePoints().width(), 'f', 2)
+                                 + QString::number(layout.margins.left(), 'f', 2)
+                                 + QString::number(layout.margins.top(), 'f', 2)
+                                 + QString::number(layout.margins.right(), 'f', 2)
+                                 + QString::number(layout.margins.bottom(), 'f', 2)
+                                 + QString::number(layout.masterPages.size()));
+    if (key == m_pageOracleKey && m_pageOracleTotal > 0) {
+        refreshPageIndicator();
+        return;
+    }
+
+    CompositionRequest request = compositionRequest(tab);
+    request.continuous = false;
+    request.onePage = false;
+    request.interactivePages = false;
+    request.startBlock = 0;
+    request.skipPdf = true;
+    m_pageOracleKey = key;
+    m_pageOracleTotal = 0;
+    m_pageOracleMap.clear();
+    m_pageOracleRequest = m_pageOracle->submit(request);
+    refreshPageIndicator();
+}
+
 void MainWindow::onPageLayoutChanged()
 {
     ++m_compositionGeneration;
+    schedulePageOracle();
 
     PageLayout pl = m_pageDockWidget->currentPageLayout();
     auto *view = currentDocumentView();
@@ -1727,6 +1884,8 @@ void MainWindow::installComposition(quint64 id, CompositionResultPtr result)
         submitLayoutFollowUp();
     if (request.continuous && !result->finished)
         view->scheduleMoreLayout();
+    schedulePageOracle();
+    refreshPageIndicator();
     Q_EMIT documentRendered(tab);
 }
 

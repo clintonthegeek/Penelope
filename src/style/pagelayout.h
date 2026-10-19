@@ -46,6 +46,13 @@ struct PageLayout
     QString footerCenter;
     QString footerRight{QStringLiteral("{page} / {pages}")};
 
+    // Header and footer text: page furniture, so it travels with the template
+    // rather than with the content styles.
+    qreal chromeFontSize = 9.0;
+    QColor chromeColor = QColor(0x88, 0x88, 0x88);
+    bool chromeBold = false;
+    bool chromeItalic = false;
+
     // Height constants (points)
     static constexpr qreal kHeaderHeight = 16.0;
     static constexpr qreal kFooterHeight = 14.0;

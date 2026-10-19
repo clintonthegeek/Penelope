@@ -700,7 +700,8 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
 
     auto drawFields = [&](const QString &left, const QString &center, const QString &right,
                           qreal rectY, qreal rectHeight) {
-        FontFace *font = m_fontManager->loadFont(QStringLiteral("Noto Sans"), 400, false);
+        FontFace *font = m_fontManager->loadFont(QStringLiteral("Noto Sans"),
+                                                 plan.bold ? 700 : 400, plan.italic);
         if (!font || !font->ftFace) return;
 
         QByteArray fname = pdfFontName(font);
@@ -711,7 +712,7 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
 
         stream += "BT\n";
         stream += "/" + fname + " " + pdfCoord(fontSize) + " Tf\n";
-        stream += "0.53 0.53 0.53 rg\n"; // #888888
+        stream += colorOperator(plan.color, true) + "\n";
 
         // Helper: measure text width and collect glyph IDs
         auto measureText = [&](const QString &text) -> qreal {
@@ -748,8 +749,10 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
 
         emitField(left, marginLeft);
         if (!center.isEmpty()) {
+            // Centred on the text column, as the reader draws it, so an
+            // asymmetric layout puts the number in the same place in both.
             qreal textWidth = measureText(center);
-            emitField(center, (pageWidth - textWidth) / 2);
+            emitField(center, marginLeft + (pageWidth - marginLeft - marginRight - textWidth) / 2);
         }
         if (!right.isEmpty()) {
             qreal textWidth = measureText(right);
@@ -768,13 +771,11 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
         drawFields(plan.headerLeft.text, plan.headerCenter.text, plan.headerRight.text,
                    headerY, PageLayout::kHeaderHeight);
 
-        // Separator line
-        qreal sepY = pageHeight - mTop;
-        qreal mLeft = resolved.margins.left() * 72.0 / 25.4;
-        qreal mRight = resolved.margins.right() * 72.0 / 25.4;
+        // Separator line, where the plan puts it.
+        const qreal sepY = pageHeight - plan.headerRule.top();
         stream += "q\n0.80 0.80 0.80 RG\n0.5 w\n";
-        stream += pdfCoord(mLeft) + " " + pdfCoord(sepY) + " m "
-                + pdfCoord(pageWidth - mRight) + " " + pdfCoord(sepY) + " l S\n";
+        stream += pdfCoord(plan.headerRule.left()) + " " + pdfCoord(sepY) + " m "
+                + pdfCoord(plan.headerRule.right()) + " " + pdfCoord(sepY) + " l S\n";
         stream += "Q\n";
     }
 
@@ -784,13 +785,11 @@ void PdfGenerator::renderHeaderFooter(QByteArray &stream, const PageLayout &page
         drawFields(plan.footerLeft.text, plan.footerCenter.text, plan.footerRight.text,
                    footerY, PageLayout::kFooterHeight);
 
-        // Separator line
-        qreal sepY = mBottom + PageLayout::kFooterHeight;
-        qreal mLeft = resolved.margins.left() * 72.0 / 25.4;
-        qreal mRight = resolved.margins.right() * 72.0 / 25.4;
+        // Separator line above the footer.
+        const qreal sepY = pageHeight - plan.footerRule.top();
         stream += "q\n0.80 0.80 0.80 RG\n0.5 w\n";
-        stream += pdfCoord(mLeft) + " " + pdfCoord(sepY) + " m "
-                + pdfCoord(pageWidth - mRight) + " " + pdfCoord(sepY) + " l S\n";
+        stream += pdfCoord(plan.footerRule.left()) + " " + pdfCoord(sepY) + " m "
+                + pdfCoord(plan.footerRule.right()) + " " + pdfCoord(sepY) + " l S\n";
         stream += "Q\n";
     }
 }

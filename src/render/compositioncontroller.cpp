@@ -169,7 +169,7 @@ public:
             m_shaper->setCancellationCheck({});
             result->shapeHits = m_shaper->cacheHits() - hits;
             result->shapeMisses = m_shaper->cacheMisses() - misses;
-            if (!r.continuous && !r.interactivePages) {
+            if (!r.continuous && !r.interactivePages && !r.skipPdf) {
                 PdfGenerator generator(m_fonts.get());
                 generator.setDocumentInfo(r.filename, r.title);
                 generator.setMaxJustifyGap(r.maxJustifyGap);

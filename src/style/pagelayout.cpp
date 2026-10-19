@@ -83,6 +83,15 @@ PageLayout PageLayout::fromJson(const QJsonObject &plObj, const QJsonObject &mpO
             m.value(QLatin1String("right")).toDouble(25.0),
             m.value(QLatin1String("bottom")).toDouble(25.0));
     }
+    if (plObj.contains(QLatin1String("chrome"))) {
+        const QJsonObject c = plObj.value(QLatin1String("chrome")).toObject();
+        pl.chromeFontSize = c.value(QLatin1String("fontSize")).toDouble(9.0);
+        const QString colour = c.value(QLatin1String("color")).toString();
+        if (QColor(colour).isValid())
+            pl.chromeColor = QColor(colour);
+        pl.chromeBold = c.value(QLatin1String("bold")).toBool(false);
+        pl.chromeItalic = c.value(QLatin1String("italic")).toBool(false);
+    }
     if (plObj.contains(QLatin1String("header"))) {
         QJsonObject h = plObj.value(QLatin1String("header")).toObject();
         pl.headerEnabled = h.value(QLatin1String("enabled")).toBool(false);
@@ -171,6 +180,13 @@ QJsonObject PageLayout::toPageLayoutJson() const
     m[QLatin1String("right")]  = margins.right();
     m[QLatin1String("bottom")] = margins.bottom();
     obj[QLatin1String("margins")] = m;
+
+    QJsonObject chrome;
+    chrome[QLatin1String("fontSize")] = chromeFontSize;
+    chrome[QLatin1String("color")] = chromeColor.name(QColor::HexArgb);
+    chrome[QLatin1String("bold")] = chromeBold;
+    chrome[QLatin1String("italic")] = chromeItalic;
+    obj[QLatin1String("chrome")] = chrome;
 
     QJsonObject h;
     h[QLatin1String("enabled")] = headerEnabled;

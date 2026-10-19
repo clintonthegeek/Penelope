@@ -4098,6 +4098,86 @@ private Q_SLOTS:
         const QRectF mirroredThird = rectForPage(mirroredLayout, 2);
         QCOMPARE(mirroredThird.x(), 20.0 * mmToPt);    // page 3 is a right page
     }
+    // The continuous reader has no pages of its own, so a document that asks
+    // for page numbers in its chrome says which printed page it is on.
+    void pageIndicatorShowsThePrintedPage() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("long.md"));
+        {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QByteArray body = "# Long document\n\n";
+            for (int i = 0; i < 600; ++i)
+                body += "Paragraph number " + QByteArray::number(i) + " with a line of words in it.\n\n";
+            file.write(body);
+        }
+
+        MainWindow window;
+        window.resize(900, 700);
+        window.show();
+        window.openFile(QUrl::fromLocalFile(path));
+        QSignalSpy rendered(&window, &MainWindow::documentRendered);
+        QVERIFY(rendered.wait(20000));
+        QTest::qWait(200);
+
+        auto pageLabel = [&window]() -> QLabel * {
+            return window.findChild<QLabel *>(QStringLiteral("pageIndicator"));
+        };
+        // The default template's footer carries "{page} / {pages}", so the
+        // indicator has work to do; the total comes from the background
+        // pagination.
+        QTRY_VERIFY_WITH_TIMEOUT(pageLabel() != nullptr, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(pageLabel()->text().contains(QStringLiteral(" / ")), 20000);
+        const QString first = pageLabel()->text();
+        const int total = first.section(QStringLiteral("/"), 1).trimmed().toInt();
+        QVERIFY2(total > 2, qPrintable(first));
+
+        // Scrolling into the document moves the indicator.
+        auto *view = window.findChild<DocumentView *>();
+        QVERIFY(view);
+        auto *bar = view->verticalScrollBar();
+        QVERIFY(bar);
+        QTRY_VERIFY(bar->maximum() > 0);
+        bar->setValue(bar->maximum());
+        QTRY_VERIFY_WITH_TIMEOUT(pageLabel()->text() != first, 5000);
+        const int page = pageLabel()->text().section(QStringLiteral("/"), 0, 0)
+                             .section(QStringLiteral(" "), 1).toInt();
+        QVERIFY2(page > 1, qPrintable(pageLabel()->text()));
+        QVERIFY2(page <= total, qPrintable(pageLabel()->text()));
+    }
+
+    // With the paginated reader the indicator comes straight from the view.
+    void pageIndicatorFollowsThePrintView() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("print.md"));
+        {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QByteArray body = "# Print\n\n";
+            for (int i = 0; i < 400; ++i)
+                body += "Line " + QByteArray::number(i) + " of the printed document.\n\n";
+            file.write(body);
+        }
+        PenelopeSettings::self()->setUseWebView(false);
+        PenelopeSettings::self()->save();
+
+        MainWindow window;
+        window.resize(900, 700);
+        window.show();
+        window.openFile(QUrl::fromLocalFile(path));
+        QSignalSpy rendered(&window, &MainWindow::documentRendered);
+        QVERIFY(rendered.wait(20000));
+        QTest::qWait(200);
+
+        QLabel *label = window.findChild<QLabel *>(QStringLiteral("pageIndicator"));
+        QTRY_VERIFY_WITH_TIMEOUT(label != nullptr, 10000);
+        QVERIFY2(label->text().contains(QStringLiteral(" / ")), qPrintable(label->text()));
+        const int total = label->text().section(QStringLiteral("/"), 1).trimmed().toInt();
+        QVERIFY(total > 1);
+
+        PenelopeSettings::self()->setUseWebView(true);
+        PenelopeSettings::self()->save();
+    }
 };
 
 int main(int argc, char **argv) {

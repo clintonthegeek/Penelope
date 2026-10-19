@@ -138,6 +138,14 @@ pacman -S qt6-base extra-cmake-modules ki18n kcoreaddons kxmlgui kiconthemes \
   blocks, because that mode has no display list to read.
 - Definition lists are not recognised.
 
+## Support
+
+Penelope is not a KDE project. Bugs, questions and feature requests belong at
+[github.com/clintonthegeek/Penelope/issues](https://github.com/clintonthegeek/Penelope/issues);
+the Help menu's **Report Bug…** entry opens that page, and **Penelope Website**
+opens [vibekoder.ca](https://vibekoder.ca). Please do not send Penelope reports
+to the KDE project, whose bug tracker covers KDE's own software.
+
 ## License
 
 GPLv3. See [COPYING](COPYING) and the third-party notices in

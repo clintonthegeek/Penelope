@@ -11,6 +11,7 @@
 #include "singleinstanceguard.h"
 #endif
 
+#include "aboutdata.h"
 #include "mainwindow.h"
 
 int main(int argc, char *argv[])
@@ -19,21 +20,7 @@ int main(int argc, char *argv[])
 
     KLocalizedString::setApplicationDomain("penelope");
 
-    KAboutData aboutData(
-        QStringLiteral("penelope"),
-        i18n("Penelope"),
-        QStringLiteral(PENELOPE_VERSION),
-        i18n("A beautiful paginated markdown reader"),
-        KAboutLicense::GPL_V3,
-        i18n("(c) 2025-2026"),
-        QStringLiteral("https://github.com/clintonthegeek/Penelope/issues"),
-        QStringLiteral("https://github.com/clintonthegeek/Penelope")
-    );
-    aboutData.addAuthor(i18n("Clinton Ignatov"), i18n("Developer"), QString());
-    aboutData.setOrganizationDomain("penelope.org");
-    aboutData.setDesktopFileName(
-        QStringLiteral("org.penelope.Penelope"));
-
+    KAboutData aboutData = penelopeAboutData();
     KAboutData::setApplicationData(aboutData);
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("document-viewer")));
 

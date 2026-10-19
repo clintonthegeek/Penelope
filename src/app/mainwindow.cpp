@@ -2,7 +2,9 @@
 
 #include <KActionCollection>
 #include <KActionMenu>
+#include <KAboutData>
 #include <KHelpMenu>
+#include <QDesktopServices>
 #include <KLocalizedString>
 #include <KRecentFilesAction>
 #include <KStandardAction>
@@ -526,11 +528,40 @@ void MainWindow::setupActions()
     KStandardAction::quit(qApp, &QApplication::quit, ac);
     KStandardAction::preferences(this, &MainWindow::showPreferences, ac);
 
-    // Help menu. KHelpMenu builds both dialogs from the KAboutData set in
-    // main(), so the version shown there comes from CMake.
+    // KXmlGuiWindow would add its own help menu, whose About KDE entry belongs
+    // to another project; this application builds the menu it wants instead.
+    setHelpMenuEnabled(false);
+
+    // Help menu. KHelpMenu builds the About dialog from the KAboutData set in
+    // main(), so the version shown there comes from CMake. Penelope is not a
+    // KDE project: help and bug reports point at its own pages, and there is no
+    // "About KDE" entry.
     auto *helpMenu = new KHelpMenu(this);
-    KStandardAction::aboutApp(helpMenu, &KHelpMenu::aboutApplication, ac);
-    KStandardAction::aboutKDE(helpMenu, &KHelpMenu::aboutKDE, ac);
+
+    // The About entry is ours rather than KStandardAction::aboutApp: that one
+    // takes its text from the executable's name, which is lower case.
+    auto *aboutAction = ac->addAction(QStringLiteral("help_about"));
+    aboutAction->setText(i18n("About %1", KAboutData::applicationData().displayName()));
+    aboutAction->setIcon(QIcon::fromTheme(QStringLiteral("help-about")));
+    connect(aboutAction, &QAction::triggered, helpMenu, &KHelpMenu::aboutApplication);
+
+    KStandardAction::reportBug(helpMenu, &KHelpMenu::reportBug, ac);
+
+    // KHelpMenu registers its own actions when it is constructed, "About KDE"
+    // among them. The ui.rc no longer lists it, and a menu layout cached by an
+    // older version must not be able to bring it back, so drop the action.
+    if (auto *kdeAction = ac->action(QStringLiteral("help_about_kde"))) {
+        ac->removeAction(kdeAction);
+        kdeAction->deleteLater();
+    }
+
+    auto *websiteAction = ac->addAction(QStringLiteral("help_website"));
+    websiteAction->setText(i18n("Penelope &Website"));
+    websiteAction->setIcon(QIcon::fromTheme(QStringLiteral("internet-web-browser")));
+    websiteAction->setData(QUrl(QStringLiteral("https://vibekoder.ca")));
+    connect(websiteAction, &QAction::triggered, this, [websiteAction]() {
+        QDesktopServices::openUrl(websiteAction->data().toUrl());
+    });
 
     // File > Open
     auto *openAction = KStandardAction::open(this, &MainWindow::onFileOpen, ac);

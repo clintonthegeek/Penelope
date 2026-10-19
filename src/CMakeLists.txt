@@ -3,6 +3,8 @@ kconfig_add_kcfg_files(PENELOPE_KCFG_SRCS app/penelopesettings.kcfgc GENERATE_MO
 
 add_library(PenelopeCore STATIC
     ${PENELOPE_KCFG_SRCS}
+    app/aboutdata.cpp
+    app/aboutdata.h
     app/mainwindow.cpp
     app/mainwindow.h
     app/metadatastore.cpp

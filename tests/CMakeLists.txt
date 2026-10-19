@@ -22,3 +22,10 @@ if(PENELOPE_PERFORMANCE_TESTS)
     set_tests_properties(penelope_renderbench_curve PROPERTIES
                          ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 900 LABELS performance)
 endif()
+
+# The real menu layout, so the suite can check what the application shows.
+qt_add_resources(penelope_tests "xmlgui"
+    PREFIX "/kxmlgui5/penelope"
+    BASE ${CMAKE_SOURCE_DIR}/src/app
+    FILES ${CMAKE_SOURCE_DIR}/src/app/penelopeui.rc
+)

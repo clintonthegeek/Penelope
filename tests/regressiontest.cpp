@@ -38,7 +38,13 @@
 #include "fontmanager.h"
 #include "footnoteparser.h"
 #include "layoutengine.h"
+#include "aboutdata.h"
 #include "mainwindow.h"
+#include <KAboutData>
+#include <KAboutApplicationDialog>
+#include <QMenu>
+#include <QMenuBar>
+#include <QTextBrowser>
 #include "metadatastore.h"
 #include "pagerangeparser.h"
 #include "pdfgenerator.h"
@@ -4437,6 +4443,102 @@ private Q_SLOTS:
             QVERIFY(!hint->isVisible());
         }
     }
+    // Penelope is not a KDE project: the Help menu and the About dialog must
+    // send people to the project's own pages, never to the KDE project.
+    void aboutPointsAtTheProject() {
+        // Load the menu layout the application embeds, under the name it uses,
+        // with the about data in place as main() sets it before the window.
+        const QString previousName = QCoreApplication::applicationName();
+        QCoreApplication::setApplicationName(QStringLiteral("penelope"));
+        const KAboutData data = penelopeAboutData();
+        KAboutData::setApplicationData(data);
+        MainWindow window;
+        window.show();
+        QTest::qWait(50);
+        QCOMPARE(data.bugAddress(), QStringLiteral("https://github.com/clintonthegeek/Penelope/issues"));
+        QCOMPARE(data.homepage(), QStringLiteral("https://vibekoder.ca"));
+
+        // No Help entry offers KDE, and the ones we keep are wired up.
+        // KHelpMenu registers an About KDE action whether or not the ui.rc
+        // lists it; it must not be offered.
+        QAction *kde = window.actionCollection()->action(QStringLiteral("help_about_kde"));
+        QVERIFY2(!kde || !kde->isVisible(), "About KDE is not offered");
+        QAction *report = window.actionCollection()->action(QStringLiteral("help_report_bug"));
+        QVERIFY2(report, "there is a report-bug action");
+        QVERIFY2(report->text().contains(QStringLiteral("Bug"), Qt::CaseInsensitive),
+                 qPrintable(report->text()));
+        QAction *website = window.actionCollection()->action(QStringLiteral("help_website"));
+        QVERIFY2(website, "there is a website action");
+        QCOMPARE(website->data().toUrl(), QUrl(QStringLiteral("https://vibekoder.ca")));
+
+        // The Help menu itself, as the user sees it.
+        QStringList entries;
+        for (auto *menu : window.menuBar()->findChildren<QMenu *>()) {
+            if (!menu->title().contains(QStringLiteral("Help"), Qt::CaseInsensitive))
+                continue;
+            for (auto *action : menu->actions()) {
+                if (!action->text().isEmpty())
+                    entries << action->text();
+            }
+        }
+        QVERIFY(!entries.isEmpty());
+        for (const QString &entry : entries) {
+            QVERIFY2(!entry.contains(QStringLiteral("KDE")),
+                     qPrintable(QStringLiteral("Help offers KDE: ") + entry));
+        }
+
+        // The About dialog carries the website and the project's bug page, and
+        // mentions KDE only as a library the application is built on.
+        KAboutApplicationDialog dialog(data, &window);
+        dialog.resize(620, 460);
+        dialog.show();
+        QTest::qWait(150);
+        QString shown;
+        for (auto *label : dialog.findChildren<QLabel *>())
+            shown += label->text() + QLatin1Char('\n');
+        for (auto *browser : dialog.findChildren<QTextBrowser *>())
+            shown += browser->toPlainText() + QLatin1Char('\n');
+        QVERIFY2(shown.contains(QStringLiteral("vibekoder.ca")), qPrintable(shown.left(400)));
+        QVERIFY2(!shown.contains(QStringLiteral("About penelope")), qPrintable(shown.left(200)));
+        QAction *about = window.actionCollection()->action(QStringLiteral("help_about"));
+        QVERIFY(about);
+        // KDE's accelerator manager adds a mnemonic to menu entries.
+        QString aboutText = about->text();
+        aboutText.remove(QLatin1Char('&'));
+        QCOMPARE(aboutText, QStringLiteral("About Penelope"));
+        QVERIFY2(shown.contains(QStringLiteral("github.com/clintonthegeek/Penelope")),
+                 qPrintable(shown.left(400)));
+        QVERIFY2(!shown.contains(QStringLiteral("bugs.kde.org")), qPrintable(shown.left(400)));
+        dialog.grab().save(QStringLiteral("/tmp/pagesetup/about_after.png"));
+
+        // The Help menu as the application builds it: the project's pages, and
+        // no way to reach the KDE project from here.
+        QStringList menuItems;
+        QMenu *help = nullptr;
+        for (auto *menu : window.menuBar()->findChildren<QMenu *>()) {
+            if (menu->title().contains(QStringLiteral("Help"), Qt::CaseInsensitive))
+                help = menu;
+        }
+        QVERIFY2(help, "there is a Help menu");
+        for (auto *action : help->actions()) {
+            if (!action->text().isEmpty())
+                menuItems << action->text();
+        }
+        bool sawReport = false;
+        bool sawWebsite = false;
+        for (const QString &item : menuItems) {
+            QVERIFY2(!item.contains(QStringLiteral("KDE")), qPrintable(item));
+            sawReport |= item.contains(QStringLiteral("Bug"), Qt::CaseInsensitive);
+            sawWebsite |= item.contains(QStringLiteral("Website"), Qt::CaseInsensitive);
+        }
+        QVERIFY2(sawReport, qPrintable(menuItems.join(QStringLiteral(" | "))));
+        QVERIFY2(sawWebsite, qPrintable(menuItems.join(QStringLiteral(" | "))));
+        help->popup(QPoint(400, 120));
+        QTest::qWait(120);
+        help->grab().save(QStringLiteral("/tmp/pagesetup/helpmenu.png"));
+        QCoreApplication::setApplicationName(previousName);
+    }
+
 };
 
 int main(int argc, char **argv) {

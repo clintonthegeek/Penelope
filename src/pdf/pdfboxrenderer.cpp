@@ -771,10 +771,23 @@ void PdfBoxRenderer::renderGlyphBox(const Layout::GlyphBox &gbox, qreal x, qreal
     }
 
     // The formula stays in the text layer: drawing it invisibly keeps it
-    // extractable and searchable.
+    // extractable and searchable. Its glyphs are scaled to the width the image
+    // occupies — otherwise they advance by their own metrics, drift past the
+    // formula and a reader reports the text out of order.
+    Layout::GlyphBox invisible = gbox;
+    qreal natural = 0;
+    for (const auto &glyph : invisible.glyphs)
+        natural += glyph.xAdvance;
+    if (natural > 0 && gbox.width > 0 && !qFuzzyCompare(natural, gbox.width)) {
+        const qreal factor = gbox.width / natural;
+        for (auto &glyph : invisible.glyphs) {
+            glyph.xAdvance *= factor;
+            glyph.xOffset *= factor;
+        }
+    }
     if (m_stream)
         *m_stream += "3 Tr\n";
-    renderGlyphRun(gbox, x, baselineY);
+    renderGlyphRun(invisible, x, baselineY);
     if (m_stream)
         *m_stream += "0 Tr\n";
 }

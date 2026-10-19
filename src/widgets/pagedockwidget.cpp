@@ -86,6 +86,7 @@ void PageDockWidget::setCurrentTemplateId(const QString &id)
     PageTemplate tmpl = m_templateManager->pageTemplate(id);
     if (!tmpl.id.isEmpty())
         m_pageLayoutWidget->setPageLayout(tmpl.pageLayout);
+    updateTemplateHint();
 }
 
 QString PageDockWidget::currentTemplateId() const

@@ -25,6 +25,9 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
 - Hover hints for links and images, and navigation between a citation and its
   note.
 - Per-file zoom, page and scroll position, remembered between sessions.
+- A page indicator in the status bar, in both reading modes: the continuous
+  reader paginates the document in the background to know which printed page
+  you are on.
 - Assistive technology reads the document: per-block headings, lists, tables and
   paragraphs with their text.
 
@@ -32,9 +35,15 @@ extending the page as you scroll. The PDF writer embeds subsetted fonts.
 
 - Paragraph and character styles, bundled type sets, palettes and page
   templates, with a style tree that recomposes the page as you edit it.
-- Page size, orientation and margins.
+- Page size (every standard size, or a custom width and height in millimetres),
+  orientation, and margins in millimetres or inches — down to none at all.
+- Per-page-type overrides: the first page, left pages and right pages can have
+  their own margins, header/footer text and header/footer switches, which is
+  what mirrored inner and outer margins need.
 - First, odd and even headers and footers with `{page}`, `{pages}`,
-  `{filename}`, `{title}`, `{date}` and custom date formats.
+  `{filename}`, `{title}`, `{date}` and custom date formats, styled with their
+  own size, colour, weight and slant, and previewed in the editor before you
+  accept it. Drag a token into a field, or click it.
 - Hyphenation with bundled English dictionaries, adjustable word length and
   justification gap; short-word non-breaking; table layout Auto or Optimal.
 - Optional smart punctuation: curly quotes, en and em dashes, ellipses. Code
@@ -124,12 +133,9 @@ pacman -S qt6-base extra-cmake-modules ki18n kcoreaddons kxmlgui kiconthemes \
 
 ## Known limitations
 
-- Body margins are shared by every page; per-page margins apply only to headers
-  and footers.
 - A table row taller than a page can overflow.
-- Styled copy is accurate to the run: copying part of a paragraph in the PDF
-  reader still copies whole blocks, and copying in the paginated reader takes
-  the runs the selection covers rather than individual characters.
+- Copying in the PDF reader (rather than the paginated reader) still takes whole
+  blocks, because that mode has no display list to read.
 - Definition lists are not recognised.
 
 ## License

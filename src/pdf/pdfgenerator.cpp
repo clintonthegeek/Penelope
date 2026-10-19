@@ -224,34 +224,35 @@ QByteArray PdfGenerator::generate(const Layout::LayoutResult &layout,
         }
     }
 
-    // Also register header/footer font and pre-mark glyphs for subsetting
-    FontFace *hfFont = m_fontManager->loadFont(QStringLiteral("Noto Sans"), 400, false);
-    if (hfFont) {
+    // The chrome's glyphs have to be in the subset before the fonts are
+    // embedded, and in the face the renderer will draw them with: bold or
+    // italic chrome needs its own font marked.
+    for (int pi = 0; pi < layout.pages.size(); ++pi) {
+        if (m_cancelled && m_cancelled()) return {};
+        const HeaderFooterPlan plan = makeHeaderFooterPlan(
+            pageLayout, pi, totalPages, m_filename, m_title);
+        if (!plan.headerEnabled && !plan.footerEnabled)
+            continue;
+        FontFace *hfFont = m_fontManager->loadFont(QStringLiteral("Noto Sans"),
+                                                   plan.bold ? 700 : 400, plan.italic);
+        if (!hfFont)
+            continue;
         ensureFontRegistered(hfFont);
-
-        // Pre-scan all pages' header/footer text so glyphs are included
-        // in the font subset (embedding happens before page rendering).
         auto markGlyphs = [&](const QString &text) {
             for (QChar ch : text) {
-                FT_UInt gid = FT_Get_Char_Index(hfFont->ftFace, ch.unicode());
+                const FT_UInt gid = FT_Get_Char_Index(hfFont->ftFace, ch.unicode());
                 m_fontManager->markGlyphUsed(hfFont, gid);
             }
         };
-
-        for (int pi = 0; pi < layout.pages.size(); ++pi) {
-        if (m_cancelled && m_cancelled()) return {};
-            const HeaderFooterPlan plan = makeHeaderFooterPlan(
-                pageLayout, pi, totalPages, m_filename, m_title);
-            if (plan.headerEnabled) {
-                markGlyphs(plan.headerLeft.text);
-                markGlyphs(plan.headerCenter.text);
-                markGlyphs(plan.headerRight.text);
-            }
-            if (plan.footerEnabled) {
-                markGlyphs(plan.footerLeft.text);
-                markGlyphs(plan.footerCenter.text);
-                markGlyphs(plan.footerRight.text);
-            }
+        if (plan.headerEnabled) {
+            markGlyphs(plan.headerLeft.text);
+            markGlyphs(plan.headerCenter.text);
+            markGlyphs(plan.headerRight.text);
+        }
+        if (plan.footerEnabled) {
+            markGlyphs(plan.footerLeft.text);
+            markGlyphs(plan.footerCenter.text);
+            markGlyphs(plan.footerRight.text);
         }
     }
 

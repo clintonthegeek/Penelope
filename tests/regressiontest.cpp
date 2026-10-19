@@ -59,6 +59,8 @@
 #include "boxpageitem.h"
 #include "qtboxrenderer.h"
 #include "pagelayoutwidget.h"
+#include "pagedockwidget.h"
+#include "pagetemplatemanager.h"
 #include "hitindex.h"
 #include "pagefingerprint.h"
 #include "headerfooterplan.h"
@@ -4285,6 +4287,39 @@ private Q_SLOTS:
         QVERIFY2(rowIsGreyLine(plan.headerRule.top(), plan.headerRule), "the header rule is in the PDF");
         QVERIFY2(rowIsGreyLine(plan.footerRule.top(), plan.footerRule), "the footer rule is in the PDF");
 
+        // Chrome in a face whose glyphs the body never uses still has to reach
+        // the page: a bold page number is not in a body of words, and the
+        // writer only embeds the glyphs it marked before the fonts are built.
+        {
+            PageLayout digits = pl;
+            digits.headerEnabled = false;
+            digits.footerCenter = QStringLiteral("{page} / {pages}");
+            digits.footerLeft.clear();
+            digits.footerRight.clear();
+            digits.chromeBold = true;
+            const auto digitDoc = engine.layout(doc, digits);
+            QVERIFY(!digitDoc.pages.isEmpty());
+            PdfGenerator digitGen(&fonts);
+            const QByteArray digitPdf = digitGen.generate(digitDoc, digits, QStringLiteral("T"));
+            auto digitPoppler = Poppler::Document::loadFromData(digitPdf);
+            QVERIFY(digitPoppler);
+            const QImage digitRaster = digitPoppler->page(0)->renderToImage(72, 72);
+            const auto digitPlan = makeHeaderFooterPlan(digits, 0, digitDoc.pages.size(),
+                                                        QStringLiteral("f.md"), QStringLiteral("T"));
+            QVERIFY(!digitPlan.footerCenter.text.isEmpty());
+            int ink = 0;
+            const QRectF area = digitPlan.footerCenter.rect;
+            for (int y = int(area.top()); y < int(area.bottom()) && y < digitRaster.height(); ++y) {
+                for (int x = int(area.left()); x < int(area.right()) && x < digitRaster.width(); ++x) {
+                    if (x < 0 || y < 0)
+                        continue;
+                    if (digitRaster.pixelColor(x, y).lightness() < 160)
+                        ++ink;
+                }
+            }
+            QVERIFY2(ink > 5, "the page number is drawn in the PDF, not left blank");
+        }
+
         // The settings survive a template round trip.
         const PageLayout back = PageLayout::fromJson(pl.toPageLayoutJson(), {});
         QCOMPARE(back.chromeFontSize, 14.0);
@@ -4362,6 +4397,45 @@ private Q_SLOTS:
             }
         }
         QVERIFY2(dark > 200, "the preview draws page chrome");
+    }
+    // A builtin template cannot be saved, so the panel has to say so.
+    void pageDockExplainsBuiltinTemplates() {
+        QTemporaryDir dir;
+        qputenv("XDG_DATA_HOME", dir.path().toUtf8());
+        PageTemplateManager manager;
+        PageDockWidget dock(&manager);
+        dock.resize(320, 480);
+        dock.show();
+        QTest::qWait(80);
+
+        const QStringList ids = manager.availableTemplates();
+        QVERIFY(!ids.isEmpty());
+        QString builtin;
+        QString writable;
+        for (const QString &id : ids) {
+            if (manager.isBuiltin(id) && builtin.isEmpty())
+                builtin = id;
+            if (!manager.isBuiltin(id) && writable.isEmpty())
+                writable = id;
+        }
+        QVERIFY(!builtin.isEmpty());
+
+        dock.setCurrentTemplateId(builtin);
+        QTest::qWait(30);
+        QLabel *hint = nullptr;
+        for (auto *label : dock.findChildren<QLabel *>()) {
+            if (label->text().contains(QStringLiteral("built in")))
+                hint = label;
+        }
+        QVERIFY2(hint, "the panel explains a builtin template");
+        QVERIFY(hint->isVisible());
+
+        // A template the user can save shows no such note.
+        if (!writable.isEmpty()) {
+            dock.setCurrentTemplateId(writable);
+            QTest::qWait(30);
+            QVERIFY(!hint->isVisible());
+        }
     }
 };
 
